@@ -28,7 +28,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Gated on every pull request: the enforced dependency DAG, architecture lints, the database schema with row-level
 > security proven as the non-superuser role, a deployable image with a verified
 > deployment path, a deterministic 2,000,000-task reference corpus, an `EXPLAIN`
-> gate over all 20 read paths, and the ADR-024 bundle budget measured at 113.2
+> gate over all 23 read paths, and the ADR-024 bundle budget measured at 113.2
 > KiB of 200.
 >
 > Two things that gate honestly rather than flatteringly: the `EXPLAIN` gate
@@ -87,7 +87,7 @@ modify.
   working forever ([docs/23](docs/23-WORKFLOW-AND-STATE-MACHINE.md)).
 - **Nothing scans.** The filterable and sortable field set is **closed**, each
   field has a named index, and CI asserts no sequential scan on any tenant-scale
-  table for all 20 read paths, on every pull request.
+  table for all 23 read paths, on every pull request.
   A filter on an unlisted field is a `400`, not a slow query
   ([docs/26](docs/26-SEARCH-INDEXING-AND-QUERY.md)).
 - **Open for extension, closed for modification.** Adding a plugin never changes

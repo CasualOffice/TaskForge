@@ -171,7 +171,8 @@ drop rather than a `DELETE` of millions of rows.
 | Index | Definition | Serves |
 | --- | --- | --- |
 | `outbox_delivery_pending_ix` | `(consumer, next_attempt_at, created_at)` `WHERE dispatched_at IS NULL AND dead_lettered_at IS NULL` | the dispatch poll. Led by `consumer` because a worker polls for exactly one — a time-leading index makes it walk five other consumers' due rows to reach its own. Both partial predicates matter: dispatched rows leave it so it stays tiny, and dead-lettered rows leave it so a growing DLQ — whose rows are by definition the *oldest* pending ones — cannot sit at its head and be re-read on every poll |
-| `outbox_delivery_dlq_ix` | `(workspace_id, dead_lettered_at)` `WHERE dead_lettered_at IS NOT NULL` | dead-letter review (RB-02) |
+| `outbox_event_aggregate_ix` | `(aggregate_id, created_at, id)` | the claim query's per-aggregate ordering anti-join ([25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Delivery semantics): "is there an earlier undelivered event for this aggregate?". Without it the planner answers that by hashing every pending delivery for the consumer on every poll — no sequential scan, so the plan gate passed, and the cost was O(pending) to claim a batch of 64. The trailing `id` is what lets the row-wise `(created_at, id) <` comparison be an index bound rather than a filter |
+| `outbox_delivery_dlq_ix` | `(consumer, workspace_id, dead_lettered_at)` `WHERE dead_lettered_at IS NOT NULL` | `outbox_dlq_depth` and dead-letter review (RB-02). Led by `consumer` so the gauge's `GROUP BY consumer` is an index-only scan; the original definition carried no `consumer` column, so the count paid one random heap read per dead row — over a set that is deliberately never swept and therefore only grows |
 | `notification_unread_ix` | `(user_id, created_at DESC)` `WHERE read_at IS NULL` | the inbox badge |
 
 ### Everything else

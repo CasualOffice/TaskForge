@@ -129,6 +129,11 @@ fn config() -> Config {
         // Short, because this test *wants* the drain to expire: that is what
         // "killed mid-batch" means here.
         drain: Duration::from_millis(200),
+        // Short for the opposite reason to production's five seconds: assertion
+        // 4 below reads the gauge after the queue drains, and on the production
+        // cadence this test would end before the second sample. The cadence
+        // itself is asserted in dispatch_metrics.rs.
+        metrics_interval: Duration::from_millis(50),
     }
 }
 

@@ -918,6 +918,42 @@ Still missing before `Gated`: the dispatcher worker itself and its bypass role
 [25](25-EVENTS-OUTBOX-AND-AUDIT.md), and the 7-day cleanup sweep. C-011 is
 `Building`, not `Built`.
 
+**Four cost defects in the dispatch path, found by audit and fixed.** Each was
+correct and each got slower with the size of the thing it was measuring — the
+shape a load test finds and a unit test never does.
+
+- `outbox_lag_seconds` was an aggregate over the pending set, joined to
+  `outbox_event` for `min(created_at)`, recomputed on **every poll** and read
+  **inside the claim's transaction**. At a two-million backlog that is two
+  million random heap fetches per poll, inside the transaction holding the
+  claimed rows' locks — and the loop polls without sleeping precisely when the
+  backlog is largest. It is now sampled once per `metrics_interval` (5 s) in its
+  own transaction, and reads `outbox_delivery.created_at` instead of the event's,
+  which makes the whole gauge an index-only scan of
+  `outbox_delivery_pending_ix`. The two timestamps are the same instant — one
+  transaction, both defaulting to `now()` — and that invariant is now asserted
+  against a real database rather than assumed.
+- `outbox_dlq_depth` was counted on every poll too, over a set that
+  [25](25-EVENTS-OUTBOX-AND-AUDIT.md) forbids sweeping and that therefore only
+  grows. Same cadence fix; `outbox_delivery_dlq_ix` now leads with `consumer` so
+  the count is index-only. The residual cost is stated rather than removed: it is
+  still O(dead letters), and a maintained counter that can disagree with the
+  table is a worse thing to page on.
+- The claim query's ordering anti-join had no index that could answer it —
+  `outbox_event` was left with only its primary key when 0013 dropped 0007's two
+  partial indexes. Migration [0018](../migrations/0018_outbox_dispatch_indexes.sql)
+  adds `outbox_event_aggregate_ix`. The plan gate did not catch this because the
+  planner's fallback is a hash anti-join, not a sequential scan; the new
+  `tests/explain/queries/21` probe binds the subquery to one aggregate, which is
+  how the planner actually evaluates it, and that probe **does** fail without the
+  index.
+- `Dispatcher::assume` re-queried `pg_roles` inside every transaction, including
+  one per delivery outcome. The check is a misconfiguration check and a
+  misconfiguration is a startup fact, so it now runs once and produces an
+  unforgeable `DispatcherRole` token. The check is not weakened: the token cannot
+  exist without it, and a compile-time assertion in `outbox.rs` fails if the
+  round trip is ever moved back into the constructor.
+
 **C-003 is `Building`.** The resolution core is implemented in
 `casual-task-authz` — the scope containment chain, the additive union, the
 closed five-constraint set, `allows`, and `explain` — with 17 tests and no
