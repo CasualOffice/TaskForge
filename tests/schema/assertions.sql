@@ -20,8 +20,18 @@ BEGIN
      WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
        AND c.relname NOT LIKE '%_default'
        -- Documented exemptions (docs/32, migration 0010).
+       --
+       -- The identity tables (migration 0016) are exempt for one reason,
+       -- stated once: a session, a password, an MFA factor and a recovery code
+       -- belong to a PERSON, not to a tenant — which is why `user_account`
+       -- itself is already on this list. They fall outside migration 0010's
+       -- catalogue loop by construction rather than by decision, so they are
+       -- named here explicitly. A new table joining this list without a reason
+       -- beside it is the failure this comment exists to prevent.
        AND c.relname NOT IN ('workspace','user_account','permission',
-                             'team_membership','role_permission')
+                             'team_membership','role_permission',
+                             'user_credential','session','mfa_factor',
+                             'recovery_code','password_reset_token')
        AND NOT EXISTS (SELECT 1 FROM pg_attribute a
                         WHERE a.attrelid = c.oid AND a.attname = 'workspace_id'
                           AND a.attnum > 0 AND NOT a.attisdropped);
@@ -157,3 +167,61 @@ BEGIN
 END $$;
 
 \echo 'schema assertions: all passed'
+
+-- --------------------------------------------------------------------------
+-- 8. The pre-workspace seam returns a fixed projection (ADR-032, migration
+--    0016).
+--
+--    `lookup_api_token` is SECURITY DEFINER: it reads through the RLS policy on
+--    `api_token` because authentication happens before any workspace is known.
+--    That is a deliberate hole in the ADR-020 backstop, and ADR-032 makes three
+--    things non-optional. The other gates check TABLES, so a redefinition of
+--    this function would pass every one of them.
+--
+--    Asserted here: the projection never includes the verifier hash, and the
+--    search_path is pinned. A function whose RETURNS TABLE grew a
+--    `verifier_hash` column would turn the seam into a credential-extraction
+--    endpoint for any code holding EXECUTE.
+-- --------------------------------------------------------------------------
+DO $$
+DECLARE
+    definition text;
+    config text[];
+BEGIN
+    SELECT pg_get_functiondef(p.oid), p.proconfig INTO definition, config
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND p.proname = 'lookup_api_token';
+
+    IF definition IS NULL THEN
+        RAISE EXCEPTION 'lookup_api_token is missing; the pre-workspace seam does not exist';
+    END IF;
+
+    IF definition !~ 'SECURITY DEFINER' THEN
+        RAISE EXCEPTION 'lookup_api_token is no longer SECURITY DEFINER; authentication cannot read the row';
+    END IF;
+
+    -- The projection. `verifier_hash` has its own door
+    -- (lookup_api_token_verifier) precisely so it is never added to this one.
+    IF definition ~* 'verifier_hash' THEN
+        RAISE EXCEPTION 'lookup_api_token returns verifier_hash: the seam is now a credential-extraction endpoint';
+    END IF;
+
+    IF config IS NULL OR NOT (config @> ARRAY['search_path=public, pg_temp']) THEN
+        RAISE EXCEPTION 'lookup_api_token has no pinned search_path (proconfig = %); a caller could shadow api_token', config;
+    END IF;
+END $$;
+
+-- Nothing may hold EXECUTE on the seam except the application role. PUBLIC
+-- EXECUTE on a SECURITY DEFINER function is the classic escalation.
+DO $$
+DECLARE granted text;
+BEGIN
+    -- DISTINCT: there are two functions, so the same grantee appears twice.
+    SELECT string_agg(DISTINCT grantee, ',') INTO granted
+      FROM information_schema.role_routine_grants
+     WHERE routine_name IN ('lookup_api_token', 'lookup_api_token_verifier')
+       AND grantee NOT IN ('taskforge_owner', current_user, 'tf', 'postgres');
+    IF granted IS NOT NULL AND granted <> 'taskforge_app' THEN
+        RAISE EXCEPTION 'unexpected EXECUTE on the pre-workspace seam: %', granted;
+    END IF;
+END $$;

@@ -12,6 +12,7 @@
 //! The scoped-connection seam is implemented. Repositories are not yet. See
 //! `docs/14-EXECUTION-TRACKER.md`.
 
+pub mod auth;
 pub mod compile;
 pub mod dispatch;
 pub mod scoped;

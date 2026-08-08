@@ -332,7 +332,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 
 | ID | Item | Status |
 | --- | --- | --- |
-| C-001 | Identity, sessions, MFA, invitations | Accepted |
+| C-001 | Identity, sessions, MFA, invitations | `Building` |
 | C-002 | Workspace, membership, teams | Accepted |
 | C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | `Building` |
@@ -527,6 +527,61 @@ vacuously true.
 Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
+
+**C-001's credential layer is in; C-001 is `Building`.** Migration 0016 adds
+`user_credential`, `session`, `mfa_factor`, `recovery_code`,
+`password_reset_token` and `invitation`, and `casual-task-identity` implements
+the primitives that guard them.
+
+**The selector/verifier split, as ADR-032 settled it.** A presented credential is
+`<selector>.<verifier>`: the selector is non-secret and uniquely indexed, so the
+row is found in one index read; the verifier is 192 bits stored only as a
+per-row salted hash. The rejected alternatives are recorded where the code is,
+not only in the ADR — a single hashed column forces a choice between an
+unfindable row and an unsalted hash, and a server-held pepper makes one secret
+outside the database load-bearing for every authentication.
+
+**Two hash functions, on purpose.** Argon2id on passwords and recovery codes —
+low-entropy secrets a human chose or typed, where a slow KDF is the only thing
+between a dump and an offline attack. SHA-256 on verifiers, which are 192-bit
+random values where a slow hash buys nothing and costs latency on every
+authenticated request. That argument rests entirely on the verifier length, so
+it is a **compile-time** assertion rather than a test that could be deleted.
+
+**The lockout is a counter and a time, never a flag.** `docs/40` requires backoff
+"without locking a legitimate user out permanently", and a boolean `locked`
+column is a denial of service anyone can trigger by typing a stranger's email
+wrongly enough times. The ladder is capped at fifteen minutes — an uncapped one
+reaches "locked until next Tuesday" after about twenty attempts, which is the
+permanent lockout under another name.
+
+**`Totp::verify` returns the time step, not a bool.** A code is valid for a whole
+30-second window, so RFC 6238 §5.2 requires refusing a step already accepted;
+that check needs storage and cannot live in the crate. Returning the step is
+what keeps replay protection addable — a `bool` would have made it impossible to
+add later without changing every caller.
+
+**The pre-workspace seam is built and asserted.** ADR-032 called it "a deliberate
+hole in the ADR-020 backstop … security-critical logic in SQL, outside the type
+system", and made three things non-optional. All three are present:
+
+- The pinned `search_path`, asserted by the schema gate.
+- The fixed projection, asserted by the schema gate — **the gate fails if
+  `verifier_hash` ever appears in `lookup_api_token`**. The hash has its own
+  function precisely so no one concludes it would be convenient to add.
+- Zero rows for a revoked or expired credential, asserted by eight integration
+  tests running as `taskforge_app`. As the owner, RLS is inert and every one of
+  them would pass without the function existing at all.
+
+Both schema assertions were verified by breaking them deliberately: widening the
+projection and removing the pinned `search_path` each fail with the message that
+names the risk.
+
+**Still to come before C-001 is `Built`:** the HTTP surface — login, logout,
+session cookies, CSRF, the enrolment and invitation endpoints — which needs the
+API server that does not exist yet, and the remaining acceptance gates in
+[40](40-IDENTITY-AUTH-AND-SESSION.md) that are end-to-end by nature (enumeration
+timing envelope, CSRF, break-glass). SSO is **Phase 2**, not here.
 
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.
