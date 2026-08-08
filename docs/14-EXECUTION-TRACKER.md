@@ -273,7 +273,7 @@ implementation:
 | --- | --- | --- |
 | C-001 | Identity, sessions, MFA, invitations | **Blocked** — D-032 |
 | C-002 | Workspace, membership, teams | Accepted |
-| C-003 | **Permission resolver + `/explain`** | Accepted |
+| C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | Accepted |
 | C-005 | Cross-tenant property suite | Accepted |
 | C-006 | Projects, membership, visibility | Accepted |
@@ -290,6 +290,16 @@ implementation:
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+
+**C-003 is `Building`.** The resolution core is implemented in
+`casual-task-authz` — the scope containment chain, the additive union, the
+closed five-constraint set, `allows`, and `explain` — with 17 tests and no
+database, which is what [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) isolates that
+crate for. It does **not** depend on D-032: the resolver takes an
+already-authenticated actor, so the auth *mechanism* being unsettled does not
+reach it. Still missing before it can be `Gated`: the `authz_epoch` cache, the
+grant and scope ceilings, and the C-004 matrix and escalation suites that are
+its acceptance gates.
 
 **C-001 is `Blocked`, not `Accepted`.** This document defines `Accepted` as
 "design final **and** its ADRs Accepted", and C-001's ADR is D-032, which is
