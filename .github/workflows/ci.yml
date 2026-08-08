@@ -197,6 +197,13 @@ jobs:
       - name: Internal documentation links resolve
         run: python3 scripts/check-doc-links.py
 
+      - name: No leaked credentials (docs/40 §Tokens)
+        # The tf_pat_/tf_sat_ prefix exists so a leak is detectable. It was
+        # documented and produced nowhere until the prefixes landed; this is the
+        # half that makes it worth anything. A token in a commit survives in the
+        # history and in every clone, so the only cheap moment is before it lands.
+        run: ./scripts/verify-no-secrets.sh
+
       - name: README phase progress matches the execution tracker
         # Derived, not typed. A percentage in a second place has no reason to
         # change when the tracker does, which is exactly how the status badge

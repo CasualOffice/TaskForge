@@ -33,6 +33,7 @@ run cargo nextest run --workspace 2>/dev/null || run cargo test --workspace
 run env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
 
 # ── documentation ─────────────────────────────────────────────────────────────
+run ./scripts/verify-no-secrets.sh
 run python3 scripts/check-doc-links.py
 # The README's phase percentages are derived from the tracker, not typed. This
 # is the check that keeps them honest — the status badge that still said
