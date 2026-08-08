@@ -108,6 +108,8 @@ TF_REDIS_URL                 optional; required with >1 api instance
 TF_WORKER_EMBEDDED           true | false       (default true)
 TF_SMTP_HOST/PORT/USER/PASS/FROM   empty host disables email (D-046)
 TF_OIDC_*                    per-workspace in DB; these are bootstrap defaults
+TF_DB_MAX_CONNECTIONS        default 32 — the pool bound (D-039)
+TF_DB_ACQUIRE_TIMEOUT_SECONDS default 3 — wait for a connection, then 503, never hang
 TF_LIMITS_*                  every limit in doc 21 is a key
 TF_LOG_FORMAT                json | pretty
 TF_OTEL_ENDPOINT             optional

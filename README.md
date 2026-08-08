@@ -245,12 +245,14 @@ not a convenience. Full walkthrough: [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 > The reason, and what holds the constraint, are in
 > [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 
-**There is no runnable application yet, and nothing to look at.** The binaries
-are scaffolds: no HTTP endpoint serves a request and no page renders. What is
-real and gated is underneath — the image, the schema and its row-level security,
-the deployment path, and the crates listed in the status note above. If you are
-here to try the product, it is not ready; if you are here to read how it is
-built, start with `docs/`.
+**The server runs, and there is still nothing to look at.** `taskforge-api`
+starts, refuses to start on a bad configuration or a superuser database role,
+and serves `/health/live`, `/health/ready` and `/metrics`. **No product endpoint
+exists** — you cannot create a task, and no page renders. What is real and gated
+is underneath: the image, the schema and its row-level security, the deployment
+path, and the crates listed in the status note above. If you are here to try the
+product, it is not ready; if you are here to read how it is built, start with
+`docs/`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full command set and the PR
 contract.
