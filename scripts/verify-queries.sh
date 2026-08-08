@@ -51,7 +51,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ERRLOG=$(mktemp -t tf-explain)
+# An explicit template rather than `mktemp -t tf-explain`: BSD/macOS treats the
+# argument to -t as a prefix and appends its own X's, GNU/Linux treats it as a
+# template and rejects one without them. The macOS form passed every local run
+# and failed on the first CI run with "too few X's in template".
+ERRLOG=$(mktemp "${TMPDIR:-/tmp}/tf-explain.XXXXXX")
 trap 'rm -f "$ERRLOG"' EXIT
 
 CONTAINER=tf-query-verify
