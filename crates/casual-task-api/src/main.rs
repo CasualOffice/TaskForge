@@ -28,6 +28,19 @@ fn main() -> ExitCode {
         return health_check();
     }
 
+    // `--version` exists for the image gate, and the gate needed it. That check
+    // used to run this binary with NO arguments and require exit 0, which only
+    // ever passed because the binary was a scaffold that printed a line and
+    // stopped. A server that exits 0 when started with no configuration is not
+    // a healthy binary; it is one that failed to notice. `--version` answers
+    // what the gate actually wants to know — does this binary execute in this
+    // image, on this architecture, with its libraries — and answers nothing
+    // else.
+    if std::env::args().skip(1).any(|arg| arg == "--version") {
+        println!("taskforge-api {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+
     if let Err(error) = casual_task_observability::init() {
         eprintln!("failed to initialise telemetry: {error}");
         return ExitCode::FAILURE;

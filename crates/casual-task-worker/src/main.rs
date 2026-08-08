@@ -13,6 +13,13 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // See the note in casual-task-api's main: the image gate checks that the
+    // binary executes, and running a worker to completion is not that question.
+    if std::env::args().skip(1).any(|arg| arg == "--version") {
+        println!("taskforge-worker {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+
     // See the note in casual-task-api's main: installing the subscriber is what
     // makes the configuration in docs/48 real rather than declared.
     if let Err(error) = casual_task_observability::init() {
