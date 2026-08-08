@@ -119,6 +119,51 @@ pub mod codes {
     pub const IDEMPOTENCY_BODY_CHANGED: Code = Code::new("TF-IDM-0002");
     /// Idempotency key required.
     pub const IDEMPOTENCY_REQUIRED: Code = Code::new("TF-IDM-0003");
+
+    /// A workspace would lose its last member.
+    pub const LAST_MEMBER: Code = Code::new("TF-PRJ-0006");
+    /// The slug is taken by another workspace.
+    pub const SLUG_TAKEN: Code = Code::new("TF-PRJ-0007");
+    /// The team name is taken inside this workspace.
+    pub const TEAM_NAME_TAKEN: Code = Code::new("TF-PRJ-0008");
+
+    /// Every code this binary can emit.
+    ///
+    /// The registry gate walks this list, so a code missing from it is a
+    /// code whose `docs` URL is never checked against `docs/20`.
+    pub const ALL: &[Code] = &[
+        BAD_REQUEST,
+        UNAUTHENTICATED,
+        FORBIDDEN,
+        NOT_FOUND,
+        UNAVAILABLE,
+        INTERNAL,
+        MALFORMED_BODY,
+        UNKNOWN_FIELD,
+        MISSING_FIELD,
+        OUT_OF_RANGE,
+        INVALID_ENUM,
+        REFERENCE_NOT_FOUND,
+        NO_GRANT,
+        CONSTRAINT_UNSATISFIED,
+        BAD_CURSOR,
+        PAGE_TOO_LARGE,
+        PROJECT_NOT_FOUND,
+        PROJECT_KEY_TAKEN,
+        PROJECT_KEY_IMMUTABLE,
+        PROJECT_KEY_FORMAT,
+        TASK_NOT_FOUND,
+        PARENT_OUT_OF_PROJECT,
+        VERSION_CONFLICT,
+        IF_MATCH_REQUIRED,
+        IF_MATCH_MALFORMED,
+        IDEMPOTENCY_IN_PROGRESS,
+        IDEMPOTENCY_BODY_CHANGED,
+        IDEMPOTENCY_REQUIRED,
+        LAST_MEMBER,
+        SLUG_TAKEN,
+        TEAM_NAME_TAKEN,
+    ];
 }
 
 /// An error on its way to a client.

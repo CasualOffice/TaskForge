@@ -26,6 +26,7 @@ pub mod task;
 pub mod test_support;
 pub mod unit_of_work;
 pub mod workflow;
+pub mod workspace;
 
 pub use compile::{AuthorizedProjectSet, Compiled, Page, Param, compile};
 pub use scoped::Scoped;

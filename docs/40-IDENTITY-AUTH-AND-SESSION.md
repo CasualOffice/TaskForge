@@ -273,6 +273,31 @@ widens the hole silently. Three things are therefore not optional: the pinned
 credential, and an extension of the F-015 schema gate to assert the function's
 **definition** — the gate checks tables today, so a redefinition would pass.
 
+### The membership seam: the same shape, one layer up
+
+The credential seam answers "who is this?". The next question — "may they enter
+this workspace?" — has exactly the same problem, and it was missed.
+`workspace_membership` carries `workspace_id` and therefore a policy, and the
+membership check runs *before* `taskforge.workspace_id` can be set, because that
+check is what decides the value. Read directly as `taskforge_app`, the policy
+hid every row and the check answered `false` for everyone: **nobody could enter
+any workspace at all**. It passed its tests because a test harness connects as
+the database owner, for whom RLS is inert.
+
+`GET /api/v1/workspaces` — "which workspaces do I belong to?" — has no
+workspace-scoped form even in principle. It is the same cross-tenant surface
+[32](32-TENANCY-AND-ISOLATION.md) §The `user_account` exception describes from
+the other side: a person spans workspaces, and their own membership index is
+their own data.
+
+Migration 0019 gives both the treatment above: `SECURITY DEFINER`, pinned
+`search_path`, `EXECUTE` to `taskforge_app` alone, and the F-015 gate asserting
+the definition rather than the existence. What bounds this hole is the argument
+list: both functions are filtered by the person and never by the workspace
+alone, so neither can enumerate a workspace's members from outside it, and both
+exclude soft-deleted workspaces so a workspace in its grace window is
+unreachable rather than merely hidden.
+
 ### Workspace-level SSO and MFA step-up
 
 The browser session is user-scoped. `user_account` is the only table without

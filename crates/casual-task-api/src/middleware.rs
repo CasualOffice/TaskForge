@@ -26,7 +26,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use casual_task_identity::credential;
 use casual_task_model::{ActorType, AuthContext, UserId, WorkspaceId};
-use casual_task_persistence::{auth as token_auth, identity};
+use casual_task_persistence::{auth as token_auth, identity, workspace as workspace_repo};
 
 use crate::auth::session_selector;
 use crate::csrf;
@@ -196,15 +196,32 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             .map_err(|_| ApiError::unavailable(&request_id, 5))?;
         let actor = authenticate(&mut conn, &parts.headers, &request_id).await?;
 
-        let workspace = parts
+        // `docs/05` §Authentication: "Workspace is determined by the path or an
+        // `X-Workspace-Id` header". The path wins where it exists, because a
+        // route like `/api/v1/workspaces/{workspace_id}/members` names the
+        // tenant unambiguously and a header beside it could only disagree.
+        //
+        // When both are present they must agree. Preferring one silently would
+        // mean a request that reads `/workspaces/A/members` while carrying
+        // `X-Workspace-Id: B` gets an answer about one of them, and the caller
+        // cannot tell which.
+        let from_path = workspace_from_path(parts).await;
+        let from_header = parts
             .headers
             .get(WORKSPACE_HEADER)
             .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<uuid::Uuid>().ok())
+            .and_then(|value| value.parse::<uuid::Uuid>().ok());
+
+        let workspace = match (from_path, from_header) {
+            (Some(path), Some(header)) if path != header => {
+                return Err(ApiError::not_found(&request_id));
+            }
+            (Some(id), _) | (None, Some(id)) => id,
             // A missing or malformed workspace is 404, not 400: docs/04
             // requires "absent" and "invisible" to be indistinguishable, and a
-            // 400 here would confirm the header is the way in.
-            .ok_or_else(|| ApiError::not_found(&request_id))?;
+            // 400 here would confirm what shape of value opens the door.
+            (None, None) => return Err(ApiError::not_found(&request_id)),
+        };
 
         // A token is bound to the workspace it was issued for. Without this the
         // client's X-Workspace-Id header decided, so a token for A worked in B
@@ -230,7 +247,7 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             });
         }
 
-        let member = identity::is_workspace_member(&mut conn, actor.actor_id.as_uuid(), workspace)
+        let member = workspace_repo::is_member(&mut conn, actor.actor_id.as_uuid(), workspace)
             .await
             .map_err(|error| {
                 tracing::error!(%error, "membership check failed");
@@ -253,6 +270,32 @@ impl FromRequestParts<AppState> for WorkspaceMember {
         })
     }
 }
+
+/// The path segment naming a workspace, on the routes that have one.
+///
+/// The parameter is `{workspace_id}` on every such route. Read from the matched
+/// path rather than by splitting the URI, so a request to a path that merely
+/// *looks* like a workspace route — `/api/v1/workspacesX/...` — captures
+/// nothing and falls back to the header.
+///
+/// `None` when the route captured no parameters at all, which is the ordinary
+/// case for `/api/v1/teams/{team_id}/members` and for every route outside this
+/// family.
+async fn workspace_from_path(parts: &mut Parts) -> Option<uuid::Uuid> {
+    let params = axum::extract::RawPathParams::from_request_parts(parts, &())
+        .await
+        .ok()?;
+    params
+        .iter()
+        .find(|(name, _)| *name == WORKSPACE_PATH_PARAM)
+        .and_then(|(_, value)| value.parse::<uuid::Uuid>().ok())
+}
+
+/// The name every workspace-scoped route gives its tenant segment.
+///
+/// A route that spells it differently silently falls back to the header, so it
+/// is a constant rather than a literal repeated per route.
+pub const WORKSPACE_PATH_PARAM: &str = "workspace_id";
 
 /// Reject unsafe methods without a valid CSRF token (`docs/05`, `docs/40`).
 ///

@@ -123,6 +123,15 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-PRJ-0003` | Project key is immutable | 422 |
 | `TF-PRJ-0004` | Project key format invalid | 400 |
 | `TF-PRJ-0005` | Cannot delete an environment in use — supply a migration target | 422 |
+| `TF-PRJ-0006` | Cannot remove the last member of a workspace | 422 |
+| `TF-PRJ-0007` | Workspace slug already in use | 409 |
+| `TF-PRJ-0008` | Team name already in use in this workspace | 409 |
+
+`TF-PRJ-0006` is not `TF-AZN-0005`. That one protects the last *owner* — a
+grant — and this one protects the last *member*, which is a different fact: a
+workspace with no members is unreachable forever, because nothing can see it and
+therefore nothing can add a member back to it. Both survive; neither implies the
+other.
 
 ### Concurrency & idempotency — `CNC`, `IDM`
 

@@ -79,6 +79,29 @@ impl RequestId {
     }
 }
 
+/// Extracted so a handler can build an error body carrying the **same** id the
+/// response header will.
+///
+/// Reading it from the request headers instead — as the login handler does —
+/// finds an id only when the client happened to send one, because `observe`
+/// puts the minted id in extensions and on the *response*. A handler that took
+/// the header would therefore report `"unknown"` to every user who did not
+/// already know their own request id.
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for RequestId {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(parts
+            .extensions
+            .get::<Self>()
+            .cloned()
+            .unwrap_or_else(|| Self("unknown".to_owned())))
+    }
+}
+
 /// How long shutdown waits for in-flight requests.
 ///
 /// Shorter than Kubernetes' default 30-second `SIGKILL` grace, because being
@@ -134,6 +157,37 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/tasks", get(crate::tasks::list))
         .route("/api/v1/tasks/{id}", get(crate::tasks::read))
+        // C-002 — workspaces, membership, teams. Registered HERE, above the
+        // layers, for the reason this function's docs give: a route appended to
+        // the returned Router escapes the CSRF guard and the request id.
+        .route(
+            "/api/v1/workspaces",
+            get(crate::workspaces::list).post(crate::workspaces::create),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}",
+            get(crate::workspaces::read).patch(crate::workspaces::rename),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/members",
+            get(crate::workspaces::list_members).post(crate::workspaces::add_member),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+            axum::routing::delete(crate::workspaces::remove_member),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/teams",
+            get(crate::workspaces::list_teams).post(crate::workspaces::create_team),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/members",
+            axum::routing::post(crate::workspaces::add_team_member),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/members/{user_id}",
+            axum::routing::delete(crate::workspaces::remove_team_member),
+        )
         // CSRF sits over every route, so a route added later cannot be added
         // beside it. docs/05: "every unsafe method without a valid token is
         // rejected" — every, not most.
@@ -324,6 +378,13 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/tasks",
     "/api/v1/tasks",
     "/api/v1/tasks/{id}",
+    "/api/v1/workspaces",
+    "/api/v1/workspaces/{workspace_id}",
+    "/api/v1/workspaces/{workspace_id}/members",
+    "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+    "/api/v1/workspaces/{workspace_id}/teams",
+    "/api/v1/teams/{team_id}/members",
+    "/api/v1/teams/{team_id}/members/{user_id}",
     "unmatched",
 ];
 
@@ -394,6 +455,13 @@ mod tests {
             "/api/v1/projects/{id}/tasks",
             "/api/v1/tasks",
             "/api/v1/tasks/{id}",
+            "/api/v1/workspaces",
+            "/api/v1/workspaces/{workspace_id}",
+            "/api/v1/workspaces/{workspace_id}/members",
+            "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+            "/api/v1/workspaces/{workspace_id}/teams",
+            "/api/v1/teams/{team_id}/members",
+            "/api/v1/teams/{team_id}/members/{user_id}",
         ] {
             assert!(
                 declared_route(route).is_some(),

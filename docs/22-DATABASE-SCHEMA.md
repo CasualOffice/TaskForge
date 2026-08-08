@@ -47,6 +47,7 @@ CREATE TABLE workspace (
     name          text NOT NULL,
     slug          text NOT NULL UNIQUE,
     authz_epoch   bigint NOT NULL DEFAULT 1,   -- bumped on any grant/membership change
+    version       bigint NOT NULL DEFAULT 1,   -- optimistic concurrency (migration 0019)
     settings      jsonb NOT NULL DEFAULT '{}',
     created_at    timestamptz NOT NULL DEFAULT now(),
     deleted_at    timestamptz
@@ -74,6 +75,7 @@ CREATE TABLE team (
     id            uuid PRIMARY KEY,
     workspace_id  uuid NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
     name          text NOT NULL,
+    version       bigint NOT NULL DEFAULT 1,   -- optimistic concurrency (migration 0019)
     created_at    timestamptz NOT NULL DEFAULT now(),
     deleted_at    timestamptz,
     UNIQUE (workspace_id, name)

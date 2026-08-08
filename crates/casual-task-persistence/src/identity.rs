@@ -317,35 +317,12 @@ pub async fn record_auth_event(
     Ok(())
 }
 
-/// Whether a user is a member of a workspace.
-///
-/// `docs/05` §Authentication: the workspace "is validated against membership on
-/// every request — never trusted from the client". This is that validation, and
-/// it deliberately returns a plain `bool` rather than a membership row: a
-/// caller that received the row would be tempted to read a role out of it, and
-/// authority comes from the resolver in `casual-task-authz`, not from
-/// membership.
-///
-/// Runs unscoped, because it is what *establishes* the scope — the request has
-/// no `WorkspaceScope` until this returns true. It is the second and last
-/// unscoped read in the system, after the pre-workspace credential seam, and
-/// like that one it returns the narrowest possible answer.
-///
-/// # Errors
-///
-/// Any database error.
-pub async fn is_workspace_member(
-    conn: &mut sqlx::PgConnection,
-    user_id: Uuid,
-    workspace_id: Uuid,
-) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar(
-        "SELECT EXISTS (
-            SELECT 1 FROM workspace_membership m
-             WHERE m.user_id = $1 AND m.workspace_id = $2)",
-    )
-    .bind(user_id)
-    .bind(workspace_id)
-    .fetch_one(conn)
-    .await
-}
+// The membership check that turns an `Authenticated` caller into a
+// `WorkspaceMember` used to live here, as a bare `SELECT EXISTS` over
+// `workspace_membership`. It has moved to [`crate::workspace::is_member`],
+// because that table carries `workspace_id` and therefore a row-level-security
+// policy: run unscoped as `taskforge_app`, the policy hid every row and the
+// check answered `false` for everyone. It passed its tests only because the
+// harness connects as a superuser, for whom RLS is inert (migration 0012).
+// Migration 0019 gives it the same `SECURITY DEFINER` seam the credential
+// lookup already had.
