@@ -24,7 +24,7 @@ notice rather than a subtly broken application.
 
 | | Target |
 | --- | --- |
-| Rust | stable, pinned; MSRV declared by ADR at Phase 0 |
+| Rust | **MSRV 1.88.0** — the floor the locked dependency tree forces, measured not chosen (ADR-031). Development pins current stable; CI tests both ends. |
 | PostgreSQL | **16+** (requires `NULLS NOT DISTINCT`, modern partitioning) |
 | Redis | 7+ (optional below 2 API instances) |
 | Object storage | S3-compatible, or filesystem |
