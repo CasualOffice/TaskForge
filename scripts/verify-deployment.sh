@@ -59,10 +59,27 @@ step "Applying migrations"
 for f in migrations/*.sql; do
   $DC exec -T postgres psql -U taskforge_owner -d taskforge -v ON_ERROR_STOP=1 -q < "$f" >/dev/null
 done
-assert_eq "row-level security is enabled on every tenant table" "30" \
+# Names the offending tables rather than counting the compliant ones.
+#
+# This used to compare a count against a literal 30, which did not assert what
+# its own description claimed: a tenant table with no policy passed as long as
+# some unrelated table had gained one, and every legitimate new table failed it
+# with a number instead of a name. Migration 0013 added outbox_delivery — with
+# RLS correctly enabled — and the gate went red saying "expected '30', got '31'".
+#
+# outbox_event is the single documented exemption (migration 0010): the
+# dispatcher polls across tenants and the table is never reachable from a
+# request path. outbox_delivery is NOT exempt and carries its own policy.
+assert_eq "row-level security is enabled on every tenant table" "none" \
   "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
-      "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-        where n.nspname='public' and c.relrowsecurity" | tr -d '[:space:]')"
+      "select coalesce(string_agg(c.relname, ',' order by c.relname), 'none')
+         from pg_class c join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='public' and c.relkind in ('r','p')
+          and c.relname <> 'outbox_event'
+          and not c.relrowsecurity
+          and exists (select 1 from pg_attribute a
+                       where a.attrelid=c.oid and a.attname='workspace_id'
+                         and a.attnum > 0 and not a.attisdropped)" | tr -d '[:space:]')"
 
 step "A real application connection is genuinely constrained"
 assert_eq "unscoped session sees no tenant data" "0" \
