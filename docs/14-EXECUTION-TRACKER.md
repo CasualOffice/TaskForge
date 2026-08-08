@@ -67,7 +67,7 @@ The documentation phase. All complete unless noted.
 | D-035 | **Reporting, export & dashboards** | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Designed |
 | D-036 | Runbooks | [50](50-RUNBOOKS.md) | Designed |
 | D-037 | Deployment guide | [52](52-DEPLOYMENT-GUIDE.md) | Designed |
-| D-032 | Auth protocol ADR (session/token specifics) | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
+| D-032 | **Auth mechanism: credential lookup, session storage, plugin principal** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
 | D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Blocked** — Accept before C-011 |
@@ -142,7 +142,45 @@ implementation:
   guarantees against query plans, and that trade is exactly what an ADR is for.
   Separately: raising the gate's corpus, or running it at reference scale
   nightly, is what would have caught this.
-- **D-044.** [08](08-ADR-REGISTER.md) §Pending lists "MSRV and toolchain pin —
+- **D-032** is narrower than its old title suggested and sharper than the ADR
+  register described. [40](40-IDENTITY-AUTH-AND-SESSION.md) is a finished
+  document: cookie-vs-bearer, the deliberate absence of a refresh strategy, OIDC
+  claim mapping, lifetimes, rotation, CSRF, Argon2id parameters, the token
+  formats, and eight acceptance gates are all decided. What is open is the
+  mechanism beneath it, where that prose meets the **already-`Gated`** schema.
+  Four contradictions, each verified against `migrations/`:
+
+  1. **A salted hash cannot be looked up.** `api_token.token_hash text NOT NULL
+     UNIQUE` (migration 0008) and [21](21-API-LIMITS-AND-QUOTAS.md):134
+     ("authentication — cheap: one indexed read") both require a *deterministic*
+     digest. [40](40-IDENTITY-AUTH-AND-SESSION.md) says tokens are "hashed at
+     rest" without naming an algorithm, and specifies Argon2id two lines above
+     for *passwords*. Argon2id is salted, so an implementer who reaches for the
+     nearest password hasher gets a token nobody can find. Which digest, and
+     keyed with what, is the decision.
+  2. **`TF_SECRET_KEY` has no stated job.** [48](48-DEPLOYMENT-PROFILES.md):101
+     calls it "session/cookie signing", and
+     [40](40-IDENTITY-AUTH-AND-SESSION.md):26 specifies a plain opaque 256-bit
+     cookie, which has nothing to sign. Either the cookie is signed and docs/40
+     is incomplete, or the key is for something else (token keying, CSRF) and
+     docs/48 is wrong.
+  3. **The Redis cache can outlive a revocation.** "Revocation is immediate:
+     delete the row" (:44) is the *entire* stated reason for rejecting JWTs
+     (:31-36). A read-through cache (:38) reintroduces exactly the staleness
+     window that argument rejects, unless invalidation is specified.
+  4. **A plugin token has no principal.** `principal_type` is
+     `ENUM ('USER','TEAM','SERVICE_ACCOUNT')` (migration 0001) and
+     [40](40-IDENTITY-AUTH-AND-SESSION.md):132 specifies a per-installation
+     plugin token. An enum change to a Gated schema is cheapest now.
+
+  Beyond the contradictions: **no auth state has a table at all.** Migrations
+  0001–0012 are `Gated` and define no session, credential, MFA-factor,
+  recovery-code, reset-token, invitation, or SSO-connection table, and
+  [05](05-API-SPEC.md) lists no auth endpoint. Separately, `user_account` is the
+  only table without `workspace_id` while `enforce_sso`, MFA enforcement and
+  `allowed_domains` are per-workspace — so which workspace's policy governs a
+  login, before any workspace is known, is undecided.
+- **D-044.** [08](08-ADR-REGISTER.md) §Pending lists "MSRV and toolchain pin" —
   once the workspace is scaffolded". The workspace *is* scaffolded, so the ADR
   is due. Until it exists, `rust-version = "1.90.0"` in `Cargo.toml` and the
   `platform` job's MSRV matrix entry are a number nobody agreed to; both used to
@@ -191,7 +229,7 @@ implementation:
 
 | ID | Item | Status |
 | --- | --- | --- |
-| C-001 | Identity, sessions, MFA, invitations | Accepted |
+| C-001 | Identity, sessions, MFA, invitations | **Blocked** — D-032 |
 | C-002 | Workspace, membership, teams | Accepted |
 | C-003 | **Permission resolver + `/explain`** | Accepted |
 | C-004 | Permission matrix + escalation suites | Accepted |
@@ -210,6 +248,12 @@ implementation:
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+
+**C-001 is `Blocked`, not `Accepted`.** This document defines `Accepted` as
+"design final **and** its ADRs Accepted", and C-001's ADR is D-032, which is
+still `Blocked`. The row said `Accepted` while its own precondition was open —
+the status vocabulary is only worth having if it is applied to the row that
+makes it inconvenient.
 
 ## Phases 2–4
 
