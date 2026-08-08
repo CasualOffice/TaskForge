@@ -46,7 +46,7 @@ exclude = ["fuzz"]
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/CasualOffice/taskforge"
-rust-version = "1.90.0"          # MSRV — ADR-pending (D-044), see docs/08-ADR-REGISTER.md
+rust-version = "1.88.0"          # MSRV = the measured floor (ADR-031); `time` 0.3.55 sets it
 publish = false
 
 [workspace.lints.rust]

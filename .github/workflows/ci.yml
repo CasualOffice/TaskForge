@@ -236,7 +236,7 @@ jobs:
           - os: macos-latest
             toolchain: "1.96.0"
           - os: ubuntu-latest
-            toolchain: "1.90.0"   # MSRV check (ADR-pending, D-044)
+            toolchain: "1.88.0"   # the MSRV itself (ADR-031), not a number near it
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
