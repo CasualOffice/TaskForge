@@ -83,6 +83,7 @@ The documentation phase. All complete unless noted.
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Blocked** — Accept before C-002 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
+| D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -339,6 +340,26 @@ the code that proves it.
   connects to a remote database yet, and the tests talk to a local container.
   It goes back on when the API needs it, with the licence decided deliberately
   at that point rather than smuggled in beside a test harness.
+
+**The read path executes.** Filter → validate → resolve → compile → run, against
+a real PostgreSQL 16 as `taskforge_app` with RLS applied. Three tests assert the
+rows that come back, not the SQL that goes in.
+
+That is the difference that mattered: every earlier test asserted the compiler's
+*output*, which proves shape and nothing about whether PostgreSQL accepts it.
+Running it immediately produced `operator does not exist: task_state = text` —
+a bound text parameter against an enum column. The fix is to cast the
+**parameter**, never the column: `t.state = $3::task_state` uses the index,
+`t.state::text = $3` does not and would turn every filtered list into the
+sequential scan NFR-5 forbids. Verified by removing the casts and watching the
+suite fail with that error.
+
+**D-051 was opened by the same exercise.** `key` is `WR-125` — `project.key` and
+`task.number` concatenated, in two tables — and docs/27 lists it as filterable
+while the schema has no column to compare against. It now compiles to a
+predicate matching **nothing**, deliberately: a `key` filter returning no rows is
+visibly wrong to whoever ran it, where comparing against `t.number` alone would
+match `WR-125` and `OPS-125` identically and look right.
 
 **Cursor pagination is in** (C-014). The sortable set is closed and **smaller
 than the filterable one** — a field can be filterable without being sortable,

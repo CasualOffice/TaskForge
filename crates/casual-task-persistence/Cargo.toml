@@ -16,6 +16,7 @@ casual-task-search = { workspace = true }
 workspace = true
 
 [dev-dependencies]
+time = { workspace = true }
 uuid = { workspace = true }
 casual-task-persistence = { path = "." }
 tokio = { workspace = true }

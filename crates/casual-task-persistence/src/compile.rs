@@ -105,6 +105,44 @@ fn sort_column(field: SortField) -> &'static str {
     }
 }
 
+/// The PostgreSQL type a bound value must be cast to.
+///
+/// The cast goes on the **parameter**, never the column. `t.state = $3::task_state`
+/// uses the index on `state`; `t.state::text = $3` does not, and would turn
+/// every filtered list into a sequential scan — the thing NFR-5 forbids and the
+/// `EXPLAIN` gate exists to catch.
+fn cast_for(field: Field) -> &'static str {
+    match field {
+        Field::Project
+        | Field::Status
+        | Field::Assignee
+        | Field::Reporter
+        | Field::Tag
+        | Field::Milestone
+        | Field::Environment
+        | Field::Parent => "uuid",
+        Field::State => "task_state",
+        Field::Type => "task_type",
+        Field::Priority => "task_priority",
+        Field::CreatedAt | Field::UpdatedAt | Field::DueAt | Field::Archived => "timestamptz",
+        Field::IsBlocked => "boolean",
+        // Compared as text; no cast needed, and `q` is handled structurally.
+        Field::Title | Field::Q | Field::Key => "",
+    }
+}
+
+/// `$3::uuid`, or `$3` when the field needs no cast.
+fn cast(placeholder: &str, field: Field, list: bool) -> String {
+    let ty = cast_for(field);
+    if ty.is_empty() {
+        placeholder.to_owned()
+    } else if list {
+        format!("{placeholder}::{ty}[]")
+    } else {
+        format!("{placeholder}::{ty}")
+    }
+}
+
 /// SQL plus the parameters it references, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Compiled {
@@ -127,11 +165,10 @@ fn column_of(field: Field) -> &'static str {
         Field::CreatedAt => "t.created_at",
         Field::UpdatedAt => "t.updated_at",
         Field::DueAt => "t.due_at",
-        Field::Key => "t.number",
         Field::Title => "t.title",
         Field::Archived => "t.archived_at",
         // Handled structurally rather than as a column comparison.
-        Field::Assignee | Field::Tag | Field::Q | Field::IsBlocked => "",
+        Field::Assignee | Field::Tag | Field::Q | Field::IsBlocked | Field::Key => "",
     }
 }
 
@@ -247,11 +284,23 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
         Field::Assignee => return emit_assignee(op, value, params),
         Field::Tag => return emit_tag(op, value, params),
         Field::IsBlocked => {
-            let p = bind(params, param_of(value));
+            let p = cast(&bind(params, param_of(value)), Field::IsBlocked, false);
             return format!(
                 "(EXISTS (SELECT 1 FROM task_dependency d \
-                  WHERE d.blocked_task_id = t.id)) = ({p}::boolean)"
+                  WHERE d.blocked_task_id = t.id)) = ({p})"
             );
+        }
+        Field::Key => {
+            // `key` is the human identifier `WR-125` — `project.key` and
+            // `task.number` concatenated, living in two tables. docs/27 lists
+            // it as filterable and the committed schema has no column to
+            // compare against, so there is nothing correct to emit here.
+            //
+            // Matching nothing is the safe direction: a `key` filter that
+            // returns no rows is visibly wrong to whoever ran it, where one
+            // that compared against `t.number` alone would match `WR-125` and
+            // `OPS-125` identically and look right. Tracked as **D-051**.
+            return "FALSE".to_owned();
         }
         Field::Q => {
             let p = bind(params, param_of(value));
@@ -270,18 +319,18 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
         Operator::IsNotEmpty => format!("{col} IS NOT NULL"),
         Operator::Between => match value {
             Value::Range(lo, hi) => {
-                let a = bind(params, Param::Text(lo.clone()));
-                let b = bind(params, Param::Text(hi.clone()));
+                let a = cast(&bind(params, Param::Text(lo.clone())), field, false);
+                let b = cast(&bind(params, Param::Text(hi.clone())), field, false);
                 format!("{col} BETWEEN {a} AND {b}")
             }
             _ => "FALSE".to_owned(),
         },
         Operator::In => {
-            let p = bind(params, param_of(value));
+            let p = cast(&bind(params, param_of(value)), field, true);
             format!("{col} = ANY({p})")
         }
         Operator::NotIn => {
-            let p = bind(params, param_of(value));
+            let p = cast(&bind(params, param_of(value)), field, true);
             format!("NOT ({col} = ANY({p}))")
         }
         Operator::StartsWith | Operator::Contains => {
@@ -295,7 +344,7 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
             }
         }
         _ => {
-            let p = bind(params, param_of(value));
+            let p = cast(&bind(params, param_of(value)), field, false);
             let sql_op = match op {
                 Operator::Eq => "=",
                 Operator::Gt | Operator::After => ">",
@@ -313,6 +362,7 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
 }
 
 fn emit_assignee(op: Operator, value: &Value, params: &mut Vec<Param>) -> String {
+    let field = Field::Assignee;
     let exists = |inner: &str| {
         format!("EXISTS (SELECT 1 FROM task_assignee a WHERE a.task_id = t.id{inner})")
     };
@@ -320,11 +370,11 @@ fn emit_assignee(op: Operator, value: &Value, params: &mut Vec<Param>) -> String
         Operator::IsEmpty => format!("NOT {}", exists("")),
         Operator::IsNotEmpty => exists(""),
         _ => {
-            let p = bind(params, param_of(value));
+            let raw = bind(params, param_of(value));
             let cmp = if matches!(op, Operator::In) {
-                format!(" AND a.user_id = ANY({p})")
+                format!(" AND a.user_id = ANY({})", cast(&raw, field, true))
             } else {
-                format!(" AND a.user_id = {p}")
+                format!(" AND a.user_id = {}", cast(&raw, field, false))
             };
             exists(&cmp)
         }
@@ -337,7 +387,7 @@ fn emit_tag(op: Operator, value: &Value, params: &mut Vec<Param>) -> String {
     match op {
         Operator::IsEmpty => format!("NOT {}", exists("")),
         _ => {
-            let p = bind(params, param_of(value));
+            let p = cast(&bind(params, param_of(value)), Field::Tag, true);
             let clause = exists(&format!(" AND tt.tag_id = ANY({p})"));
             if matches!(op, Operator::NotIn) {
                 format!("NOT {clause}")
@@ -449,9 +499,11 @@ mod tests {
             "",
         ];
 
+        // `key` is excluded deliberately: it compiles to FALSE pending D-051
+        // and binds nothing, so "was it bound as a parameter" cannot hold. It
+        // is covered by its own test below.
         for (field, op) in [
             (Field::Title, Operator::Contains),
-            (Field::Key, Operator::StartsWith),
             (Field::State, Operator::Eq),
             (Field::Q, Operator::Matches),
             (Field::Assignee, Operator::Eq),
@@ -612,6 +664,21 @@ mod tests {
         let c = paged(&Node::And(Vec::new()), &page);
         assert!(!c.sql.contains(hostile), "{}", c.sql);
         assert!(c.params.contains(&Param::Text(hostile.to_owned())));
+    }
+
+    #[test]
+    fn key_matches_nothing_rather_than_the_wrong_rows() {
+        // `WR-125` spans project.key and task.number. Comparing against
+        // t.number alone would match WR-125 and OPS-125 identically and look
+        // right, which is the worse failure. D-051.
+        let c = compiled(&clause(
+            Field::Key,
+            Operator::Eq,
+            Value::Literal("WR-125".into()),
+        ));
+        assert!(c.sql.contains("FALSE"), "{}", c.sql);
+        assert!(!c.sql.contains("WR-125"));
+        assert_eq!(c.params.len(), 2, "only the injected permission parameters");
     }
 
     #[test]
