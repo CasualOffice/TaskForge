@@ -316,7 +316,7 @@ the code that proves it.
 | C-004 | Permission matrix + escalation suites | `Building` |
 | C-005 | Cross-tenant property suite | Accepted |
 | C-006 | Projects, membership, visibility | Accepted |
-| C-007 | Default workflow + transitions | Accepted |
+| C-007 | Default workflow + transitions | `Building` |
 | C-008 | Task CRUD, assignees, tags | Accepted |
 | C-009 | Comments | Accepted |
 | C-010 | Attachment pipeline | Accepted |
@@ -329,6 +329,32 @@ the code that proves it.
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+
+**C-007 is `Building`.** The state machine is implemented in
+`casual-task-workflow`: statuses permanently mapped to the five states,
+transitions including the `from = NULL` wildcard that expresses "cancel from
+anywhere" without a row per status, and steps 4–7 of docs/23's fixed validation
+order — edge exists, transition permission, required fields, blocking
+dependencies — returning the **first** failure, because "the error a user sees
+is the most actionable one".
+
+Two invariants are structural rather than checked. A `Status` cannot be built
+without a state, so "status is yours; state is ours" cannot be violated by
+construction; and a validated transition carries the destination status **and**
+its state together, which is the in-memory form of docs/23's guarantee that
+`state` is written in the same statement as `status_id`. Construction is
+fallible for the same reason: a workflow with no initial status, or two, is a
+shape the schema's partial unique index would refuse, so the type refuses it
+too.
+
+Steps 1–3 and 8 are deliberately absent — reading a task, resolving the actor's
+permissions, and plugin hooks belong to persistence, `casual-task-authz` and
+Phase 3. The caller passes their results in, which is what lets the whole state
+machine be tested with no database and no runtime.
+
+Still missing before `Gated`: status editing and the status-migration path
+(docs/23 §Editing a workflow), and the transition command itself, which needs
+the command layer.
 
 **C-004 is `Building`.** Five of the seven escalation controls are implemented
 in `casual-task-authz` as `may_assign` and `plugin_ceiling`, each with a test
