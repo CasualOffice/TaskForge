@@ -86,6 +86,21 @@ time       = { version = "0.3", features = ["serde", "macros", "formatting", "pa
 thiserror  = "2"
 anyhow     = "1"
 rand       = { version = "0.9", features = ["small_rng"] }
+# Credentials (C-001, docs/40 §Credential lookup). RustCrypto, all MIT/Apache.
+#
+# argon2 is for PASSWORDS only — a low-entropy secret chosen by a human, where a
+# slow KDF is the only thing between a database dump and an offline dictionary
+# attack. Session and token verifiers are 190-bit random values hashed with
+# SHA-256: a slow hash buys nothing against that and costs latency on every
+# authenticated request, which is the budget docs/21 sets.
+argon2     = { version = "0.5", features = ["std"] }
+sha2       = "0.10"
+hmac       = "0.12"
+sha1       = "0.10"
+# Constant-time comparison. Comparing credential hashes with `==` leaks their
+# length and prefix through timing; this is the one place that matters.
+subtle     = "2.6"
+base32     = "0.5"
 clap       = { version = "4", features = ["derive"] }
 tokio      = { version = "1", features = ["rt-multi-thread", "macros"] }
 # No TLS feature yet, deliberately. `tls-rustls` pulls in webpki-roots, which

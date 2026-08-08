@@ -28,6 +28,7 @@ uuid = { workspace = true }
 casual-task-persistence = { path = ".", features = ["test-support"] }
 tokio = { workspace = true }
 sqlx = { workspace = true }
+casual-task-identity = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 anyhow = { workspace = true }

@@ -9,4 +9,11 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Phase 0 scaffold — no implementation yet. See `docs/14-EXECUTION-TRACKER.md`.
+
+pub mod credential;
+pub mod mfa;
+pub mod password;
+
+pub use credential::{Invalid, Minted};
+pub use mfa::{RecoveryCode, Totp};
+pub use password::PasswordError;

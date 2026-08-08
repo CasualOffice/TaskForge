@@ -9,6 +9,15 @@ publish = false
 
 [dependencies]
 casual-task-model = { workspace = true }
+argon2 = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+sha1 = { workspace = true }
+subtle = { workspace = true }
+base32 = { workspace = true }
+rand = { workspace = true }
+time = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
