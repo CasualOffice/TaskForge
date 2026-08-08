@@ -321,7 +321,7 @@ the code that proves it.
 | C-009 | Comments | Accepted |
 | C-010 | Attachment pipeline | Accepted |
 | C-011 | Activity + audit + **outbox** | Accepted |
-| C-012 | Filter grammar + compiler | Accepted |
+| C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | Accepted |
 | C-014 | Cursor pagination | Accepted |
 | C-015 | SSE + fan-out | Accepted |
@@ -329,6 +329,27 @@ the code that proves it.
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+
+**C-012 is `Building`.** The AST and the closed field set are implemented in
+`casual-task-search`: two node kinds and no more, nineteen fields as enum
+variants, per-field operator tables, value-shape checking, and the docs/21
+bounds (32 clauses, depth 4) reported with their already-registered `TF-QRY-*`
+codes.
+
+ADR-011 is enforced by the type rather than by a check — a field the design
+record has not listed, indexed, `EXPLAIN`-asserted and given a UI control has no
+variant, so it cannot be named. The operator tables are per-field rather than
+per-type on purpose: `reporter` takes no `is_empty` (a task always has one),
+`tag` takes no `eq` (it is a set), `key` takes `starts_with` while `title` takes
+`contains`. Deriving them from the type would have quietly widened the surface,
+and a test asserts each of those asymmetries.
+
+**The SQL compiler is deliberately not here.** docs/19 puts all SQL in
+`casual-task-persistence` and the architecture lint fails the build otherwise —
+which is what makes docs/27's "no path from user input to a SQL fragment"
+structural: this crate cannot emit one. Compilation, the URL and JSON surfaces,
+and symbolic-value resolution (`@me`, `+7d`, and the actor-timezone question
+that comes with `@today`) are the remaining work.
 
 **C-007 is `Building`.** The state machine is implemented in
 `casual-task-workflow`: statuses permanently mapped to the five states,

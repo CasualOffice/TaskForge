@@ -9,4 +9,11 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Phase 0 scaffold — no implementation yet. See `docs/14-EXECUTION-TRACKER.md`.
+//! The filter AST and its closed field set are implemented (C-012). The search
+//! projection and cursor pagination are not. See `docs/14-EXECUTION-TRACKER.md`.
+
+pub mod filter;
+
+pub use filter::{
+    Clause, Field, FieldType, FilterError, MAX_CLAUSES, MAX_DEPTH, Node, Operator, Value, validate,
+};
