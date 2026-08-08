@@ -12,10 +12,12 @@
 //! Resolution is implemented (C-003); the `authz_epoch` cache and the grant and
 //! scope ceilings are not yet. See `docs/14-EXECUTION-TRACKER.md`.
 
+pub mod ceiling;
 pub mod constraint;
 pub mod resolver;
 pub mod scope;
 
+pub use ceiling::{ProposedAssignment, Refusal, may_assign, plugin_ceiling};
 pub use constraint::{Constraint, ResourceFacts};
 pub use resolver::{
     Actor, Contribution, Decision, DenyReason, Grant, Principal, allows, effective, explain,
