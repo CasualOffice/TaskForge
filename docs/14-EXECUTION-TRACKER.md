@@ -259,7 +259,7 @@ implementation:
 | F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
 | F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
 | F-009 | Observability skeleton | `Built` | F-001 |
-| F-010 | Docker Compose dev profile | **Gated** | F-001 |
+| F-010 | Docker Compose dev profile | **Gated** | — |
 | F-011 | Governance files, Apache-2.0, AGENTS.md | `Built` | — |
 | F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
 | F-013 | Threat model review | Accepted | D-007 |
@@ -350,10 +350,15 @@ Remaining Phase 0:
   own tests.
 - **F-014** is `Built`: the runbooks are written and cross-referenced. There is
   no meaningful CI gate on prose beyond link resolution.
-- **F-002** is `Building`. The toolchain is pinned and `deny.toml` is enforced by
-  the `dependency-policy` job, but the MSRV ADR the row names does not exist —
-  **D-044**. `rust-version = "1.90.0"` is currently a number with no accepted
-  decision behind it.
+- **F-010**'s gate was a syntax check calling itself a gate. `docker compose
+  config` proves the file parses; it cannot see the invariant the file states in
+  its own header — that `mailpit` and `minio` are opt-in and *"nothing in the
+  default profile may depend on these"*. That sentence is what keeps
+  [48](48-DEPLOYMENT-PROFILES.md) §Profile 1 a supported target rather than an
+  aspiration, and a dependency creeping into the default profile would have been
+  invisible. `scripts/verify-dev-profile.sh` now starts the profile, waits for
+  PostgreSQL, and asserts that *exactly* `postgres` is running — verified to
+  fail by removing a `profiles:` marker and watching it catch the leak.
 - **F-005** is `Gated`. Both halves now exist: `scripts/verify-schema.sh` is
   the gate, and `crates/casual-task-persistence/tests/schema_harness.rs` is the
   seam Phase 1 builds on — it starts PostgreSQL 16 through testcontainers,
