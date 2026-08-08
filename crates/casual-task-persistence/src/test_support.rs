@@ -226,6 +226,77 @@ pub async fn mark_password_changed(pool: &sqlx::PgPool, user_id: Uuid) -> Result
     Ok(())
 }
 
+/// Age every outstanding reset token past its expiry.
+///
+/// `docs/40` gives a reset token one hour. Testing that by sleeping for one
+/// hour means it is tested once and then disabled, so the clock is moved
+/// instead of the test waiting for it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn expire_reset_tokens(pool: &sqlx::PgPool, user_id: Uuid) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query(
+        "UPDATE password_reset_token SET expires_at = now() - interval '1 second'
+          WHERE user_id = $1 AND used_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?
+    .rows_affected())
+}
+
+/// How many reset tokens a user has that are neither used nor expired.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn live_reset_token_count(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM password_reset_token
+          WHERE user_id = $1 AND used_at IS NULL AND expires_at > now()",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// Every stored reset-token column that could conceivably hold the credential.
+///
+/// Returned as text so a test can assert `docs/40`'s token-hash gate directly —
+/// "a database dump contains no usable credential" — against what is actually
+/// in the table rather than against what the writing code intended.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn reset_token_columns(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT selector || ' ' || verifier_hash FROM password_reset_token WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// The stored password hash, so a test can assert a reset actually replaced it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn password_hash_of(pool: &sqlx::PgPool, user_id: Uuid) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar("SELECT password_hash FROM user_credential WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+}
+
 /// How many deliveries a consumer has in each state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Counts {

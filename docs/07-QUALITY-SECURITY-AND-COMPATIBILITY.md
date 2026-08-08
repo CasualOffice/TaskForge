@@ -43,7 +43,7 @@ attachments · plugin secrets.
 | Supply chain | `cargo-deny` (gated); lockfiles committed; SBOM and build provenance attested per release; base images pinned **by tag, not digest** — see finding 3 |
 | Data loss | PITR backups; verified restore drills each phase; staged deletion with grace periods |
 
-| Outbound mail | **Not yet controlled.** Notification subjects carry task titles ([29](29-NOTIFICATIONS-AND-DELIVERY.md)) and `TF_SMTP_PASS` crosses the same connection; STARTTLS and certificate verification are required by decision but not yet implemented (D-046) |
+| Outbound mail | **Controlled (D-046).** STARTTLS is required by the constructor, not by a setting: a relay that does not offer it is refused rather than fallen back from, and the certificate chain and hostname are verified against the platform trust store. No configuration key weakens either. The reset-mail body is kept out of `Debug`, so the link cannot reach a log ([46](46-OBSERVABILITY-AND-OPERATIONS.md)) |
 
 The threat model is reviewed at each phase gate, not written once.
 

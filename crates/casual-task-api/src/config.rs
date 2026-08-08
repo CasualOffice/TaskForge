@@ -57,6 +57,8 @@ pub struct Config {
     pub attachment_origin: String,
     pub secret_key: String,
     pub pool: PoolConfig,
+    /// `TF_SMTP_*`. An empty host disables email (`docs/48`, D-046).
+    pub smtp: casual_task_infra::SmtpConfig,
 }
 
 /// Connection pool bounds (D-039).
@@ -141,6 +143,32 @@ impl Config {
             )?)),
         };
 
+        // `docs/48` §Configuration: "TF_SMTP_HOST/PORT/USER/PASS/FROM — empty
+        // host disables email (D-046)". Absent and empty are the same thing
+        // here, so a compose file with `TF_SMTP_HOST=` behaves as the operator
+        // reading that line expects.
+        let smtp = casual_task_infra::SmtpConfig {
+            host: get("TF_SMTP_HOST").unwrap_or_default(),
+            port: u16::try_from(parse_or(
+                "TF_SMTP_PORT",
+                &get,
+                u32::from(casual_task_infra::SmtpConfig::DEFAULT_PORT),
+            )?)
+            .map_err(|_| ConfigError::Invalid {
+                name: "TF_SMTP_PORT",
+                reason: "a TCP port is at most 65535".to_owned(),
+            })?,
+            user: get("TF_SMTP_USER").unwrap_or_default(),
+            password: get("TF_SMTP_PASS").unwrap_or_default(),
+            from: get("TF_SMTP_FROM").unwrap_or_default(),
+        };
+        // A relay with nothing to send *from* is a deployment where the first
+        // person to forget their password discovers the misconfiguration.
+        // `docs/48`: "A misconfigured deployment must not start."
+        if smtp.enabled() && smtp.from.trim().is_empty() {
+            return Err(ConfigError::Missing("TF_SMTP_FROM"));
+        }
+
         Ok(Self {
             bind_addr,
             database_url: required("DATABASE_URL")?,
@@ -148,6 +176,7 @@ impl Config {
             attachment_origin,
             secret_key,
             pool,
+            smtp,
         })
     }
 }
@@ -306,6 +335,46 @@ mod tests {
         .expect("valid");
         assert_eq!(config.pool.max_connections, 8);
         assert_eq!(config.pool.acquire_timeout, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn email_is_disabled_by_default_and_that_is_not_an_error() {
+        // docs/48: an empty host disables email. Profile 1 is a single node
+        // with no relay, and it has to start.
+        let config = with(&[]).expect("valid");
+        assert!(!config.smtp.enabled());
+        assert_eq!(config.smtp.port, 587, "the STARTTLS submission port");
+    }
+
+    #[test]
+    fn a_relay_without_a_sender_refuses_to_start() {
+        // The alternative is a deployment that looks configured and fails on
+        // the first password reset — found by the user, not by the operator.
+        assert_eq!(
+            with(&[("TF_SMTP_HOST", "smtp.example.com")]).err(),
+            Some(ConfigError::Missing("TF_SMTP_FROM"))
+        );
+        assert!(
+            with(&[
+                ("TF_SMTP_HOST", "smtp.example.com"),
+                ("TF_SMTP_FROM", "noreply@example.com"),
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_port_outside_the_tcp_range_is_refused() {
+        // 70000 parses as a u32 and truncates to 4464 as a u16. A relay quietly
+        // contacted on the wrong port is worse than a refusal to start.
+        let error = with(&[("TF_SMTP_PORT", "70000")]).expect_err("rejected");
+        assert!(matches!(
+            error,
+            ConfigError::Invalid {
+                name: "TF_SMTP_PORT",
+                ..
+            }
+        ));
     }
 
     #[test]

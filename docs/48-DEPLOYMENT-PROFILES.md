@@ -106,7 +106,9 @@ TF_S3_*                      endpoint, bucket, region, credentials
 TF_ATTACHMENT_ORIGIN         required in prod — the separate user-content origin
 TF_REDIS_URL                 optional; required with >1 api instance
 TF_WORKER_EMBEDDED           true | false       (default true)
-TF_SMTP_HOST/PORT/USER/PASS/FROM   empty host disables email (D-046)
+TF_SMTP_HOST/PORT/USER/PASS/FROM   empty host disables email (D-046). STARTTLS is
+                             required and the relay certificate and hostname are verified;
+                             FROM is a bare address, and a set host with no FROM refuses to start
 TF_OIDC_*                    per-workspace in DB; these are bootstrap defaults
 TF_DB_MAX_CONNECTIONS        default 32 — the pool bound (D-039)
 TF_DB_ACQUIRE_TIMEOUT_SECONDS default 3 — wait for a connection, then 503, never hang

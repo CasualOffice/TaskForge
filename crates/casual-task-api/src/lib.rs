@@ -25,6 +25,7 @@ pub mod error;
 pub mod etag;
 pub mod json;
 pub mod middleware;
+pub mod password_reset;
 pub mod projects;
 pub mod server;
 pub mod tasks;

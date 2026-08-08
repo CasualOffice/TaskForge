@@ -134,10 +134,32 @@ async fn run() -> ExitCode {
         "taskforge api listening"
     );
 
+    // Built BEFORE the listener binds. `docs/48`: "A misconfigured deployment
+    // must not start." A relay whose address does not parse is discovered here,
+    // by the operator, rather than by the first person who forgets a password.
+    let mailer = match casual_task_infra::mail::from_config(&config.smtp) {
+        Ok(mailer) => mailer,
+        Err(error) => {
+            tracing::error!(%error, "the mail transport is not valid");
+            eprintln!("TF_SMTP_* is not valid: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if !config.smtp.enabled() {
+        // Said once, loudly, at startup. `docs/48` makes this a supported
+        // deployment, but an operator who set the variables and typoed the
+        // name would otherwise learn about it from a support ticket.
+        tracing::warn!(
+            "TF_SMTP_HOST is empty: email is disabled and password-reset links will not be sent"
+        );
+    }
+
     let state = AppState {
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: config.secret_key.clone().into(),
+        public_url: config.public_url.clone().into(),
+        mailer,
     };
     match casual_task_api::serve(listener, state).await {
         Ok(()) => ExitCode::SUCCESS,

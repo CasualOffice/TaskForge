@@ -30,6 +30,8 @@ fn unreachable_database() -> (AppState, axum::Router) {
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "test-key-long-enough-for-the-config-check".into(),
+        public_url: "https://tasks.example.test".into(),
+        mailer: std::sync::Arc::new(casual_task_infra::mail::LoggingMailer),
     };
     (state.clone(), router(state))
 }
@@ -75,6 +77,8 @@ fn stalled_database(acquire_timeout: Duration) -> (axum::Router, Arc<AtomicUsize
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "test-key-long-enough-for-the-config-check".into(),
+        public_url: "https://tasks.example.test".into(),
+        mailer: std::sync::Arc::new(casual_task_infra::mail::LoggingMailer),
     };
     (router(state), accepted)
 }

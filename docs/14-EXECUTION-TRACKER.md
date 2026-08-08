@@ -78,7 +78,7 @@ The documentation phase. All complete unless noted.
 | D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Accepted** — keep RLS; try a tenant-filtered projection first |
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Accepted** — ADR-031 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
-| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Accepted** — STARTTLS + certificate/hostname verification |
+| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Consumed** — STARTTLS + certificate/hostname verification, in `casual-task-infra::mail` with C-001's reset endpoints |
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** (lag half) — gauge, age of oldest actionable pending delivery, C-011. The cache-hit ratio half stays open until C-003's cache exists. |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Consumed** — yes, distinct: `role.assign` vs `role.manage`, migration 0015 |
@@ -792,6 +792,87 @@ that reads the registry and fails on any code missing from it, with those four
 named as explicit exceptions rather than silently skipped. Renaming a shipped
 code is a public-contract change ([20](20-ERROR-CODE-REGISTRY.md) §Rules: codes
 are append-only), so it belongs in its own change.
+
+**Password reset is in, and D-046 is `Consumed` with it.** A user who forgot
+their password had no way back into the product; `POST
+/api/v1/auth/password-reset` and `.../confirm` are that way, built to the four
+words [40](40-IDENTITY-AUTH-AND-SESSION.md) §Local authentication spends on
+them: "single-use, 1 h, hashed at rest, invalidated by password change".
+
+**Delivery is off the request path, and that is the enumeration control rather
+than a performance one.** [40](40-IDENTITY-AUTH-AND-SESSION.md) §Acceptance
+gates requires reset responses to be indistinguishable for existing and
+non-existing accounts "in body, status, and timing envelope". Body and status
+are one constant; the timing half is what an inline send destroys, because an
+SMTP handshake is tens to hundreds of milliseconds and the unknown-address
+branch skips it entirely. That gap is readable with a stopwatch and is a
+complete account oracle. The handler mints, stores and answers; a spawned task
+talks to the relay. The cost is stated: a delivery failure reaches the log, not
+the caller — which is correct here, since the caller must not learn whether an
+address was deliverable either.
+
+**Single use is a `WHERE` clause, not a read followed by a write.**
+`consume_reset_token` updates only a row that is still unused and reports
+whether *this* call was the one that burned it, so two concurrent confirmations
+both find a live token and exactly one proceeds. Checking first and updating
+second is the same code with a race in it.
+
+**A rejected password does not spend the link.** The twelve-character minimum is
+enforced by `hash_chosen_async` — the only function that can hash a chosen
+password — and it runs *before* the token is burned. Sending someone back to
+their inbox because they typed eleven characters is a reset flow people abandon.
+
+**A successful reset revokes every session, twice over.** `set_password` moves
+`changed_at`, which `live_session` already refuses sessions older than, and
+`revoke_all_sessions` — dead code until now — marks the rows so a user reading
+their session list sees them gone. One closes the door for any path that
+forgets; the other makes the closure visible.
+
+**D-046, settled in code.** `casual-task-infra::mail` is the first thing in that
+crate: a `Mailer` trait, an SMTP implementation, and a no-op that logs when
+`TF_SMTP_HOST` is empty — which [48](48-DEPLOYMENT-PROFILES.md) makes a
+supported deployment, not a degraded one. STARTTLS is the **constructor**, not a
+setting: `starttls_relay` refuses to send when the relay does not offer it, and
+verifies the certificate chain and hostname. There is no key that weakens
+either.
+
+**The licence gate shaped the dependency, exactly as it did for D-050.**
+`lettre`'s `builder` feature pulls `quoted_printable`, which is `0BSD` and not
+on `deny.toml`'s allow-list; its `rustls-tls` feature pulls `webpki-roots`,
+which is the `CDLA-Permissive-2.0` crate that turned the database TLS feature
+off. Both were answered by feature selection rather than by widening the
+allow-list: `tokio1-rustls` + `rustls-native-certs` reaches the platform trust
+store, and the twelve header lines this system's only outbound mail needs are
+composed in `casual-task-infra`. `cargo deny check licenses` passes unchanged.
+The cost is stated where the code is — no MIME encoder, so a subject must be
+ASCII and `TF_SMTP_FROM` must be a bare address, and both are **refused** rather
+than mangled.
+
+**The reset link never reaches a log and never reaches the table.** `Message`
+keeps its body private and prints `<redacted>` from `Debug` — the same mechanism
+as [46](46-OBSERVABILITY-AND-OPERATIONS.md)'s `Redacted<T>`, written in
+miniature because importing it would add a DAG edge ADR-003 makes an ADR. The
+row stores a selector and a salted hash, and an integration test reads the
+stored columns back and searches them for the token, which is
+[40](40-IDENTITY-AUTH-AND-SESSION.md)'s token-hash gate applied to reset links.
+
+Nine integration tests, against a real PostgreSQL. Every one fails without its
+code: the unknown-address response is compared byte for byte against the real
+one, a token works once and the second use is 401, an expired token is 401, a
+forged verifier against a real selector is 401, a successful reset kills a live
+session *and* the cookie stops authenticating, a short password is 400 with the
+link still working, asking twice leaves only the newest link live, and a request
+for an address with no account still writes its `auth_event` row.
+
+**Not `Gated`, and the reason:** the enumeration acceptance gate in
+[40](40-IDENTITY-AUTH-AND-SESSION.md) covers login, reset **and invite**, and
+invitations do not exist yet. The timing assertion here is an
+order-of-magnitude envelope rather than a statistical one, because a tight bound
+on a shared CI runner is a flaky test rather than a stronger one. The reset mail
+is plain text only — [29](29-NOTIFICATIONS-AND-DELIVERY.md) §Email content asks
+for "plain text and HTML, both readable" of *notification* mail, and an HTML
+part here would add a rendering surface without adding information to a message
+whose entire content is one URL.
 
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.
