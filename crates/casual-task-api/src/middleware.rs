@@ -31,7 +31,7 @@ use casual_task_persistence::{auth as token_auth, identity};
 use crate::auth::session_selector;
 use crate::csrf;
 use crate::error::ApiError;
-use crate::server::AppState;
+use crate::server::{AppState, RequestId};
 
 /// The header carrying the workspace a request is for.
 ///
@@ -68,19 +68,35 @@ impl FromRequestParts<AppState> for Authenticated {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let request_id = "auth";
+        let request_id = RequestId::of(parts);
         let mut conn = state
             .pool
             .acquire()
             .await
-            .map_err(|_| ApiError::unavailable(request_id, 5))?;
+            .map_err(|_| ApiError::unavailable(&request_id, 5))?;
+        authenticate(&mut conn, &parts.headers, &request_id).await
+    }
+}
 
+/// The authentication itself, taking a connection rather than acquiring one.
+///
+/// Split out so a request needs **one** connection, not two. `WorkspaceMember`
+/// used to call the extractor above and then acquire a second connection for
+/// the membership check: sequential, so never a deadlock, but twice the pool
+/// churn and twice the exposure to the acquire timeout D-039 bounds — on every
+/// workspace-scoped request, which is eventually all of them.
+async fn authenticate(
+    conn: &mut sqlx::PgConnection,
+    headers: &HeaderMap,
+    request_id: &str,
+) -> Result<Authenticated, ApiError> {
+    {
         // A session cookie first, then a bearer token. Both fail the same way:
         // 401 with one shape, so a caller cannot learn which credential type
         // the server recognised.
-        if let Some(selector) = session_selector(&parts.headers)
+        if let Some(selector) = session_selector(headers)
             && let Some(session) =
-                identity::live_session(&mut conn, &selector)
+                identity::live_session(conn, &selector)
                     .await
                     .map_err(|error| {
                         tracing::error!(%error, "session lookup failed");
@@ -88,14 +104,14 @@ impl FromRequestParts<AppState> for Authenticated {
                     })?
         {
             {
-                let presented = presented_session(&parts.headers).unwrap_or_default();
+                let presented = presented_session(headers).unwrap_or_default();
                 let (_, verifier) = credential::split(&presented)
                     .map_err(|_| ApiError::unauthenticated(request_id))?;
                 if credential::verify(verifier, &session.verifier_hash) {
                     // Best effort: a failed `last_seen_at` update must not fail
                     // an otherwise valid request.
-                    let _ = identity::touch_session(&mut conn, session.id).await;
-                    return Ok(Self {
+                    let _ = identity::touch_session(conn, session.id).await;
+                    return Ok(Authenticated {
                         actor_id: UserId::from_uuid(session.user_id),
                         actor_type: ActorType::User,
                         session_id: Some(session.id),
@@ -104,19 +120,20 @@ impl FromRequestParts<AppState> for Authenticated {
             }
         }
 
-        if let Some(presented) = bearer(&parts.headers) {
+        if let Some(presented) = bearer(headers) {
             let (selector, verifier) =
                 credential::split(&presented).map_err(|_| ApiError::unauthenticated(request_id))?;
             // Through the pre-workspace seam: a token carries a workspace, but
             // the request has no scope yet to read it with (ADR-032).
-            if let Some(token) = token_auth::lookup_token(&mut conn, selector)
-                .await
-                .map_err(|error| {
-                    tracing::error!(%error, "token lookup failed");
-                    ApiError::internal(request_id)
-                })?
+            if let Some(token) =
+                token_auth::lookup_token(conn, selector)
+                    .await
+                    .map_err(|error| {
+                        tracing::error!(%error, "token lookup failed");
+                        ApiError::internal(request_id)
+                    })?
             {
-                let stored = token_auth::lookup_token_verifier(&mut conn, selector)
+                let stored = token_auth::lookup_token_verifier(conn, selector)
                     .await
                     .map_err(|error| {
                         tracing::error!(%error, "token verifier lookup failed");
@@ -124,12 +141,26 @@ impl FromRequestParts<AppState> for Authenticated {
                     })?
                     .unwrap_or_default();
                 if credential::verify(verifier, &stored) {
-                    return Ok(Self {
+                    // Exhaustive, and an unrecognised principal type is
+                    // REFUSED rather than defaulted. `_ => ActorType::User`
+                    // silently promoted a TEAM principal to a user actor, and
+                    // the actor type is what the audit trail records — "a
+                    // plugin did it" and "an admin did it" are different
+                    // answers during an incident (docs/25).
+                    let actor_type = match token.principal_type.as_str() {
+                        "SERVICE_ACCOUNT" => ActorType::ServiceAccount,
+                        "USER" => ActorType::User,
+                        other => {
+                            tracing::error!(
+                                principal_type = other,
+                                "a token carries a principal type that cannot authenticate"
+                            );
+                            return Err(ApiError::unauthenticated(request_id));
+                        }
+                    };
+                    return Ok(Authenticated {
                         actor_id: UserId::from_uuid(token.principal_id),
-                        actor_type: match token.principal_type.as_str() {
-                            "SERVICE_ACCOUNT" => ActorType::ServiceAccount,
-                            _ => ActorType::User,
-                        },
+                        actor_type,
                         session_id: None,
                     });
                 }
@@ -147,8 +178,13 @@ impl FromRequestParts<AppState> for WorkspaceMember {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let request_id = "auth";
-        let actor = Authenticated::from_request_parts(parts, state).await?;
+        let request_id = RequestId::of(parts);
+        let mut conn = state
+            .pool
+            .acquire()
+            .await
+            .map_err(|_| ApiError::unavailable(&request_id, 5))?;
+        let actor = authenticate(&mut conn, &parts.headers, &request_id).await?;
 
         let workspace = parts
             .headers
@@ -158,26 +194,20 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             // A missing or malformed workspace is 404, not 400: docs/04
             // requires "absent" and "invisible" to be indistinguishable, and a
             // 400 here would confirm the header is the way in.
-            .ok_or_else(|| ApiError::not_found(request_id))?;
-
-        let mut conn = state
-            .pool
-            .acquire()
-            .await
-            .map_err(|_| ApiError::unavailable(request_id, 5))?;
+            .ok_or_else(|| ApiError::not_found(&request_id))?;
 
         let member = identity::is_workspace_member(&mut conn, actor.actor_id.as_uuid(), workspace)
             .await
             .map_err(|error| {
                 tracing::error!(%error, "membership check failed");
-                ApiError::internal(request_id)
+                ApiError::internal(&request_id)
             })?;
 
         if !member {
             // 404, not 403. An authenticated stranger must not be able to
             // discover which workspace ids exist by probing this header
             // (`docs/04`).
-            return Err(ApiError::not_found(request_id));
+            return Err(ApiError::not_found(&request_id));
         }
 
         Ok(Self {
@@ -204,6 +234,7 @@ pub async fn csrf_guard(
     request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    let request_id = RequestId::of_request(&request);
     if !csrf::requires_token(request.method()) {
         return next.run(request).await;
     }
@@ -225,7 +256,7 @@ pub async fn csrf_guard(
 
     // 403 rather than 401: the caller IS authenticated. Retrying with the same
     // credential and a correct token succeeds, which a 401 would not suggest.
-    ApiError::forbidden("csrf").into_response()
+    ApiError::forbidden(request_id).into_response()
 }
 
 /// The whole presented session credential, not just the selector.
