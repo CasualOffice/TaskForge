@@ -9,4 +9,11 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Phase 0 scaffold — no implementation yet. See `docs/14-EXECUTION-TRACKER.md`.
+//! The state machine is implemented (C-007). Status editing and status
+//! migration are not. See `docs/14-EXECUTION-TRACKER.md`.
+
+pub mod workflow;
+
+pub use workflow::{
+    Rejection, Status, Transition, TransitionRequest, ValidTransition, Workflow, WorkflowError,
+};
