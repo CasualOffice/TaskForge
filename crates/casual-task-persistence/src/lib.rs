@@ -16,6 +16,7 @@ pub mod auth;
 pub mod compile;
 pub mod dispatch;
 pub mod health;
+pub mod identity;
 pub mod scoped;
 #[cfg(feature = "test-support")]
 pub mod test_support;

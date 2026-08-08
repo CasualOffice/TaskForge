@@ -26,6 +26,92 @@
 
 use uuid::Uuid;
 
+/// The backoff state of an account, for tests that assert on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LockoutState {
+    pub failed_attempts: i32,
+    pub locked: bool,
+    /// Whether the lock extends more than an hour into the future — the shape
+    /// of a permanent lockout, which `docs/40` forbids.
+    pub locked_beyond_an_hour: bool,
+}
+
+/// Insert a user account and its password credential.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_user_with_password(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+    email: &str,
+    password_hash: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO user_account (id, email, display_name) VALUES ($1, $2, 'Test')")
+        .bind(id)
+        .bind(email)
+        .execute(pool)
+        .await?;
+    sqlx::query("INSERT INTO user_credential (user_id, password_hash) VALUES ($1, $2)")
+        .bind(id)
+        .bind(password_hash)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// How many sessions are neither revoked nor expired.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn live_session_count(pool: &sqlx::PgPool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM session WHERE revoked_at IS NULL AND expires_at > now()",
+    )
+    .fetch_one(pool)
+    .await
+}
+
+/// The account's current backoff state.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn lockout_state(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<LockoutState, sqlx::Error> {
+    let row: (i32, bool, Option<bool>) = sqlx::query_as(
+        "SELECT failed_attempts,
+                locked_until IS NOT NULL,
+                locked_until > now() + interval '1 hour'
+           FROM user_credential WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(LockoutState {
+        failed_attempts: row.0,
+        locked: row.1,
+        locked_beyond_an_hour: row.2.unwrap_or(false),
+    })
+}
+
+/// Clear a backoff, simulating its expiry.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn clear_lockout(pool: &sqlx::PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE user_credential SET locked_until = NULL WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// How many deliveries a consumer has in each state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Counts {

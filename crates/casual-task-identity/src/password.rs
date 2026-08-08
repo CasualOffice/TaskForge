@@ -15,10 +15,38 @@
 //! email address wrongly enough times, and the victim cannot clear it without
 //! support. Backoff that expires on its own has no such lever.
 
-use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::{Algorithm, Argon2, Params, Version};
 use time::{Duration, OffsetDateTime};
+
+/// Memory cost, in KiB. `docs/40` §Local authentication: **64 MB**.
+pub const MEMORY_KIB: u32 = 64 * 1024;
+/// Time cost (passes). `docs/40`: **t=3**.
+pub const TIME_COST: u32 = 3;
+/// Parallelism (lanes). `docs/40`: **p=4**.
+pub const PARALLELISM: u32 = 4;
+
+/// The minimum password length. `docs/40`: "No composition rules beyond a
+/// 12-character minimum. Rules produce `Password1!`; length and a breach check
+/// produce better passwords."
+pub const MIN_LENGTH: usize = 12;
+
+/// The configured hasher.
+///
+/// **Not `Argon2::default()`.** The crate's defaults are 19 MiB, t=2, p=1 —
+/// which is what this module used until it was checked against `docs/40`, and
+/// the difference is not cosmetic: memory cost is the parameter that makes
+/// GPU and ASIC attacks expensive, and 19 MiB against 64 MB is roughly a
+/// threefold discount to an attacker with a dump.
+///
+/// The parameters are stored in each PHC string, so raising them later does not
+/// invalidate existing passwords.
+fn hasher() -> Argon2<'static> {
+    let params = Params::new(MEMORY_KIB, TIME_COST, PARALLELISM, None)
+        .expect("the parameters above are within Argon2's accepted ranges");
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
 
 /// Failures a caller must distinguish.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -43,7 +71,7 @@ pub enum PasswordError {
 /// [`PasswordError::Hashing`] if the KDF fails.
 pub fn hash(password: &str) -> Result<String, PasswordError> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
+    hasher()
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| PasswordError::Hashing(e.to_string()))
@@ -58,7 +86,9 @@ pub fn hash(password: &str) -> Result<String, PasswordError> {
 /// only one of them is a bug.
 pub fn verify(password: &str, stored: &str) -> Result<bool, PasswordError> {
     let parsed = PasswordHash::new(stored).map_err(|_| PasswordError::MalformedHash)?;
-    Ok(Argon2::default()
+    // Verification uses the parameters stored in `stored`, not the ones above,
+    // which is what lets the cost be raised without invalidating old hashes.
+    Ok(hasher()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
 }
@@ -130,6 +160,39 @@ mod tests {
         assert_ne!(a, b);
         assert!(verify("same", &a).expect("parses"));
         assert!(verify("same", &b).expect("parses"));
+    }
+
+    #[test]
+    fn the_parameters_are_the_ones_the_design_record_specifies() {
+        // docs/40 §Local authentication: Argon2id, 64 MB, t=3, p=4. This module
+        // used Argon2::default() — 19 MiB, t=2, p=1 — until it was checked.
+        // Memory cost is what makes GPU attacks expensive, so the difference is
+        // roughly a threefold discount to an attacker holding a dump.
+        assert_eq!(MEMORY_KIB, 65_536, "docs/40 says 64 MB");
+        assert_eq!(TIME_COST, 3);
+        assert_eq!(PARALLELISM, 4);
+
+        let stored = hash("a password long enough").expect("hashes");
+        assert!(stored.contains("m=65536"), "{stored}");
+        assert!(stored.contains("t=3"), "{stored}");
+        assert!(stored.contains("p=4"), "{stored}");
+    }
+
+    #[test]
+    fn a_hash_made_with_older_parameters_still_verifies() {
+        // The reason parameters live in the PHC string. Raising the cost must
+        // not lock every existing user out of their account.
+        let weak = Params::new(19 * 1024, 2, 1, None).expect("valid");
+        let salt = SaltString::generate(&mut OsRng);
+        let old = Argon2::new(Algorithm::Argon2id, Version::V0x13, weak)
+            .hash_password(b"a password long enough", &salt)
+            .expect("hashes")
+            .to_string();
+
+        assert!(
+            verify("a password long enough", &old).expect("parses"),
+            "a password hashed with the previous parameters stopped working"
+        );
     }
 
     #[test]

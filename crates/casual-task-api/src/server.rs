@@ -49,6 +49,9 @@ pub const DRAIN: Duration = Duration::from_secs(20);
 pub struct AppState {
     pub pool: PgPool,
     pub metrics: Arc<Recorder>,
+    /// `TF_SECRET_KEY`. Used for the CSRF binding and nothing else — ADR-032:
+    /// "TF_SECRET_KEY is not a cookie signature."
+    pub secret_key: Arc<str>,
 }
 
 /// Build the router.
@@ -57,6 +60,14 @@ pub fn router(state: AppState) -> Router {
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/metrics", get(metrics))
+        .route(
+            "/api/v1/auth/login",
+            axum::routing::post(crate::auth::login),
+        )
+        .route(
+            "/api/v1/auth/logout",
+            axum::routing::post(crate::auth::logout),
+        )
         .layer(axum::middleware::from_fn_with_state(state.clone(), observe))
         .with_state(state)
 }
@@ -215,7 +226,14 @@ const fn declared_method(method: &axum::http::Method) -> Option<&'static str> {
 /// `&'static str`, and the router hands back a `String`. Interning it here
 /// rather than widening the guard means an unrouted path — which is attacker
 /// controlled — cannot become a metric series.
-pub const ROUTES: &[&str] = &["/health/live", "/health/ready", "/metrics", "unmatched"];
+pub const ROUTES: &[&str] = &[
+    "/health/live",
+    "/health/ready",
+    "/metrics",
+    "/api/v1/auth/login",
+    "/api/v1/auth/logout",
+    "unmatched",
+];
 
 fn declared_route(route: &str) -> Option<&'static str> {
     ROUTES.iter().copied().find(|known| *known == route)
@@ -272,7 +290,13 @@ mod tests {
         // The metric label must be a &'static str, so a route missing from
         // ROUTES silently loses its metrics. Listed here as the one place the
         // two tables are compared.
-        for route in ["/health/live", "/health/ready", "/metrics"] {
+        for route in [
+            "/health/live",
+            "/health/ready",
+            "/metrics",
+            "/api/v1/auth/login",
+            "/api/v1/auth/logout",
+        ] {
             assert!(
                 declared_route(route).is_some(),
                 "{route} is served but not in ROUTES, so it records no metrics"

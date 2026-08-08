@@ -528,6 +528,57 @@ Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
 
+**Login works.** `POST /api/v1/auth/login` and `/auth/logout`, with the session
+cookie `docs/40` specifies flag for flag, and seven end-to-end tests against a
+real PostgreSQL.
+
+**The enumeration gate is met, and it is met structurally.** `docs/40` calls
+account enumeration through login "the most commonly shipped auth bug" and
+requires responses indistinguishable "in body, status, and timing envelope".
+Two things make that hold rather than aspire:
+
+- `LoginOutcome` has **one** failure variant. A type with `NoSuchAccount` beside
+  `WrongPassword` is an oracle waiting for someone to map them onto different
+  responses; there is no second value to return.
+- An unknown address still performs an Argon2 verification against a fixed dummy
+  hash. Skipping it returns in microseconds against ~100 ms for a real account —
+  an oracle wide enough to read with a stopwatch. The test asserts the two paths
+  stay within an order of magnitude, which is the strongest bound a shared CI
+  runner can hold without becoming flaky, and it would catch a ratio of
+  thousands easily.
+
+**The Argon2 parameters were wrong and are now right.** The code used
+`Argon2::default()` — 19 MiB, t=2, p=1 — where `docs/40` §Local authentication
+specifies **64 MB, t=3, p=4**. Memory cost is the parameter that makes GPU and
+ASIC attacks expensive, so the difference was roughly a threefold discount to an
+attacker holding a dump. A test now pins all three, and another proves a hash
+made with the old parameters still verifies — which is why they live in the PHC
+string.
+
+**CSRF is bound to the session, not merely double-submitted.** ADR-032 says
+`TF_SECRET_KEY` "is not a cookie signature"; it is used here and nowhere else.
+A plain double-submit compares two values the *client* sent, so anyone able to
+set a cookie on the victim's domain sets both halves and passes. The token is
+`HMAC-SHA256(key, session_selector)`, so forging one needs the selector and the
+server key — and it needs no storage and no expiry of its own, because it dies
+exactly when the session does.
+
+**A test disagreed with the code, and the code was right.** Five failed logins
+recorded four failures, not five: once the backoff starts, further attempts are
+refused *without* counting. That is deliberate — counting them would let anyone
+hold a stranger's account locked indefinitely by guessing at it forever, which
+is the denial of service `docs/40` rules out. The assertion now states that
+property instead of the number.
+
+The architecture lint refused the test SQL, as it did for C-011 and the server
+foundation. The fixtures moved into `casual-task-persistence`'s `test_support`
+rather than the rule being bent a third time.
+
+Still missing before C-001 is `Built`: the auth **middleware** that turns a
+session into an `AuthContext` (nothing consumes a session yet — the endpoints
+create and destroy them), CSRF enforcement wired as a layer, MFA step-up at
+workspace resolution, invitations, and password reset. SSO is Phase 2.
+
 **The HTTP server exists, and F-009's `/metrics` endpoint with it.** The API
 binary starts, and every step of its startup is a refusal rather than a warning:
 configuration that fails fast and names the variable, a bounded pool (D-039),
