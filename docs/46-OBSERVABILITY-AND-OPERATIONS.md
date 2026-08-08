@@ -45,16 +45,16 @@ Beyond RED, these are the ones that describe *this* system's health:
 
 | Metric | Why it matters |
 | --- | --- |
-| `outbox_lag_seconds` (p50/p95/max) | **The primary health signal.** Moves first under database pressure, consumer failure, or a dead worker. |
+| `outbox_lag_seconds` (p50/p95/max) — **see D-047** | **The primary health signal.** Moves first under database pressure, consumer failure, or a dead worker. What it *measures* is not settled: the registry models it as a histogram while the help text describes the age of the single oldest pending event, which is a gauge quantity. The §Alerts page condition and the §SLOs target below both rest on this. |
 | `outbox_dlq_depth` | Events that gave up. Never expected to be non-zero. |
 | `search_projection_lag_seconds` | How stale search is |
 | `authz_resolution_duration` + cache hit ratio | Permission cost, on every request |
 | `authz_epoch_bumps_total` | Cache churn; a spike means mass permission change |
 | `permission_denied_total` by permission | A burst signals compromise or misconfiguration |
 | `transition_rejected_total` by reason | Workflow friction, per project |
-| `plugin_call_duration` / `_errors` / `_timeouts` by installation | Per-plugin health ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)) |
+| `plugin_call_duration`, `plugin_call_errors_total`, `plugin_call_timeouts_total` by installation | Per-plugin health ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)) |
 | `plugin_circuit_state` by installation | Which integrations are down |
-| `automation_runs_total` / `_depth_exceeded` | Runaway rules |
+| `automation_runs_total`, `automation_depth_exceeded_total` | Runaway rules |
 | `sse_connections_active` | Live-update load |
 | `db_pool_utilization`, `db_query_duration` by statement | Saturation |
 | `attachment_scan_queue_depth` | Files stuck invisible |

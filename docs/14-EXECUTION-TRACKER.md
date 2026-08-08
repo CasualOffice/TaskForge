@@ -79,6 +79,7 @@ The documentation phase. All complete unless noted.
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Blocked** — Accept at Phase 0 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
 | D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Blocked** — Accept before C-016 |
+| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-011 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -196,6 +197,25 @@ implementation:
   content, and `TF_SMTP_PASS` crosses the same connection. Silently falling back
   to cleartext is the failure mode to design out, and which way to fail is a
   security decision rather than a client-library default to inherit.
+- **D-047.** Two instrument kinds do not match what
+  [46](46-OBSERVABILITY-AND-OPERATIONS.md) asks the metric to answer, and one of
+  them is the **primary health signal**, with a paging alert and an SLO resting
+  on it.
+
+  `outbox_lag_seconds` is registered as a Histogram and its help text reads
+  "age of the oldest undispatched outbox event". Those are different
+  quantities. Sampling a point-in-time oldest-age into a histogram yields a
+  distribution *of scrapes*, not of events — so §Alerts' "p95 > 30 s for 5 min"
+  and §SLOs' "outbox lag < 5 s, 99%" would both be computed over the wrong
+  population. Either it is per-event dispatch lag observed at dispatch
+  (histogram, and the help text is wrong), or it is the oldest pending age
+  (gauge, and a companion series is needed for the percentiles). Which one is a
+  decision about what the page should fire on.
+
+  Second, `authz_cache_hit_ratio` is a Gauge. A pre-computed ratio cannot be
+  averaged across replicas or re-windowed in a query; the aggregatable shape is
+  two counters with the ratio computed at query time. That changes a metric
+  docs/46 names, so it is not a silent refactor.
 - **D-045.** [08](08-ADR-REGISTER.md) §Pending also lists SSE vs WebSocket.
   `Deferred` rather than `Blocked`: SSE is the Phase 1 decision and no feature
   yet needs client→server streaming, so this only becomes live if one does.
