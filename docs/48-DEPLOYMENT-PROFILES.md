@@ -105,7 +105,7 @@ TF_S3_*                      endpoint, bucket, region, credentials
 TF_ATTACHMENT_ORIGIN         required in prod — the separate user-content origin
 TF_REDIS_URL                 optional; required with >1 api instance
 TF_WORKER_EMBEDDED           true | false       (default true)
-TF_SMTP_*                    host, port, user, pass, from
+TF_SMTP_HOST/PORT/USER/PASS/FROM   empty host disables email (D-046)
 TF_OIDC_*                    per-workspace in DB; these are bootstrap defaults
 TF_LIMITS_*                  every limit in doc 21 is a key
 TF_LOG_FORMAT                json | pretty

@@ -60,8 +60,14 @@ services:
       TF_STORAGE_PATH: /data/attachments
       TF_WORKER_EMBEDDED: "true"
       TF_LOG_FORMAT: json
+      # docs/48 §Configuration declares TF_SMTP_* as "host, port, user, pass,
+      # from". User and pass were declared there and passed nowhere, so an
+      # operator following the deployment guide could only reach a relay that
+      # accepts anonymous mail — which is close to none of them.
       TF_SMTP_HOST: ${TF_SMTP_HOST:-}
       TF_SMTP_PORT: ${TF_SMTP_PORT:-587}
+      TF_SMTP_USER: ${TF_SMTP_USER:-}
+      TF_SMTP_PASS: ${TF_SMTP_PASS:-}
       TF_SMTP_FROM: ${TF_SMTP_FROM:-}
     volumes:
       - attachments:/data/attachments

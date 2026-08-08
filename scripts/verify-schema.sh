@@ -32,7 +32,13 @@ if [[ -z "$OWNER_DSN" ]]; then
     -p 55432:5432 postgres:16-alpine >/dev/null
   OWNED_CONTAINER=1
   trap 'docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true' EXIT
-  until docker exec "$CONTAINER" pg_isready -U tf -q 2>/dev/null; do sleep 1; done
+  # -h 127.0.0.1 is load-bearing. During initdb the entrypoint runs a temporary
+  # server that listens on the unix socket ONLY, so a socket-based pg_isready
+  # reports ready seconds before the real server exists, and the next command
+  # then hits a server that is about to be restarted. scripts/verify-queries.sh
+  # already guards this; verify-deployment.sh did not, and CI caught it as an
+  # intermittent "server closed the connection unexpectedly".
+  until docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U tf -q 2>/dev/null; do sleep 1; done
   OWNER_DSN="postgres://tf:tf@127.0.0.1:55432/tf"
 fi
 

@@ -39,7 +39,12 @@ echo "  ✅ required variables are enforced"
 
 step "Bringing up PostgreSQL from the deployment compose"
 $DC up -d postgres >/dev/null
-until $DC exec -T postgres pg_isready -U taskforge_owner -q 2>/dev/null; do sleep 1; done
+# -h 127.0.0.1 is load-bearing: during initdb the entrypoint runs a temporary
+# server on the unix socket ONLY, so a socket-based pg_isready reports ready
+# before the real server exists. Without it this gate is flaky — it passed one
+# CI run and failed the next with "server closed the connection unexpectedly",
+# 120 ms after reporting healthy.
+until $DC exec -T postgres pg_isready -h 127.0.0.1 -U taskforge_owner -q 2>/dev/null; do sleep 1; done
 echo "  ✅ healthy"
 
 step "The application role is created and correctly constrained"

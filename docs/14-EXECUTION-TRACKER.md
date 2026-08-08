@@ -78,6 +78,7 @@ The documentation phase. All complete unless noted.
 | D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Blocked** — Accept before C-013 |
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Blocked** — Accept at Phase 0 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
+| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Blocked** — Accept before C-016 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -147,6 +148,16 @@ implementation:
   `platform` job's MSRV matrix entry are a number nobody agreed to; both used to
   cite **D-032**, which is the auth item, so the pointer was wrong as well as
   dangling. F-002 cannot be `Gated` until this lands.
+- **D-046.** [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) specifies TLS 1.3
+  for traffic *into* the system. Nothing specifies anything about traffic *out*
+  of it to an SMTP relay: not whether STARTTLS is required, not whether the
+  relay's certificate is verified, not what happens when a relay offers no TLS
+  at all. Email does not appear in the threat model. This is not academic —
+  [29](29-NOTIFICATIONS-AND-DELIVERY.md) §Email content puts the task title in
+  the subject line (`[WR-125] Task title`), so every notification carries tenant
+  content, and `TF_SMTP_PASS` crosses the same connection. Silently falling back
+  to cleartext is the failure mode to design out, and which way to fail is a
+  security decision rather than a client-library default to inherit.
 - **D-045.** [08](08-ADR-REGISTER.md) §Pending also lists SSE vs WebSocket.
   `Deferred` rather than `Blocked`: SSE is the Phase 1 decision and no feature
   yet needs client→server streaming, so this only becomes live if one does.
