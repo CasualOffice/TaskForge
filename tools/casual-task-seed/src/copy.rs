@@ -287,9 +287,35 @@ impl Row<'_> {
         self.text(&lit)
     }
 
+    /// A `uuid[]` literal, written directly rather than through
+    /// [`Self::text_array`].
+    ///
+    /// Same reasoning as [`Self::uuid`], which was already special-cased: this
+    /// is the `mentions` column of every comment, so it runs about nine million
+    /// times in a reference run. Going through `text_array` allocated a
+    /// `String` per id *and* an intermediate literal — and ~85% of comments
+    /// have no mentions, so most of that work produced the two characters `{}`.
+    ///
+    /// UUID hex needs neither COPY escaping nor array quoting, so the elements
+    /// go in bare. That is a different byte sequence from the quoted form the
+    /// generic path emits (`{uuid}` rather than `{"uuid"}`); both are valid
+    /// `uuid[]` input, and the corpus is regenerated rather than diffed against
+    /// a stored copy, so nothing depends on the old spelling.
     pub fn uuid_array(self, ids: &[Uuid]) -> Self {
-        let items: Vec<String> = ids.iter().map(|id| id.hyphenated().to_string()).collect();
-        self.text_array(&items)
+        if ids.is_empty() {
+            return self.bare("{}");
+        }
+        let mut lit = String::with_capacity(ids.len() * 37 + 2);
+        lit.push('{');
+        let mut buf = Uuid::encode_buffer();
+        for (i, id) in ids.iter().enumerate() {
+            if i > 0 {
+                lit.push(',');
+            }
+            lit.push_str(id.hyphenated().encode_lower(&mut buf));
+        }
+        lit.push('}');
+        self.bare(&lit)
     }
 
     pub fn end(self) {
