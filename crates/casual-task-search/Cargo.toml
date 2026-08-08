@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 casual-task-model = { workspace = true }
+time = { workspace = true }
 
 [lints]
 workspace = true
