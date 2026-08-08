@@ -36,8 +36,10 @@ use testcontainers_modules::postgres::Postgres;
 ///
 /// The container is owned by the returned value: dropping it stops and removes
 /// the container, so a test that panics does not leak one.
-struct TestDatabase {
-    pool: PgPool,
+#[allow(missing_debug_implementations)]
+pub struct TestDatabase {
+    pub pool: PgPool,
+    port: u16,
     // Held solely for its `Drop`. Never read.
     _container: testcontainers::ContainerAsync<Postgres>,
 }
@@ -49,7 +51,7 @@ impl TestDatabase {
     /// **16+** because `UNIQUE NULLS NOT DISTINCT` is load-bearing for
     /// workspace-scoped tag uniqueness. A harness that silently drifted to a
     /// newer major would stop testing the floor the product supports.
-    async fn start() -> Result<Self> {
+    pub async fn start() -> Result<Self> {
         let container = Postgres::default()
             .with_tag("16-alpine")
             .start()
@@ -71,8 +73,21 @@ impl TestDatabase {
 
         Ok(Self {
             pool,
+            port,
             _container: container,
         })
+    }
+
+    /// A DSN for the non-superuser application role.
+    ///
+    /// Tests that assert row-level security MUST connect as this role: RLS is
+    /// inert for a superuser (migration 0012), so the same assertions run as
+    /// the owner would pass while proving nothing.
+    pub fn app_url(&self) -> String {
+        format!(
+            "postgres://taskforge_app:apppw@127.0.0.1:{}/postgres",
+            self.port
+        )
     }
 }
 
