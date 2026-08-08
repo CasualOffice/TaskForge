@@ -169,6 +169,19 @@ The rules that stop RBAC from being a self-service root exploit:
    `project.role.assign` at project scope cannot create workspace grants.
 3. **Role editing is workspace-scoped.** `role.manage` exists only at workspace
    scope. Project managers assign roles; they do not author them.
+
+   **Assigning and authoring are separate permissions at every scope (D-049).**
+   `role.assign` grants an existing role at workspace scope; `role.manage`
+   authors the roles themselves. `project.role.assign` is the same split one
+   level down.
+
+   They were merged above project scope until D-049: the closed set had only
+   `role.manage` there, so a workspace-level assigner necessarily held the right
+   to author roles — and could therefore mint a role carrying more than they
+   held and grant it to themselves. Control 1 still forbade the direct version,
+   so the hole was narrow, but it sat exactly where the most privileged actors
+   are. Splitting it costs one permission in a closed set and removes the
+   escalation path entirely.
 4. **Last-owner protection.** The final grant carrying `workspace.owner` cannot be
    removed or downgraded. Enforced as a database constraint check inside the
    transaction, not just in application code.

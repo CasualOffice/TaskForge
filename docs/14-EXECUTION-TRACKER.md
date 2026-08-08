@@ -81,9 +81,9 @@ The documentation phase. All complete unless noted.
 | D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Accepted** — STARTTLS + certificate/hostname verification |
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** (lag half) — gauge, age of oldest actionable pending delivery, C-011. The cache-hit ratio half stays open until C-003's cache exists. |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
-| D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Blocked** — Accept before C-002 |
+| D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Consumed** — yes, distinct: `role.assign` vs `role.manage`, migration 0015 |
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
-| D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
+| D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
@@ -526,6 +526,39 @@ vacuously true.
 Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
+
+**D-049 and D-050 are settled, and C-001 and C-002 are unblocked.**
+
+**D-049 — assigning is not authoring.** The closed permission set had
+`project.role.assign` for assigning inside a project and only `role.manage`
+above it, which is also the *authoring* permission. A workspace-level assigner
+therefore had to hold the right to author roles — and could mint a role
+carrying more than they held, then grant it to themselves. Control 1 forbade the
+direct version, so the hole was narrow; it sat exactly where the most privileged
+actors are. Migration [0015](../migrations/0015_role_assign_permission.sql) adds
+`role.assign`, and `assign_permission_for` uses it above project scope.
+
+Two tests carry it, and both were verified to **fail without the change** rather
+than assumed to: an actor holding only `role.assign` can now assign an ordinary
+role at workspace scope (previously impossible), and still cannot hand out
+`role.manage` (previously the same permission).
+
+**D-050 — no database TLS; the database must be on a trusted network.** Enabling
+it in `sqlx` pulls `webpki-roots` (`CDLA-Permissive-2.0`), which `deny.toml`
+rejects. The choice was between adding a licence obligation for a capability
+nothing currently uses and documenting a constraint every current deployment
+already satisfies. The cost is real and now written where an operator will meet
+it ([52](52-DEPLOYMENT-GUIDE.md)): **a managed PostgreSQL across a public
+network is not a supported deployment today.**
+
+What holds it is not a note. Turning TLS on fails `cargo deny check licenses`
+with a named licence, so the decision is revisited by someone reading the
+section rather than smuggled in beside an unrelated change. And
+`verify-deployment.sh` now asserts the database publishes **no host port** —
+`expose`, never `ports` — because a compose file quietly gaining one is the
+single change that turns a documented constraint into an unencrypted database
+on the internet. The assertion was checked against a deliberately broken compose
+file before being trusted.
 
 **C-011's runtime half is in.** The dispatch loop, the dispatcher role, the
 retention sweep, and the acceptance gate `docs/25` names.

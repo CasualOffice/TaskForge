@@ -57,18 +57,21 @@ pub struct ProposedAssignment {
 ///
 /// **The registry conflates two acts at workspace scope, and this function
 /// inherits that** (tracked as **D-049**). `docs/04` control 3 distinguishes
-/// them — "Project managers assign roles; they do not author them" — but the
-/// closed permission set has `project.role.assign` for assigning inside a
-/// project and only `role.manage` above it, which is also the authoring
-/// permission. So a workspace-level assigner must currently hold the right to
-/// author roles as well.
+/// them — "Project managers assign roles; they do not author them". D-049
+/// settled that the same split holds at workspace scope: `role.assign` is the
+/// authority to grant an existing role, `role.manage` the authority to author
+/// one.
 ///
-/// Using `role.manage` is the reading the registry supports today. Adding a
-/// `role.assign` would change a closed set, which is a decision and not a
-/// detail — hence the tracker row rather than a new constant here.
+/// Before that decision the registry had only `role.manage` above project
+/// scope, so a workspace-level assigner had to hold the right to author roles
+/// as well — which meant anyone who could assign could mint a role with more
+/// power than their own and grant it to themselves. Control 1 below still
+/// forbids granting a permission the actor does not hold, so the hole was
+/// narrow; it was a hole nonetheless, and it sat where the most privileged
+/// actors are.
 fn assign_permission_for(scope: &Scope) -> Permission {
     match scope {
-        Scope::Workspace(_) | Scope::Team(_) => casual_task_model::permission::ROLE_MANAGE,
+        Scope::Workspace(_) | Scope::Team(_) => casual_task_model::permission::ROLE_ASSIGN,
         Scope::Project(_) | Scope::Environment(_) => {
             casual_task_model::permission::PROJECT_ROLE_ASSIGN
         }
@@ -255,6 +258,65 @@ mod tests {
                 &[held],
             ),
             Err(Refusal::ExceedsScopeCeiling)
+        );
+    }
+
+    #[test]
+    fn a_workspace_assigner_does_not_need_the_right_to_author_roles() {
+        // D-049, and the test that would have failed before it. Holding only
+        // `role.assign`, this actor could not have assigned anything at
+        // workspace scope while `role.manage` was the assign permission there.
+        let (w, actor) = (WorkspaceId::new(), UserId::new());
+        let held = holding(
+            w,
+            actor,
+            Scope::Workspace(w),
+            vec![perm::ROLE_ASSIGN, perm::TASK_UPDATE],
+        );
+        let proposed = ProposedAssignment {
+            principal: Principal::User(UserId::new()),
+            scope: Scope::Workspace(w),
+            role_permissions: vec![perm::TASK_UPDATE],
+        };
+
+        assert_eq!(
+            may_assign(
+                &Actor::user(actor),
+                &proposed,
+                &ResourceScopes::workspace(w),
+                &ResourceFacts::default(),
+                &[held],
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_workspace_assigner_cannot_hand_out_the_authority_to_author_roles() {
+        // The other half, and the reason the split is worth a migration. An
+        // assigner who could grant `role.manage` could author a role with more
+        // power than their own on the next request — escalation in two steps
+        // instead of one, which is not a meaningful difference.
+        let (w, actor) = (WorkspaceId::new(), UserId::new());
+        let held = holding(w, actor, Scope::Workspace(w), vec![perm::ROLE_ASSIGN]);
+        let proposed = ProposedAssignment {
+            principal: Principal::User(UserId::new()),
+            scope: Scope::Workspace(w),
+            role_permissions: vec![perm::ROLE_MANAGE],
+        };
+
+        assert_eq!(
+            may_assign(
+                &Actor::user(actor),
+                &proposed,
+                &ResourceScopes::workspace(w),
+                &ResourceFacts::default(),
+                &[held],
+            ),
+            Err(Refusal::ExceedsGrantCeiling {
+                missing: perm::ROLE_MANAGE
+            }),
+            "an actor holding only role.assign handed out role.manage"
         );
     }
 
