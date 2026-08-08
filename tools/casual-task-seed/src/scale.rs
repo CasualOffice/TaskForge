@@ -11,15 +11,32 @@
 
 use clap::ValueEnum;
 
+/// Measured footprints, so a scale can be chosen without discovering its cost
+/// afterwards. Apple M4, release build; the byte counts are deterministic, the
+/// times are not.
+///
+/// | scale | rows | on disk | generate | peak RSS |
+/// | --- | ---: | ---: | ---: | ---: |
+/// | `tiny` | 19,964 | 5.4 MiB | 0.1 s | ~13 MiB |
+/// | `small` | 976,914 | 263 MiB | 0.4 s | ~13 MiB |
+/// | `reference` | 38,981,941 | **10.2 GiB** | 18 s | ~26 MiB |
+///
+/// Memory is flat because rows stream to disk as they are generated; **disk is
+/// not**. A `reference` run needs 10.2 GiB free before PostgreSQL has seen any
+/// of it, and the load then wants comparable space again for the heap and
+/// indexes. Write errors surface when the files are flushed, so a full disk is
+/// reported at the end of a run rather than the moment it happens, and the
+/// partial corpus stays on disk until the next run replaces it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Scale {
-    /// ~1,000 tasks. Loads in seconds; used by CI to prove the corpus still
-    /// satisfies every constraint.
+    /// ~1,000 tasks, ~5 MiB. Loads in seconds; used by CI to prove the corpus
+    /// still satisfies every constraint.
     Tiny,
-    /// ~50,000 tasks. Enough rows for an index to be chosen over a sequential
-    /// scan, which `Tiny` cannot guarantee.
+    /// ~50,000 tasks, ~263 MiB. Enough rows for an index to be chosen over a
+    /// sequential scan, which `Tiny` cannot guarantee.
     Small,
-    /// The gated corpus. 2,000,000 tasks.
+    /// The gated corpus. 2,000,000 tasks — 39 M rows and **10.2 GiB** of `COPY`
+    /// text. Check free space before running it.
     Reference,
 }
 

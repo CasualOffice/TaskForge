@@ -103,6 +103,12 @@ fn main() -> Result<()> {
     .context("writing the loader")?;
 
     report(&args, &plan, &counts, started.elapsed());
+    // Printed last and to stderr, so it survives `| head` and is visible in a
+    // log where the count table has scrolled past. A corpus that quietly came
+    // up short is the failure this exists to prevent.
+    for note in &world.notes {
+        eprintln!("warning: {note}");
+    }
     Ok(())
 }
 

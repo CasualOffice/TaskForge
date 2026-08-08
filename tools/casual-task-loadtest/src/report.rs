@@ -119,9 +119,18 @@ pub struct CaseResult {
     /// The p99 is still reported — suppressing it would hide data — but a
     /// reader is told not to draw a conclusion from it.
     pub p99_confident: bool,
-    /// Rows the query returned on its final iteration. A case that suddenly
-    /// returns zero rows gets faster and would otherwise read as an
-    /// improvement; this is how that shows up in review.
+    /// Rows the query returned, probed **once before warm-up** and copied into
+    /// every case.
+    ///
+    /// A case that suddenly returns zero rows gets faster and would otherwise
+    /// read as an improvement; [`crate::compare`] blocks on that rather than
+    /// leaving it to review.
+    ///
+    /// The limitation, since the field is the signal for exactly this: a single
+    /// probe cannot see a result set that empties *partway through* a run. It
+    /// compares corpora, not iterations. Catching mid-run drift would mean
+    /// re-probing after the last measured round, which is worth doing if a case
+    /// is ever observed to drift.
     pub rows_returned: i64,
 }
 

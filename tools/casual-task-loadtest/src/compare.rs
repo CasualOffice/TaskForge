@@ -240,6 +240,26 @@ pub fn compare(baseline: &Report, report: &Report, tolerance: f64, noise_floor_u
             .blockers
             .push(format!("--tolerance {tolerance} is outside 0.0..=10.0"));
     }
+    // `--tolerance` was bounded and `--noise-floor-us` was not, which made the
+    // second one a silent off switch: any large value excuses every case, each
+    // verdict prints as "under noise floor", and the run exits 0. Bound it
+    // against the smallest baseline p95, because the floor exists for cases
+    // whose 10% is smaller than a scheduler tick — not for the slow ones it
+    // would otherwise hide.
+    if let Some(smallest) = baseline
+        .cases
+        .iter()
+        .map(|c| c.p95_us)
+        .filter(|p| *p > 0)
+        .min()
+        && noise_floor_us > smallest
+    {
+        outcome.blockers.push(format!(
+            "--noise-floor-us {noise_floor_us} exceeds the smallest baseline p95 \
+             ({smallest} µs), so it would excuse an arbitrarily large regression on \
+             every case. It exists for cases where 10% is below scheduling noise"
+        ));
+    }
 
     for base_case in &baseline.cases {
         let Some(now) = report.case(&base_case.id) else {
@@ -312,10 +332,15 @@ pub fn compare(baseline: &Report, report: &Report, tolerance: f64, noise_floor_u
 
 fn print_outcome(args: &CompareArgs, baseline: &Report, report: &Report, outcome: &Outcome) {
     println!(
-        "environment {} · corpus {} · tolerance {:.0}% · baseline {} · report {}",
+        // The noise floor is printed even when it is zero. A reader of a CI log
+        // must be able to see whether the gate was softened without going to
+        // find the invocation.
+        "environment {} · corpus {} · tolerance {:.0}% · noise floor {} µs · \
+         baseline {} · report {}",
         report.environment,
         report.corpus.scale,
         args.tolerance * 100.0,
+        args.noise_floor_us,
         args.baseline.display(),
         args.report.display()
     );
@@ -531,10 +556,33 @@ mod tests {
             EXIT_REGRESSION
         );
 
-        let excused = compare(&base, &now, DEFAULT_TOLERANCE, 250);
+        // 25 µs: below the 60 µs baseline, so it is a floor rather than an off
+        // switch, and still large enough to absorb the +20 µs move.
+        let excused = compare(&base, &now, DEFAULT_TOLERANCE, 25);
         assert_eq!(excused.exit_code(), 0);
         assert!(excused.verdicts[0].excused_by_noise_floor);
         assert!(!excused.verdicts[0].regressed);
+    }
+
+    #[test]
+    fn a_noise_floor_larger_than_the_smallest_baseline_is_refused() {
+        // `--tolerance` was bounded and this was not, which made it a silent
+        // off switch: a large enough value excuses every case, every verdict
+        // reads "under noise floor", and the run exits 0 with nothing in the
+        // log to say the gate had been softened.
+        let base = measured(fixture("ref", "reduced", &[("a", 60), ("b", 90_000)]));
+        let now = fixture("ref", "reduced", &[("a", 6_000), ("b", 900_000)]);
+
+        let outcome = compare(&base, &now, DEFAULT_TOLERANCE, 1_000_000);
+        assert_eq!(outcome.exit_code(), EXIT_NOT_COMPARABLE);
+        assert!(
+            outcome
+                .blockers
+                .iter()
+                .any(|b| b.contains("noise-floor-us")),
+            "{:?}",
+            outcome.blockers
+        );
     }
 
     #[test]

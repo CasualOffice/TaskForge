@@ -65,6 +65,10 @@ pub struct World {
     pub projects: Vec<Project>,
     /// Workspace-scoped tags, most popular first.
     pub workspace_tags: Vec<Uuid>,
+    /// Ways this corpus fell short of its plan. Empty is the normal case;
+    /// anything here is printed by `main` rather than left for a reader to
+    /// discover by comparing counts.
+    pub notes: Vec<String>,
 }
 
 /// Status sets for the five shipped workflows. The first is the default from
@@ -175,7 +179,7 @@ pub fn build(sink: &mut Sink, plan: &Plan, seed: u64, now: i64) -> World {
     );
     let workspace_tags = build_tags(sink, &mut det, plan, workspace_id, &mut projects);
 
-    build_role_assignments(
+    let role_assignments = build_role_assignments(
         sink,
         &mut det,
         plan,
@@ -188,6 +192,17 @@ pub fn build(sink: &mut Sink, plan: &Plan, seed: u64, now: i64) -> World {
             now,
         },
     );
+    let mut notes = Vec::new();
+    if role_assignments < plan.role_assignments {
+        notes.push(format!(
+            "role_assignment: {role_assignments} written against a plan of {}. The \
+             distinct (project, member) pairs this scale produces are fewer than the \
+             plan asks for; the corpus is valid but its authorization graph is thinner \
+             than the plan implies, which is what permission_resolution_cold and \
+             accessible_projects measure.",
+            plan.role_assignments
+        ));
+    }
 
     World {
         workspace_id,
@@ -197,6 +212,7 @@ pub fn build(sink: &mut Sink, plan: &Plan, seed: u64, now: i64) -> World {
         workflows,
         projects,
         workspace_tags,
+        notes,
     }
 }
 
@@ -782,7 +798,23 @@ struct GrantCtx<'a> {
 /// count: a few workspace-wide grants, one or two managers per project, and a
 /// long tail of project-scoped members — including grants to teams, which is
 /// what makes principal expansion cost anything at all.
-fn build_role_assignments(sink: &mut Sink, det: &mut Det, plan: &Plan, ctx: &GrantCtx<'_>) {
+/// Returns how many grants were written, which is **not** always
+/// `plan.role_assignments`.
+///
+/// The tail draws distinct `(project, member)` pairs, and the number available
+/// is `sum over projects of member_target` — a function of the project-size
+/// distribution, not of the plan. At `--scale small` that space is 240 pairs
+/// against a plan of 400, so the loop exhausts its attempt budget and returns
+/// short. It used to return short *silently*, and `role_assignment` cardinality
+/// is exactly what the `permission_resolution_cold` and `accessible_projects`
+/// load-test cases measure — so a reader of that corpus would have been
+/// measuring an authorization graph 20% thinner than the manifest implied.
+fn build_role_assignments(
+    sink: &mut Sink,
+    det: &mut Det,
+    plan: &Plan,
+    ctx: &GrantCtx<'_>,
+) -> usize {
     let mut seen: HashSet<(u8, Uuid, Uuid, u8, Uuid)> = HashSet::new();
     let mut written = 0usize;
     let granter = ctx.users[0].id;
@@ -867,6 +899,7 @@ fn build_role_assignments(sink: &mut Sink, det: &mut Det, plan: &Plan, ctx: &Gra
         let (pid, uid) = (p.id, ctx.users[u].id);
         written += usize::from(emit(det, 0, uid, role, (2, pid), constraints));
     }
+    written
 }
 
 #[cfg(test)]
