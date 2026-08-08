@@ -27,10 +27,10 @@ attachments · plugin secrets.
 
 | Threat | Control |
 | --- | --- |
-| Cross-tenant access | `WorkspaceScope` type + RLS backstop; cross-tenant property test over every endpoint ([32](32-TENANCY-AND-ISOLATION.md)) |
+| Cross-tenant access | `WorkspaceScope` type + RLS backstop; cross-tenant property test over every endpoint ([32](32-TENANCY-AND-ISOLATION.md)). **One deliberate exception:** the pre-workspace credential lookup runs through a fixed `SECURITY DEFINER` projection, because authentication precedes knowing the workspace (ADR-032). Its definition is gate-asserted, not assumed |
 | Privilege escalation | Grant and scope ceilings; self-elevation block; last-owner protection; escalation test suite ([04](04-RBAC-AND-AUTHORIZATION.md)) |
 | Broken object-level authz | No `TASK` scope ⇒ permissions are uniform per project; filters compile with the permission predicate injected, not supplied ([27](27-FILTER-AND-SAVED-VIEW-DSL.md)) |
-| Credential theft | Argon2id at rest; tokens stored hashed; opaque revocable sessions; MFA ([40](40-IDENTITY-AUTH-AND-SESSION.md)) |
+| Credential theft | Argon2id for **passwords**; tokens and sessions are selector/verifier with a per-row-salted verifier hash and **no server-held key** (ADR-032); opaque revocable sessions, never cached; MFA ([40](40-IDENTITY-AUTH-AND-SESSION.md)) |
 | Session hijack | `HttpOnly` `Secure` `SameSite`; rotation on privilege change; CSRF double-submit |
 | Account enumeration | Identical responses for login, reset, and invite regardless of account existence |
 | SQL injection | All SQL is `sqlx::query!` with bind parameters; filter compiler emits no user-derived strings; property-tested |
@@ -40,10 +40,51 @@ attachments · plugin secrets.
 | Malicious plugin | Scopes + consent + installer ceiling; out-of-process; timeouts; circuit breakers; quotas ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)) |
 | DoS | Every input bounded ([21](21-API-LIMITS-AND-QUOTAS.md)); cheap-checks-first ordering; load shedding order defined |
 | Insider misuse | Audit including `permission.denied`; admin actions audited; export available |
-| Supply chain | `cargo-deny`; lockfiles committed; SBOM per release; signed releases; pinned base images |
+| Supply chain | `cargo-deny` (gated); lockfiles committed; SBOM and build provenance attested per release; base images pinned **by tag, not digest** — see finding 3 |
 | Data loss | PITR backups; verified restore drills each phase; staged deletion with grace periods |
 
+| Outbound mail | **Not yet controlled.** Notification subjects carry task titles ([29](29-NOTIFICATIONS-AND-DELIVERY.md)) and `TF_SMTP_PASS` crosses the same connection; STARTTLS and certificate verification are required by decision but not yet implemented (D-046) |
+
 The threat model is reviewed at each phase gate, not written once.
+
+### Review — Phase 0 gate, 2026-08-08
+
+**Conducted by:** Claude (AI agent), against the implemented tree at commit
+`580e8b0`. **This is not a substitute for a human security review or a
+penetration test**, and it should be countersigned before the Phase 1 gate. It
+is a design-and-documentation review: every row above was checked against what
+the repository actually contains, and the checkable claims were executed rather
+than read.
+
+Six findings. Three are fixed in the table above; three are tracked.
+
+1. **The credential-theft row was stale by one day.** It read "Argon2id at rest;
+   tokens stored hashed". ADR-032 replaced that with selector/verifier and
+   confined Argon2id to passwords. **Fixed above.**
+2. **The cross-tenant row did not mention its own exception.** ADR-032 accepts a
+   `SECURITY DEFINER` function that deliberately bypasses the RLS backstop for
+   pre-workspace lookup. A threat model is the first place someone looks for
+   "what protects tenant data", so an unlisted hole is the worst place for one.
+   **Fixed above**, with the gate condition named.
+3. **"Pinned base images" was not true.** `rust:1.96-slim-bookworm` and
+   `gcr.io/distroless/cc-debian12:nonroot` are **mutable tags**: the content
+   behind them can change without any change here, which is the supply-chain
+   substitution this row exists to prevent. Digest pinning is the fix, and the
+   cost — a bot or a human must bump digests for security updates — is why it is
+   recorded as a decision (**D-048**) rather than changed unilaterally. Row
+   amended to say what is actually true today.
+4. **Outbound mail was absent from the model entirely.** Notification subjects
+   carry task titles and the relay password crosses the same connection. **Row
+   added**; controls tracked as D-046.
+5. **Verified as claimed, not assumed:** `cargo-deny` runs and passes in CI;
+   `Cargo.lock` and `pnpm-lock.yaml` are committed; `release.yml` emits an SBOM
+   and attests build provenance; the runtime image is distroless and non-root.
+6. **One control became real since the model was written.** "No `TASK` scope ⇒
+   permissions are uniform per project" is now structural rather than
+   documented: `ScopeType` has no `Task` variant and `casual-task-authz` cannot
+   express one (C-003). Most other rows remain **designed, not implemented** —
+   XSS, SSRF, malicious upload and malicious plugin all await Phases 1–3, and
+   the model should not be read as describing running defences.
 
 ## Security baseline
 
