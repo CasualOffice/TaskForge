@@ -27,9 +27,14 @@ pub const TIME_COST: u32 = 3;
 /// Parallelism (lanes). `docs/40`: **p=4**.
 pub const PARALLELISM: u32 = 4;
 
-/// The minimum password length. `docs/40`: "No composition rules beyond a
-/// 12-character minimum. Rules produce `Password1!`; length and a breach check
-/// produce better passwords."
+/// The minimum length of a **human-chosen** password. `docs/40`: "No
+/// composition rules beyond a 12-character minimum. Rules produce
+/// `Password1!`; length and a breach check produce better passwords."
+///
+/// Enforced by [`hash_chosen`], which is the only way a chosen password enters
+/// the system. A rule checked at each call site is a rule the next endpoint
+/// forgets — and this constant existed for a while enforcing nothing at all,
+/// which is how that starts.
 pub const MIN_LENGTH: usize = 12;
 
 /// The configured hasher.
@@ -59,9 +64,41 @@ pub enum PasswordError {
     /// Hashing itself failed.
     #[error("hashing failed: {0}")]
     Hashing(String),
+    /// A chosen password is shorter than [`MIN_LENGTH`].
+    #[error("a password must be at least {minimum} characters")]
+    TooShort { minimum: usize },
 }
 
-/// Hash a password for storage.
+/// Hash a password a **human chose**, enforcing [`MIN_LENGTH`].
+///
+/// Use this for anything a person types in. [`hash_generated`] is for secrets
+/// this system produced, where the length rule is meaningless — a ten-character
+/// recovery code from a CSPRNG has more entropy than a twelve-character
+/// password from a person, and rejecting it would be enforcing the rule against
+/// the wrong thing.
+///
+/// Two functions rather than one with a flag: a boolean argument at a call site
+/// is a decision nobody reads, and this one decides whether a policy applies.
+///
+/// # Errors
+///
+/// [`PasswordError::TooShort`] below [`MIN_LENGTH`], or
+/// [`PasswordError::Hashing`] if the KDF fails.
+pub fn hash_chosen(password: &str) -> Result<String, PasswordError> {
+    // Characters, not bytes. `password.len()` is bytes, so a twelve-character
+    // passphrase in a non-Latin script would pass a byte check trivially while
+    // a shorter one in Latin script would not — the rule would then mean
+    // different things in different languages.
+    if password.chars().count() < MIN_LENGTH {
+        return Err(PasswordError::TooShort {
+            minimum: MIN_LENGTH,
+        });
+    }
+    hash_generated(password)
+}
+
+/// Hash a secret **this system generated** — a recovery code, a seeded
+/// credential. No length policy: see [`hash_chosen`].
 ///
 /// Returns a PHC string, so the parameters travel with the hash and raising the
 /// cost later does not invalidate existing passwords.
@@ -69,12 +106,46 @@ pub enum PasswordError {
 /// # Errors
 ///
 /// [`PasswordError::Hashing`] if the KDF fails.
-pub fn hash(password: &str) -> Result<String, PasswordError> {
+pub fn hash_generated(password: &str) -> Result<String, PasswordError> {
     let salt = SaltString::generate(&mut OsRng);
     hasher()
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| PasswordError::Hashing(e.to_string()))
+}
+
+/// Whether `password` matches `stored`, **off the async runtime**.
+///
+/// Argon2id at 64 MB and t=3 is ~100 ms of pure CPU with no I/O. Run inline on
+/// a tokio worker thread it blocks that thread for the whole time: with the
+/// default worker count, a handful of concurrent logins stalls *every* task on
+/// the runtime, including health checks and requests that touch nothing.
+///
+/// # Errors
+///
+/// [`PasswordError::MalformedHash`], or the blocking pool failing.
+pub async fn verify_async(password: &str, stored: &str) -> Result<bool, PasswordError> {
+    let password = password.to_owned();
+    let stored = stored.to_owned();
+    tokio::task::spawn_blocking(move || verify(&password, &stored))
+        .await
+        .unwrap_or(Err(PasswordError::Hashing(
+            "the blocking pool failed".into(),
+        )))
+}
+
+/// Hash a chosen password off the async runtime. See [`verify_async`].
+///
+/// # Errors
+///
+/// [`PasswordError::TooShort`], [`PasswordError::Hashing`].
+pub async fn hash_chosen_async(password: &str) -> Result<String, PasswordError> {
+    let password = password.to_owned();
+    tokio::task::spawn_blocking(move || hash_chosen(&password))
+        .await
+        .unwrap_or(Err(PasswordError::Hashing(
+            "the blocking pool failed".into(),
+        )))
 }
 
 /// Whether `password` matches `stored`.
@@ -139,15 +210,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_chosen_password_below_the_minimum_is_refused() {
+        // docs/40's 12-character minimum. It was a constant nothing referenced
+        // until this test existed, which is the same as not having the rule.
+        assert_eq!(
+            hash_chosen("short").err(),
+            Some(PasswordError::TooShort {
+                minimum: MIN_LENGTH
+            })
+        );
+        assert_eq!(
+            hash_chosen(&"a".repeat(MIN_LENGTH - 1)).err(),
+            Some(PasswordError::TooShort {
+                minimum: MIN_LENGTH
+            })
+        );
+        assert!(hash_chosen(&"a".repeat(MIN_LENGTH)).is_ok());
+    }
+
+    #[test]
+    fn the_minimum_counts_characters_not_bytes() {
+        // Twelve characters of a multi-byte script is 24+ bytes. A byte check
+        // would accept four characters of it while rejecting eleven Latin ones,
+        // so the rule would mean something different per language.
+        let eleven = "ありがとうございます!";
+        assert_eq!(eleven.chars().count(), 11);
+        assert!(eleven.len() > MIN_LENGTH, "the byte length is not the test");
+        assert!(
+            hash_chosen(eleven).is_err(),
+            "an 11-character password passed because its BYTE length was over 12"
+        );
+    }
+
+    #[test]
+    fn a_generated_secret_has_no_length_policy() {
+        // A recovery code is ten characters from a CSPRNG — more entropy than a
+        // twelve-character human password. Applying the rule here would enforce
+        // it against the wrong thing.
+        assert!(hash_generated("SHORT12345").is_ok());
+    }
+
+    #[test]
     fn a_password_verifies_against_its_own_hash() {
-        let stored = hash("correct horse battery staple").expect("hashes");
+        let stored = hash_chosen("correct horse battery staple").expect("hashes");
         assert!(verify("correct horse battery staple", &stored).expect("parses"));
         assert!(!verify("Correct horse battery staple", &stored).expect("parses"));
     }
 
     #[test]
     fn the_stored_hash_does_not_contain_the_password() {
-        let stored = hash("hunter2").expect("hashes");
+        let stored = hash_generated("hunter2").expect("hashes");
         assert!(!stored.contains("hunter2"));
     }
 
@@ -155,8 +267,8 @@ mod tests {
     fn the_same_password_hashes_differently_each_time() {
         // Per-hash salt. Without it, a dump shows which accounts share a
         // password — which is most of the value of a dump.
-        let a = hash("same").expect("hashes");
-        let b = hash("same").expect("hashes");
+        let a = hash_generated("same").expect("hashes");
+        let b = hash_generated("same").expect("hashes");
         assert_ne!(a, b);
         assert!(verify("same", &a).expect("parses"));
         assert!(verify("same", &b).expect("parses"));
@@ -172,7 +284,7 @@ mod tests {
         assert_eq!(TIME_COST, 3);
         assert_eq!(PARALLELISM, 4);
 
-        let stored = hash("a password long enough").expect("hashes");
+        let stored = hash_chosen("a password long enough").expect("hashes");
         assert!(stored.contains("m=65536"), "{stored}");
         assert!(stored.contains("t=3"), "{stored}");
         assert!(stored.contains("p=4"), "{stored}");
@@ -199,7 +311,7 @@ mod tests {
     fn the_hash_carries_its_parameters() {
         // A PHC string, so raising the cost later does not invalidate every
         // existing password.
-        let stored = hash("x").expect("hashes");
+        let stored = hash_generated("x").expect("hashes");
         assert!(stored.starts_with("$argon2id$"), "{stored}");
         assert!(stored.contains("m="), "no memory parameter: {stored}");
     }

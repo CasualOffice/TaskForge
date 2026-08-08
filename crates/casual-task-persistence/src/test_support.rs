@@ -99,6 +99,28 @@ pub async fn lockout_state(
     })
 }
 
+/// Lock an account for a fixed interval, so a test can assert what happens
+/// *during* a backoff without depending on how long the real ladder's first
+/// rung is.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn lock_account(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    interval: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE user_credential SET locked_until = now() + $2::interval WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .bind(interval)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Clear a backoff, simulating its expiry.
 ///
 /// # Errors
@@ -106,6 +128,62 @@ pub async fn lockout_state(
 /// Any database error.
 pub async fn clear_lockout(pool: &sqlx::PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE user_credential SET locked_until = NULL WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Insert an API token. Returns nothing; the caller keeps the presented value.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_api_token(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    principal_id: Uuid,
+    principal_type: &str,
+    selector: &str,
+    verifier_hash: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO api_token
+             (id, workspace_id, principal_type, principal_id, token_selector,
+              verifier_hash, name)
+         VALUES ($1,$2,$3::principal_type,$4,$5,$6,'test')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(principal_type)
+    .bind(principal_id)
+    .bind(selector)
+    .bind(verifier_hash)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Mark a user tombstoned (deactivated).
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn tombstone_user(pool: &sqlx::PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE user_account SET is_tombstone = true WHERE id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Move a credential's `changed_at` forward, as a password change would.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn mark_password_changed(pool: &sqlx::PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE user_credential SET changed_at = now() WHERE user_id = $1")
         .bind(user_id)
         .execute(pool)
         .await?;

@@ -60,7 +60,7 @@ async fn seed(pool: &sqlx::PgPool, email: &str) -> Result<Uuid> {
         pool,
         id,
         email,
-        &password::hash(PASSWORD).expect("hashes"),
+        &password::hash_chosen(PASSWORD).expect("hashes"),
     )
     .await?;
     Ok(id)
@@ -429,5 +429,159 @@ async fn an_error_body_carries_the_same_request_id_as_the_header() -> Result<()>
              other"
         );
     }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_token_issued_for_one_workspace_does_not_work_in_another() -> Result<()> {
+    // The bug this was written for: the token's own workspace was discarded and
+    // the client's X-Workspace-Id header was trusted, so a token for A worked
+    // in B whenever its owner was a member of B.
+    let db = schema_harness::TestDatabase::start().await?;
+    let user = seed(&db.pool, "alice@example.com").await?;
+    let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
+    for (id, slug) in [(a, "alpha"), (b, "beta")] {
+        test_support::insert_workspace(&db.pool, id, slug).await?;
+        test_support::add_workspace_member(&db.pool, id, user).await?;
+    }
+
+    let minted = casual_task_identity::credential::mint()?;
+    let (selector, _) =
+        casual_task_identity::credential::split(&minted.presented).expect("well formed");
+    test_support::insert_api_token(&db.pool, a, user, "USER", selector, &minted.verifier_hash)
+        .await?;
+
+    let app = app_with_protected_route(db.pool.clone());
+    let call = |workspace: Uuid| {
+        let app = app.clone();
+        let bearer = format!("Bearer {}", minted.presented);
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .uri("/test/workspace")
+                    .header(header::AUTHORIZATION, bearer)
+                    .header(WORKSPACE_HEADER, workspace.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+        }
+    };
+
+    assert_eq!(
+        call(a).await?.status(),
+        StatusCode::OK,
+        "the token failed in its own workspace"
+    );
+    assert_eq!(
+        call(b).await?.status(),
+        StatusCode::NOT_FOUND,
+        "a token issued for workspace A authenticated for workspace B"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_forged_token_verifier_is_refused() -> Result<()> {
+    // Without this, the verifier comparison in the bearer branch could be
+    // deleted and every other test still passed.
+    let db = schema_harness::TestDatabase::start().await?;
+    let user = seed(&db.pool, "alice@example.com").await?;
+    let workspace = Uuid::now_v7();
+    test_support::insert_workspace(&db.pool, workspace, "alpha").await?;
+    test_support::add_workspace_member(&db.pool, workspace, user).await?;
+
+    let minted = casual_task_identity::credential::mint()?;
+    let (selector, _) =
+        casual_task_identity::credential::split(&minted.presented).expect("well formed");
+    test_support::insert_api_token(
+        &db.pool,
+        workspace,
+        user,
+        "USER",
+        selector,
+        &minted.verifier_hash,
+    )
+    .await?;
+
+    let response = app_with_protected_route(db.pool.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/test/workspace")
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {selector}.{}", "0".repeat(48)),
+                )
+                .header(WORKSPACE_HEADER, workspace.to_string())
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_tombstoned_account_cannot_log_in() -> Result<()> {
+    // The is_tombstone filter in credential_for_email had no test; it could be
+    // deleted silently and a deactivated user would keep signing in.
+    let db = schema_harness::TestDatabase::start().await?;
+    let user = seed(&db.pool, "gone@example.com").await?;
+    test_support::tombstone_user(&db.pool, user).await?;
+
+    let response = app_with_protected_route(db.pool.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "email": "gone@example.com", "password": PASSWORD })
+                        .to_string(),
+                ))?,
+        )
+        .await?;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_password_change_invalidates_existing_sessions() -> Result<()> {
+    // docs/40 requires it and live_session implements it, but nothing exercised
+    // the clause — it could have been deleted with every test still green.
+    let db = schema_harness::TestDatabase::start().await?;
+    let user = seed(&db.pool, "user@example.com").await?;
+    let app = app_with_protected_route(db.pool.clone());
+    let (cookie, _) = login(&app, "user@example.com").await?;
+
+    let before = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/session")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(before.status(), StatusCode::OK);
+
+    test_support::mark_password_changed(&db.pool, user).await?;
+
+    let after = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/session")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(
+        after.status(),
+        StatusCode::UNAUTHORIZED,
+        "a session created before the password changed still works"
+    );
     Ok(())
 }

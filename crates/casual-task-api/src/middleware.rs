@@ -48,6 +48,14 @@ pub struct Authenticated {
     /// The session row, when the credential was a session cookie. `None` for a
     /// bearer token, which has no session.
     pub session_id: Option<uuid::Uuid>,
+    /// The workspace the credential was **issued for**, when it is a token.
+    ///
+    /// `docs/40` §Tokens: a token is "scoped to one workspace". Carrying it
+    /// here is what stops the client choosing the workspace: a token issued for
+    /// A presented with `X-Workspace-Id: B` used to authenticate for B, because
+    /// this field did not exist and `WorkspaceMember` trusted the header alone.
+    /// A session has no workspace — a person spans them — so it is `None`.
+    pub token_workspace: Option<uuid::Uuid>,
 }
 
 /// A caller who is a member of a specific workspace.
@@ -115,6 +123,7 @@ async fn authenticate(
                         actor_id: UserId::from_uuid(session.user_id),
                         actor_type: ActorType::User,
                         session_id: Some(session.id),
+                        token_workspace: None,
                     });
                 }
             }
@@ -162,6 +171,7 @@ async fn authenticate(
                         actor_id: UserId::from_uuid(token.principal_id),
                         actor_type,
                         session_id: None,
+                        token_workspace: Some(token.workspace_id),
                     });
                 }
             }
@@ -195,6 +205,30 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             // requires "absent" and "invisible" to be indistinguishable, and a
             // 400 here would confirm the header is the way in.
             .ok_or_else(|| ApiError::not_found(&request_id))?;
+
+        // A token is bound to the workspace it was issued for. Without this the
+        // client's X-Workspace-Id header decided, so a token for A worked in B
+        // whenever its owner was a member of B.
+        if let Some(issued_for) = actor.token_workspace
+            && issued_for != workspace
+        {
+            return Err(ApiError::not_found(&request_id));
+        }
+
+        // A service account has no membership row; its token scope, checked
+        // above, is the whole authority.
+        if matches!(
+            actor.actor_type,
+            ActorType::ServiceAccount | ActorType::Plugin
+        ) {
+            return Ok(Self {
+                context: AuthContext::authenticated(
+                    actor.actor_id,
+                    WorkspaceId::from_uuid(workspace),
+                    actor.actor_type,
+                ),
+            });
+        }
 
         let member = identity::is_workspace_member(&mut conn, actor.actor_id.as_uuid(), workspace)
             .await

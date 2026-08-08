@@ -38,7 +38,7 @@ async fn seed_user(pool: &sqlx::PgPool, email: &str) -> Result<Uuid> {
         pool,
         id,
         email,
-        &password::hash(PASSWORD).expect("hashes"),
+        &password::hash_chosen(PASSWORD).expect("hashes"),
     )
     .await?;
     Ok(id)
@@ -284,32 +284,34 @@ async fn repeated_failures_back_off_without_locking_the_account_forever() -> Res
             .await?;
     }
 
-    let state = test_support::lockout_state(&db.pool, user).await?;
-    assert!(state.locked, "five failures did not produce any backoff");
-
-    // FEWER than five, and that is the point. Once the backoff starts, further
-    // attempts are refused WITHOUT counting — otherwise anyone could hold a
-    // victim's account locked indefinitely by guessing at it forever, which is
-    // the denial of service docs/40 §Acceptance gates rules out ("without
-    // locking a legitimate user out permanently"). The counter advances only on
-    // attempts the server actually evaluated.
+    let locked = test_support::lockout_state(&db.pool, user).await?;
+    assert!(locked.locked, "five failures did not produce any backoff");
     assert!(
-        state.failed_attempts < 5,
-        "attempts made during a backoff window still counted ({}), so an attacker can \
-         extend a stranger's lockout at will",
-        state.failed_attempts
-    );
-    assert!(
-        state.failed_attempts >= 4,
-        "the backoff started too late ({})",
-        state.failed_attempts
+        !locked.locked_beyond_an_hour,
+        "the lock is longer than an hour, which is a lockout under another name"
     );
 
-    // The lock expires on its own — it is a timestamp, never a flag. A boolean
-    // would be a denial of service anyone could trigger against a stranger.
-    assert!(
-        !state.locked_beyond_an_hour,
-        "the account is locked for more than an hour"
+    // Attempts made DURING a backoff must not advance the counter — otherwise
+    // anyone could hold a stranger's account locked indefinitely by guessing at
+    // it forever (docs/40: "without locking a legitimate user out permanently").
+    //
+    // The lock is set explicitly rather than inherited from the ladder: the
+    // real first rung is one second, and each attempt costs ~100 ms of Argon2,
+    // so a test that relied on it was deciding a security property by
+    // stopwatch. It failed under parallel execution, which is exactly how that
+    // kind of test gets deleted instead of fixed.
+    test_support::lock_account(&db.pool, user, "10 minutes").await?;
+    let before = test_support::lockout_state(&db.pool, user).await?;
+    for _ in 0..3 {
+        let _ = app(db.pool.clone())
+            .oneshot(login_request("user@example.com", "wrong"))
+            .await?;
+    }
+    let after = test_support::lockout_state(&db.pool, user).await?;
+    assert_eq!(
+        after.failed_attempts, before.failed_attempts,
+        "attempts during a backoff still counted, so an attacker can extend a \
+         stranger's lockout at will"
     );
 
     // And clearing the backoff lets the real password through again.

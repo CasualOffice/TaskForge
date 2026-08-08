@@ -28,6 +28,26 @@ Set-Cookie: tf_session=<opaque-256-bit>; HttpOnly; Secure; SameSite=Lax; Path=/
 
 **Opaque, server-side sessions. Deliberately not JWTs.**
 
+*Revisited 2026-08-09 and kept.* The proposal was the standard modern shape:
+the session row as a refresh token, short-lived JWTs as access tokens. It was
+weighed on what it would buy **here** rather than in general.
+
+What a JWT saves is the session lookup — one indexed primary-key read, ~0.1 ms
+against the 150 ms p95 budget in [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md),
+and signature verification is not free either. What it costs is the property
+this section exists for: an admin revoking access, or a person being removed
+from a workspace, keeps working until the access token expires.
+
+JWTs earn that trade when the verifier **cannot reach the session store** —
+several services, a separate auth service, verification at an edge. TaskForge is
+one binary plus PostgreSQL ([48](48-DEPLOYMENT-PROFILES.md) Profile 1) and every
+request already touches that database, so the saving is a fraction of a
+millisecond and the cost is a real revocation window.
+
+Machine credentials are the case where the trade does pay — they do not need
+human-immediate revocation. That option stays open for the token surface in
+[§Tokens](#tokens); it is not taken for browser sessions.
+
 A JWT cannot be revoked before it expires. In a product whose entire premise is
 explicit authority — where an admin revoking access expects it to *be* revoked —
 a 15-minute window in which a removed user still has a valid token is a
