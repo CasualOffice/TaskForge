@@ -19,8 +19,10 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > documents in `docs/`, 30 accepted ADRs, covering Phases 0 through 4). Landed
 > and gated: the Cargo workspace and its enforced dependency DAG, architecture
 > lints, the full database schema with row-level security proven against a real
-> PostgreSQL 16, and a deployable container image with a verified deployment
-> path.
+> PostgreSQL 16, a deployable container image with a verified deployment path,
+> a deterministic 2,000,000-task reference corpus, an `EXPLAIN` gate proving all
+> 20 read paths are index-served with no sequential scan, and the ADR-024 bundle
+> budget measured at 113.2 KiB of 200.
 >
 > **No product functionality exists yet** — the binaries are scaffolds, by
 > design. Phase 0 builds none; it exists to make every later phase verifiable.
@@ -52,7 +54,8 @@ modify.
   above five permanent semantic states, so reports, automations, and plugins keep
   working forever ([docs/23](docs/23-WORKFLOW-AND-STATE-MACHINE.md)).
 - **Nothing scans.** The filterable and sortable field set is **closed**, each
-  field has a named index, and CI asserts no sequential scan on a 2M-task corpus.
+  field has a named index, and CI asserts no sequential scan on any tenant-scale
+  table for all 20 read paths, on every pull request.
   A filter on an unlisted field is a `400`, not a slow query
   ([docs/26](docs/26-SEARCH-INDEXING-AND-QUERY.md)).
 - **Open for extension, closed for modification.** Adding a plugin never changes

@@ -92,17 +92,37 @@ blocks merge, and disabling one requires an ADR.
 Enforcing the architecture, not just style. Each corresponds to an invariant in
 [19](19-WORKSPACE-SCAFFOLD-DESIGN.md):
 
-| Lint | Rule |
-| --- | --- |
-| `no-sql-outside-persistence` | `sqlx::query*` only in `casual-task-persistence` |
-| `no-http-outside-api` | HTTP types only in `casual-task-api` |
-| `no-cross-domain-dep` | no domain crate depends on another domain crate |
-| `scope-required` | every repository method takes a `WorkspaceScope` |
-| `no-offset` | `OFFSET` is banned in application SQL |
-| `bounded-channels` | no unbounded channel constructor |
-| `no-io-in-transaction` | no HTTP/object-store client reachable from a transaction scope |
-| `cache-key-scoped` | every cache key constructor takes a `WorkspaceScope` |
-| `event-in-transaction` | handlers return events; they cannot publish directly |
+Run by the `architecture` job over `crates/` **and** `tools/`.
+
+| Lint | Rule | State |
+| --- | --- | --- |
+| `no-sql-outside-persistence` | `sqlx::query*` only in `casual-task-persistence` | enforced |
+| `no-http-outside-api` | HTTP types only in `casual-task-api` | enforced |
+| `no-cross-domain-dep` | no domain crate depends on another domain crate | enforced |
+| `scope-required` | every repository method takes a `WorkspaceScope` | enforced |
+| `auth-context-at-edge` | only `casual-task-api` may mint an `AuthContext` | enforced |
+| `no-offset` | `OFFSET` is banned in application SQL | enforced |
+| `bounded-channels` | no unbounded channel constructor | enforced — see below |
+| `no-io-in-transaction` | no HTTP/object-store client reachable from a transaction scope | **not built** — needs a transaction type to scope against (C-011) |
+| `cache-key-scoped` | every cache key constructor takes a `WorkspaceScope` | **not built** — there is no cache until C-003 |
+| `event-in-transaction` | handlers return events; they cannot publish directly | **not built** — needs the command layer (C-011) |
+
+The last three are listed because they are part of the design, and marked
+because a table that reads as nine enforced rules when six exist is exactly the
+kind of claim this document is supposed to make impossible.
+
+**`bounded-channels` is enforced twice, and the text lint is the weaker half.**
+Matching source text cannot see through an alias, a re-export, or a call split
+across two lines. The real gate is `clippy.toml`'s `disallowed-methods` and
+`disallowed-types`, which resolve paths after name resolution and fail the build
+with the reason attached — covering tokio, futures, crossbeam, flume,
+async-channel, and `std::sync::mpsc::channel`, which is unbounded by definition
+and contains the word "unbounded" nowhere. The same file bans `std::thread::sleep`
+and `Runtime::block_on` for the blocking-in-async anti-pattern in
+[30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md). Most of those paths do not resolve
+yet, because no async runtime is a dependency at Phase 0; clippy ignores an
+unresolved path, so each entry begins enforcing the moment its crate is added —
+which is the only moment it could still be added cheaply.
 
 These are the difference between an architecture document and an architecture.
 
@@ -151,9 +171,31 @@ Absolute thresholds fail on CI noise, get muted, and then protect nothing.
 Updating a baseline requires the PR to state why the regression is acceptable —
 which makes a deliberate trade visible and an accidental one obvious.
 
+## Pending gates
+
+The tables above are the **contract**: every row marked ✅ blocks merge once its
+harness exists. Some do not exist yet, and a ✅ beside a gate nobody runs is the
+single most misleading thing this document could contain. So they are listed
+here, with the tracker item that lands each one. `.github/workflows/ci.yml`
+points at this section, and the rule is: a gate is either a job in that file or
+a row in this table. Never neither.
+
+| Gate (from the tables above) | Lands with | Why not yet |
+| --- | --- | --- |
+| Latency (subset + full) | **F-007** | The harness and the comparison gate are built and tested. There is no baseline to compare against: `benchmarks/reference-8vcpu-32gb.reference.json` is a placeholder that no run can pass, because the docs/30 reference machine does not exist yet. |
+| Frontend lint (`eslint`) | **C-019** | `tsc --noEmit` runs today in `bundle-size`. There is no ESLint config, and no product code to lint. |
+| Frontend tests (Vitest), E2E (Playwright) | **C-018**, **C-019** | No product frontend exists; `webapp/` is the bundle-floor harness only. |
+| Integration (testcontainers) | **F-005** onward | The schema and query gates use a service container directly. The Rust-side harness arrives with the first repository. |
+| Query count (no N+1) | **C-012** | Needs a query layer to count. |
+| Permission matrix, escalation, cross-tenant | **C-004**, **C-005** | Phase 1. |
+| OpenAPI diff, event schema diff, plugin contract diff, error registry | Phase 1 | Nothing to diff until `/v1` and the registry exist. |
+| Secret scan, SAST, container scan, enumeration, injection, fuzz | Phase 1 | Tracked with the security work in [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md). |
+| Accessibility (axe, contrast) | **C-019** | Needs a shell to audit. |
+
 ## Future gates
 
-Gaps we know about, recorded rather than forgotten:
+Gaps we know about that are **not** yet designed into the tables above,
+recorded rather than forgotten:
 
 - Mutation testing on `casual-task-authz` — the highest-value place for it.
 - Chaos tests: database failover, object-store outage, plugin storm.

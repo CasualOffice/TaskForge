@@ -20,9 +20,9 @@ env:
 
 # Job names are the CI contract; see docs/15-CI-AND-RELEASE-GATES.md.
 #
-# Gates whose harnesses do not exist yet are listed in that document's
-# "Future gates" section and are added by their own Phase 0/1 tracker items —
-# explain-no-seq-scan (F-008), latency (F-007), bundle-size (F-012, C-019),
+# Gates whose harnesses do not exist yet are recorded in that document's
+# "Pending gates" section and are added by their own tracker items — latency
+# (F-007, waiting on a baseline measured on the docs/30 reference machine),
 # openapi-diff and error-registry (Phase 1), a11y (C-019), fuzz (Phase 1).
 # A gate is never silently omitted; it is either here or recorded as pending.
 jobs:
@@ -76,6 +76,80 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/verify-schema.sh
+
+  # docs/26 NFR-5 / ADR-011: no user-reachable query performs a sequential scan
+  # on a tenant-scale table. Every query in tests/explain/queries/ is planned as
+  # the NON-SUPERUSER taskforge_app role, because the RLS predicate migration
+  # 0010 attaches is a stable expression the planner cannot fold and it competes
+  # with the query's own quals for the index — planning as the owner would gate
+  # a query the product never issues.
+  #
+  # The corpus is tests/explain/seed.sql (~109k tasks), not the docs/30
+  # reference corpus: reference is ~10.5 GiB of COPY text before indexes (
+  # measured, see benchmarks/README.md) and does not fit a hosted runner, and
+  # docs/30 §Measurement is explicit that "PR runs use a reduced corpus for
+  # signal". This proves plan SHAPE; latency is F-007's job.
+  #
+  # No --allow-skip: an empty corpus is the dangerous case, because every
+  # assertion passes against a zero-page relation. The script exits 2 rather
+  # than report a guarantee nobody has.
+  explain-no-seq-scan:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tf
+          POSTGRES_PASSWORD: tf
+          POSTGRES_DB: tf
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tf"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TF_VERIFY_DSN: postgres://tf:tf@127.0.0.1:5432/tf
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify-queries.sh
+
+  # ADR-024's initial-chunk budget, measured rather than asserted. The gate is a
+  # separate process from the build on purpose (webapp/scripts/size-check.mjs):
+  # it can run against a downloaded artifact and cannot be defeated by a
+  # build-time flag. It fails on a MISSING measurement instead of treating one
+  # as a pass, which is the failure mode a bundle budget usually dies of.
+  #
+  # The lockfile is frozen because webapp/BUNDLE-FLOOR.md measured the floor
+  # moving 4.4% on a bundler major with no source change. A gate that fails a PR
+  # must not be that sensitive to an unrelated dependency bump.
+  bundle-size:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Types resolve
+        run: pnpm typecheck
+      - run: pnpm build
+      - name: Initial chunk within the ADR-024 budget
+        # Units are KiB. ADR-024 says "200 KB" without saying which, and the two
+        # readings differ by 4.7 KiB — 2.3% of the budget, enough to decide a
+        # borderline PR — so the gate states its unit rather than assuming one.
+        run: pnpm size-check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundle-report
+          path: webapp/dist/bundle-report.json
 
   docs:
     runs-on: ubuntu-latest

@@ -70,6 +70,37 @@ The documentation phase. All complete unless noted.
 | D-032 | Auth protocol ADR (session/token specifics) | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
+| D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Blocked** — Accept before C-011 |
+| D-039 | Connection pool sizing, acquisition timeout, exhaustion behaviour | [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) | **Blocked** — Accept before C-001 |
+| D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Blocked** — Accept before C-011 |
+| D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
+
+Four of those are new, opened by a Phase 0 audit of the concurrency and async
+design rather than by writing any code. They are recorded rather than resolved
+because each is a decision, and AGENTS.md forbids settling one silently in an
+implementation:
+
+- **D-038.** [25](25-EVENTS-OUTBOX-AND-AUDIT.md) describes dispatch as holding a
+  transaction open across consumer I/O, which pins a connection for the duration
+  of an HTTP call to a webhook endpoint. It specifies six consumers that are
+  "independently retried", but `outbox_event` carries one row-level state for all
+  of them, so one consumer's failure and another's success have nowhere to be
+  recorded separately. It also claims per-aggregate ordering with no mechanism
+  that provides it. Three related holes, one decision.
+- **D-039.** The exponential-backoff ladder in [25](25-EVENTS-OUTBOX-AND-AUDIT.md)
+  is unimplementable against the committed schema: `outbox_event` (migration
+  0007) has no next-attempt column, so "retry in 4 minutes" cannot be expressed
+  and the dispatch poll cannot exclude a row that is waiting. This one is
+  schema-visible and is cheapest to settle before the table has data in it.
+- **D-040.** [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) says "all queues are
+  bounded" without naming a bound or what happens when one is full. The bound is
+  now enforced mechanically — `clippy.toml` rejects every unbounded-channel
+  constructor by resolved path — but "bounded" without a policy for the full case
+  just moves the failure from an out-of-memory crash to an unspecified one.
+- **D-041.** No document describes cancellation or graceful shutdown: what
+  happens to an in-flight request, a half-dispatched outbox row, or a held
+  advisory lock when a pod is terminated. Retrofitting cancellation through a
+  codebase that never considered it is materially harder than designing it in.
 
 ## Phase 0 — Foundation (F)
 
@@ -80,15 +111,15 @@ The documentation phase. All complete unless noted.
 | F-003 | CI: fmt, clippy, deny, nextest | Accepted | F-001 |
 | F-004 | Custom architecture lints ([15](15-CI-AND-RELEASE-GATES.md)) | Accepted | F-001 |
 | F-005 | PostgreSQL testcontainers harness + migration runner | Accepted | F-001 |
-| F-006 | `tools/casual-task-seed` reference corpus | Accepted | F-005 |
-| F-007 | `tools/casual-task-loadtest` + baselines | Accepted | F-006 |
-| F-008 | `EXPLAIN` no-seq-scan harness | Accepted | F-006 |
-| F-009 | Observability skeleton | Accepted | F-001 |
+| F-006 | `tools/casual-task-seed` reference corpus | **Gated** | F-005 |
+| F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
+| F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
+| F-009 | Observability skeleton | `Building` | F-001 |
 | F-010 | Docker Compose dev profile | Accepted | F-001 |
 | F-011 | Governance files, Apache-2.0, AGENTS.md | Accepted | — |
-| F-012 | **Bundle floor measurement** (ADR-024) | Accepted | — |
+| F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
 | F-013 | Threat model review | Accepted | D-007 |
-| F-014 | Runbooks (initial set) | Accepted | F-009 |
+| F-014 | Runbooks (initial set) | `Built` | F-009 |
 | F-015 | Migrations + application role + schema verification gate | **Gated** | F-005 |
 | F-016 | Container image, deployment compose, deployment guide | **Gated** | F-015 |
 
@@ -132,14 +163,38 @@ Rolled up until Phase 1 closes; expanded at each phase gate.
 **Phase 0 — foundation. Design record complete; scaffolding under way.**
 
 Landed and `Gated`: the Cargo workspace and dependency DAG (F-001), architecture
-lints (F-004), CI (F-003), and the schema — 12 migrations, the non-superuser
+lints (F-004), CI (F-003), the schema — 12 migrations, the non-superuser
 application role, and the verification gate proving tenant isolation and
-append-only history against a real PostgreSQL 16 (F-015).
+append-only history against a real PostgreSQL 16 (F-015) — the container image
+and deployment compose (F-016), and three gates added since:
 
-Remaining Phase 0: the reference corpus (F-006), load-test harness (F-007), the
-`EXPLAIN` no-seq-scan gate (F-008), the observability skeleton (F-009), the
-bundle floor measurement (F-012), and runbooks (F-014). None of these build
-product functionality — they exist to make every later phase verifiable.
+- **F-006, the reference corpus.** `tools/casual-task-seed` generates the
+  docs/30 workspace deterministically — 2,000,000 tasks, 38,981,941 rows, 10.2
+  GiB of `COPY` text in 18.2 s at a 26 MiB peak RSS, byte-identical across runs
+  and loaded into PostgreSQL 16 end to end. Gated by determinism and
+  corpus-invariant tests in the `test` job.
+- **F-008, the `EXPLAIN` no-seq-scan gate.** All 20 read paths planned as the
+  non-superuser `taskforge_app` with RLS applied; 20 index-served, 0 sequential
+  scans, 0 skips. Gated by the `explain-no-seq-scan` job.
+- **F-012, the bundle floor.** Measured at 113.2 KiB gzip against ADR-024's 200
+  KiB. Gated by the `bundle-size` job.
+
+Remaining Phase 0:
+
+- **F-007** is `Built`, not `Gated`, for one reason: the comparison gate has no
+  baseline it may legitimately compare against, because the docs/30 reference
+  machine does not exist. The harness, the corpus, and the gate all work and are
+  tested. Recorded in [15](15-CI-AND-RELEASE-GATES.md) §Pending gates.
+- **F-009** is `Building`. The crate exists and is substantial, but an audit
+  found correlation fields dropping out of any log line emitted inside a nested
+  span, and a cardinality guard that constrains label *keys* while leaving label
+  *values* free — which is an unbounded map in a long-running process. Neither
+  is safe to inherit into Phase 1.
+- **F-014** is `Built`: the runbooks are written and cross-referenced. There is
+  no meaningful CI gate on prose beyond link resolution.
+
+None of these build product functionality — they exist to make every later phase
+verifiable.
 
 Three items are genuinely open and tracked as such: **D-032** (auth protocol
 specifics, to be Accepted at Phase 0), **D-033** (custom-field storage, before

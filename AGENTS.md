@@ -160,13 +160,22 @@ but never above a permission decision or an audit record.
 
 ## Current state
 
-**Phase 0 — foundation. The design record is complete; the workspace is being
-scaffolded.**
+**Phase 0 — foundation. The design record is complete; the verification
+scaffolding is nearly complete.**
 
-`docs/` is finished for Phases 0–4 (37 numbered documents, 26 Accepted ADRs). The
-Rust workspace, CI gates, and tooling are in progress; **no product functionality
-exists yet.** Phase 0 builds none — it exists to make every later phase
-verifiable.
+`docs/` is finished for Phases 0–4 (40 numbered documents, 30 Accepted ADRs).
+**No product functionality exists yet** — Phase 0 builds none. It exists to make
+every later phase verifiable, and most of that machinery now runs on every pull
+request: the enforced dependency DAG and architecture lints, the schema with
+row-level security proven as the non-superuser role, the deployable image, the
+deterministic 2M-task reference corpus, the `EXPLAIN` no-seq-scan gate over all
+20 read paths, and the ADR-024 bundle budget.
+
+Two Phase 0 items are deliberately not `Gated` yet, and
+[docs/14](docs/14-EXECUTION-TRACKER.md) says why in each case: the latency gate
+(F-007) has no reference machine to produce a comparable baseline on, and the
+observability skeleton (F-009) has two defects that must not be inherited into
+Phase 1.
 
 Three decisions are genuinely open and tracked as such in
 [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md): auth protocol

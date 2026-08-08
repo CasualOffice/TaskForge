@@ -38,10 +38,26 @@ being typed) stays in the component that owns it.
 lazy chunks. Enforced in CI ([15](15-CI-AND-RELEASE-GATES.md)); exceeding it
 fails the build.
 
-**Stated honestly:** React + TanStack Query + Router + dnd-kit + Virtual is a
-substantial fraction of that before a line of product code. This budget is
-therefore **provisional until measured in Phase 0** against the real dependency
-set. If the floor is genuinely higher, the number is raised by a superseding ADR
+**Measured, and it holds.** React + TanStack Query + Router + dnd-kit + Virtual
+is a substantial fraction of that before a line of product code, so the budget
+was provisional until Phase 0 measured it. It has been:
+[`webapp/BUNDLE-FLOOR.md`](../webapp/BUNDLE-FLOOR.md) (tracker F-012) puts the
+dependency floor at **113.2 KiB gzip — 57% of the budget**, leaving 86.8 KiB for
+the design system, all CSS, and every line of product code.
+
+Three things that measurement changed, and which the gate now reflects:
+
+- The unit is **KiB (204,800 bytes), gzip, initial chunk only** — "200 KB" was
+  ambiguous by 4.7 KiB, which is more than the whole `@tanstack/react-virtual`
+  contribution.
+- "Initial" means the entry chunk plus its static-import closure plus imported
+  CSS; `import()`ed chunks are excluded.
+- The floor moves **4.4% on a bundler major with no source change**, so the
+  lockfile is frozen in the gate.
+
+`@schnsrw/design-system` was **not** resolvable in the measured checkout and is
+the one input that could still break 200 KiB. Re-measure when it is wired in. If
+the floor is genuinely higher then, the number is raised by a superseding ADR
 with the measurement attached — it is never quietly exceeded, and the gate is
 never disabled.
 

@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "harness": "casual-task-loadtest",
+  "harnessVersion": "0.0.0",
+  "environment": "reference-8vcpu-32gb",
+  "generatedAt": "1970-01-01T00:00:00Z",
+  "corpus": {
+    "scale": "reference",
+    "workspaceId": "00000000-0000-0000-0000-000000000000",
+    "tasks": 0,
+    "projects": 0,
+    "users": 0,
+    "searchDocuments": 0,
+    "activityEvents": 0
+  },
+  "iterations": 1000,
+  "warmupIterations": 100,
+  "percentileMethod": "nearest-rank",
+  "cases": [
+    {
+      "id": "roundtrip_floor",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "task_read_by_id",
+      "target": "Task read",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "task_read_by_key",
+      "target": "Task read",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "board_column_load",
+      "target": "Board load (200 cards)",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "list_page_cursor",
+      "target": "List/filter page (50)",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "full_text_search",
+      "target": "Full-text search",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "my_work_assigned",
+      "target": "My Work",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "permission_resolution_cold",
+      "target": "Permission resolution (cold)",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "accessible_projects",
+      "target": "Permission resolution (cold)",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    },
+    {
+      "id": "activity_page",
+      "target": "Activity page",
+      "samples": 0,
+      "minUs": 0,
+      "p50Us": 0,
+      "p95Us": 0,
+      "p99Us": 0,
+      "maxUs": 0,
+      "meanUs": 0,
+      "p99Confident": false,
+      "rowsReturned": 0
+    }
+  ],
+  "notMeasured": [
+    {
+      "operation": "Task create",
+      "reason": "A write measured with COMMIT mutates the corpus and makes the run non-repeatable; measured with ROLLBACK it omits the WAL flush, which is the dominant cost. Neither is worth a baseline.",
+      "arrives": "Phase 1 (C-004), against a disposable corpus"
+    },
+    {
+      "operation": "Task update",
+      "reason": "As Task create, plus optimistic-concurrency retry cost that does not exist until the command layer does.",
+      "arrives": "Phase 1 (C-004)"
+    },
+    {
+      "operation": "Status transition",
+      "reason": "A transition is a command with guard evaluation, dependency checks, and four writes in one transaction (docs/23). Its SQL alone would understate it by more than it measures.",
+      "arrives": "Phase 1 (C-006)"
+    },
+    {
+      "operation": "Permission resolution (cached)",
+      "reason": "There is no cache. The docs/30 target is a property of the epoch-keyed cache in docs/04, which is Phase 1 code.",
+      "arrives": "Phase 1 (C-003)"
+    },
+    {
+      "operation": "HTTP, serialization, and middleware overhead",
+      "reason": "No API process exists. Every number here is a database round trip and excludes everything the server does around it.",
+      "arrives": "Phase 1 (C-001)"
+    },
+    {
+      "operation": "Concurrent workload mix",
+      "reason": "Cases run single-threaded, one query in flight. Contention, pool saturation, and the read/write mix in docs/30 \u00a7Throughput are not exercised.",
+      "arrives": "Phase 1"
+    }
+  ],
+  "notes": [
+    "PLACEHOLDER. Every number is zero. This file fixes the shape of a reference-environment baseline so the gate has something to parse and so a reviewer can see what a real one must contain. It can never be passed: compare refuses a placeholder before it reads a number, and a baseline p95 of 0 microseconds is refused independently of that.",
+    "Recording the real one needs two things this repository does not have yet: the reference corpus (tracker F-006, tools/casual-task-seed) and access to the docs/30 reference environment (8 vCPU / 32 GB / NVMe PostgreSQL)."
+  ],
+  "baseline": {
+    "status": "placeholder",
+    "justification": "",
+    "recordedBy": "F-007"
+  }
+}

@@ -8,7 +8,12 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-casual-task-model = { workspace = true }
+anyhow     = { workspace = true }
+clap       = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+time       = { workspace = true }
+uuid       = { workspace = true }
 
 [lints]
 workspace = true

@@ -85,6 +85,10 @@ uuid       = { version = "1", features = ["v7", "serde"] }
 time       = { version = "0.3", features = ["serde", "macros", "formatting", "parsing"] }
 thiserror  = "2"
 anyhow     = "1"
+rand       = { version = "0.9", features = ["small_rng"] }
+clap       = { version = "4", features = ["derive"] }
+tracing    = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [profile.release]
 lto = "thin"

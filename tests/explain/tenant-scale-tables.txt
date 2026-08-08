@@ -1,0 +1,30 @@
+# Tables on which a sequential scan is a gate failure (NFR-5, ADR-011).
+#
+# The rule this list encodes: a table is tenant-scale when its row count grows
+# with customer usage. Those are the tables where a scan that is harmless in
+# development becomes a 40-second page load in production, and they are the only
+# ones NFR-5 talks about.
+#
+# Everything absent from this list may be scanned, on purpose. `permission` has
+# 28 rows and `workflow_status` has six per workflow; reading all of them is the
+# correct plan, and forbidding it would force worse plans and make the gate lie
+# about what it protects.
+#
+# Partitions are resolved automatically through pg_inherits — list the parent
+# only. scripts/verify-queries.sh additionally fails if any table in the corpus
+# grows past the coverage threshold without appearing here, so a new tenant-scale
+# table cannot be added and silently left ungated.
+#
+# One name per line. Blank lines and # comments ignored.
+
+task
+task_search
+task_assignee
+task_tag
+task_dependency
+comment
+activity_event
+audit_event
+role_assignment
+notification
+outbox_event

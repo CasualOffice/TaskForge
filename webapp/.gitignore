@@ -1,0 +1,6 @@
+node_modules
+dist
+dist-floor
+.vite
+stats.html
+bundle-report.json
