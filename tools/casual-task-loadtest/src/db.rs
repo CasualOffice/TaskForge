@@ -90,11 +90,30 @@ impl Session {
         // stderr goes to a file rather than a pipe: reading a second pipe
         // without a reader thread deadlocks as soon as psql fills it, and a
         // reader thread is more machinery than a diagnostic path needs.
-        let stderr_path = std::env::temp_dir().join(format!(
-            "casual-task-loadtest-{}.stderr",
-            std::process::id()
+        //
+        // That file lives in a directory this run creates, not at a predictable
+        // path in a shared one. The old
+        // `temp_dir()/casual-task-loadtest-<pid>.stderr` was guessable, and
+        // `File::create` follows symlinks and truncates — so on a shared host
+        // another user could pre-create that path pointing at any file this
+        // user can write. `create_dir` and `create_new` both fail on something
+        // that already exists rather than reusing it, so the attack becomes a
+        // failed run instead of a truncated file.
+        //
+        // The counter separates concurrent sessions within one process; the pid
+        // is not unique across PID namespaces, so two containerised runs
+        // sharing a /tmp used to interleave into one file and now collide
+        // loudly instead.
+        static SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "casual-task-loadtest-{}-{}",
+            std::process::id(),
+            SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
-        let stderr = std::fs::File::create(&stderr_path)
+        std::fs::create_dir(&dir)
+            .with_context(|| format!("creating the session directory {}", dir.display()))?;
+        let stderr_path = dir.join("psql.stderr");
+        let stderr = std::fs::File::create_new(&stderr_path)
             .with_context(|| format!("creating {}", stderr_path.display()))?;
 
         let mut child = Command::new(program)
@@ -281,7 +300,10 @@ impl Drop for Session {
                 }
             }
         }
-        let _ = std::fs::remove_file(&self.stderr_path);
+        // Remove the whole session directory, not just the file inside it.
+        if let Some(dir) = self.stderr_path.parent() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 

@@ -229,6 +229,32 @@ pub fn compare(baseline: &Report, report: &Report, tolerance: f64, noise_floor_u
             report.iterations, baseline.iterations
         ));
     }
+    // `report.iterations < baseline.iterations` above says the report is no
+    // worse founded than the baseline. It says nothing about whether the
+    // baseline was founded at all — a file committed from `--iterations 5`,
+    // where the p95 is just the largest of five samples, gated exactly as
+    // firmly as one from a thousand. `stats` already knows the number; it was
+    // only ever used to write a note, and notes are never compared.
+    if baseline.iterations < crate::stats::P95_CONFIDENCE_MIN_SAMPLES as u32 {
+        outcome.blockers.push(format!(
+            "the baseline was recorded from {} iterations; {} is the minimum this \
+             harness treats as a p95 worth gating on. It is a measurement, not a gate",
+            baseline.iterations,
+            crate::stats::P95_CONFIDENCE_MIN_SAMPLES
+        ));
+    }
+    for case in &baseline.cases {
+        if (case.samples as usize) < crate::stats::P95_CONFIDENCE_MIN_SAMPLES {
+            outcome.blockers.push(format!(
+                "baseline case `{}` carries {} samples, below the {} needed for a p95 \
+                 worth gating on",
+                case.id,
+                case.samples,
+                crate::stats::P95_CONFIDENCE_MIN_SAMPLES
+            ));
+        }
+    }
+
     if report.warmup_iterations < baseline.warmup_iterations {
         outcome.blockers.push(format!(
             "report warmed up {} rounds against a baseline of {}",
@@ -562,6 +588,29 @@ mod tests {
         assert_eq!(excused.exit_code(), 0);
         assert!(excused.verdicts[0].excused_by_noise_floor);
         assert!(!excused.verdicts[0].regressed);
+    }
+
+    #[test]
+    fn a_baseline_with_too_few_samples_is_not_a_gate() {
+        // `stats::P95_CONFIDENCE_MIN_SAMPLES` existed only to write a note, and
+        // notes are never compared — so a baseline recorded from five
+        // iterations, where the p95 is simply the largest of five samples,
+        // gated as firmly as one from a thousand.
+        let mut base = measured(fixture("ref", "reduced", &[("a", 1_000)]));
+        base.iterations = 5;
+        for case in &mut base.cases {
+            case.samples = 5;
+        }
+        let mut now = fixture("ref", "reduced", &[("a", 1_000)]);
+        now.iterations = 5;
+
+        let outcome = compare(&base, &now, DEFAULT_TOLERANCE, 0);
+        assert_eq!(outcome.exit_code(), EXIT_NOT_COMPARABLE);
+        assert!(
+            outcome.blockers.iter().any(|b| b.contains("5 iterations")),
+            "{:?}",
+            outcome.blockers
+        );
     }
 
     #[test]
