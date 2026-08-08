@@ -76,10 +76,15 @@ The documentation phase. All complete unless noted.
 | D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
 | D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-001 |
 | D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Blocked** — Accept before C-013 |
+| D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Blocked** — Accept at Phase 0 |
+| D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
 
-Four of those are new, opened by a Phase 0 audit of the concurrency and async
-design rather than by writing any code. They are recorded rather than resolved
-because each is a decision, and AGENTS.md forbids settling one silently in an
+Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
+the concurrency, async, and observability design; **D-044** and **D-045** were
+already listed as pending ADRs in [08](08-ADR-REGISTER.md) §Pending and had no
+tracker row at all, which AGENTS.md forbids — an untracked decision is one
+nobody is accountable for. They are recorded rather than resolved because each
+is a decision, and AGENTS.md forbids settling one silently in an
 implementation:
 
 - **D-038.** [25](25-EVENTS-OUTBOX-AND-AUDIT.md) describes dispatch as holding a
@@ -136,6 +141,15 @@ implementation:
   guarantees against query plans, and that trade is exactly what an ADR is for.
   Separately: raising the gate's corpus, or running it at reference scale
   nightly, is what would have caught this.
+- **D-044.** [08](08-ADR-REGISTER.md) §Pending lists "MSRV and toolchain pin —
+  once the workspace is scaffolded". The workspace *is* scaffolded, so the ADR
+  is due. Until it exists, `rust-version = "1.90.0"` in `Cargo.toml` and the
+  `platform` job's MSRV matrix entry are a number nobody agreed to; both used to
+  cite **D-032**, which is the auth item, so the pointer was wrong as well as
+  dangling. F-002 cannot be `Gated` until this lands.
+- **D-045.** [08](08-ADR-REGISTER.md) §Pending also lists SSE vs WebSocket.
+  `Deferred` rather than `Blocked`: SSE is the Phase 1 decision and no feature
+  yet needs client→server streaming, so this only becomes live if one does.
 - **D-041.** No document describes cancellation or graceful shutdown: what
   happens to an in-flight request, a half-dispatched outbox row, or a held
   advisory lock when a pod is terminated. Retrofitting cancellation through a
@@ -145,17 +159,17 @@ implementation:
 
 | ID | Item | Status | Blocked by |
 | --- | --- | --- | --- |
-| F-001 | Cargo workspace + all crates with declared edges | Accepted | — |
-| F-002 | Toolchain pin, MSRV ADR, `deny.toml` | Accepted | — |
-| F-003 | CI: fmt, clippy, deny, nextest | Accepted | F-001 |
-| F-004 | Custom architecture lints ([15](15-CI-AND-RELEASE-GATES.md)) | Accepted | F-001 |
-| F-005 | PostgreSQL testcontainers harness + migration runner | Accepted | F-001 |
+| F-001 | Cargo workspace + all crates with declared edges | **Gated** | — |
+| F-002 | Toolchain pin, MSRV ADR, `deny.toml` | `Building` | D-044 |
+| F-003 | CI: fmt, clippy, deny, nextest | **Gated** | F-001 |
+| F-004 | Custom architecture lints ([15](15-CI-AND-RELEASE-GATES.md)) | **Gated** | F-001 |
+| F-005 | PostgreSQL testcontainers harness + migration runner | `Building` | F-001 |
 | F-006 | `tools/casual-task-seed` reference corpus | **Gated** | F-005 |
 | F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
 | F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
 | F-009 | Observability skeleton | `Built` | F-001 |
-| F-010 | Docker Compose dev profile | Accepted | F-001 |
-| F-011 | Governance files, Apache-2.0, AGENTS.md | Accepted | — |
+| F-010 | Docker Compose dev profile | **Gated** | F-001 |
+| F-011 | Governance files, Apache-2.0, AGENTS.md | `Built` | — |
 | F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
 | F-013 | Threat model review | Accepted | D-007 |
 | F-014 | Runbooks (initial set) | `Built` | F-009 |
@@ -202,10 +216,11 @@ Rolled up until Phase 1 closes; expanded at each phase gate.
 **Phase 0 — foundation. Design record complete; scaffolding under way.**
 
 Landed and `Gated`: the Cargo workspace and dependency DAG (F-001), architecture
-lints (F-004), CI (F-003), the schema — 12 migrations, the non-superuser
-application role, and the verification gate proving tenant isolation and
-append-only history against a real PostgreSQL 16 (F-015) — the container image
-and deployment compose (F-016), and three gates added since:
+lints (F-004), CI (F-003), the dev compose profile (F-010), the schema — 12
+migrations, the non-superuser application role, and the verification gate
+proving tenant isolation and append-only history against a real PostgreSQL 16
+(F-015) — the container image and deployment compose (F-016), and three gates
+added since:
 
 - **F-006, the reference corpus.** `tools/casual-task-seed` generates the
   docs/30 workspace deterministically — 2,000,000 tasks, 38,981,941 rows, 10.2
@@ -238,6 +253,20 @@ Remaining Phase 0:
   own tests.
 - **F-014** is `Built`: the runbooks are written and cross-referenced. There is
   no meaningful CI gate on prose beyond link resolution.
+- **F-002** is `Building`. The toolchain is pinned and `deny.toml` is enforced by
+  the `dependency-policy` job, but the MSRV ADR the row names does not exist —
+  **D-044**. `rust-version = "1.90.0"` is currently a number with no accepted
+  decision behind it.
+- **F-005** is `Building`. The migration runner exists and is gated
+  (`scripts/verify-schema.sh`), but the *testcontainers* half of the row does
+  not: there is no `testcontainers` dependency anywhere in the workspace. The
+  schema and query gates use a service container directly instead. The Rust
+  harness arrives with the first repository that needs one, and
+  [15](15-CI-AND-RELEASE-GATES.md) §Pending gates records the `Integration` gate
+  as waiting on it.
+- **F-013** is unchanged and unverifiable from here: [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md)
+  §Threat model is written, but nothing records that a *review* happened. If one
+  did, the row should say so and by whom; if not, it is Phase 0 work still open.
 
 None of these build product functionality — they exist to make every later phase
 verifiable.
