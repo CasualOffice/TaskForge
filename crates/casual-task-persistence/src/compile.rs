@@ -6,10 +6,10 @@
 //! map. There is no string interpolation of user data anywhere in the path."
 //!
 //! Every user-supplied value becomes a [`Param`] and is referenced by position.
-//! The only text that reaches the SQL string is a column name from
-//! [`column_of`], an operator from a fixed `match`, and digits. A hostile value
-//! has nowhere to go: `Value` holds `String`s, and no code path writes one into
-//! the output.
+//! The only text that reaches the SQL string is a column name from the private
+//! static identifier map, an operator from a fixed `match`, and digits. A
+//! hostile value has nowhere to go: `Value` holds `String`s, and no code path
+//! writes one into the output.
 //!
 //! # The permission filter cannot be forgotten
 //!
