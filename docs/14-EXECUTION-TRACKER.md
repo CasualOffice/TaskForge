@@ -67,7 +67,7 @@ The documentation phase. All complete unless noted.
 | D-035 | **Reporting, export & dashboards** | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Designed |
 | D-036 | Runbooks | [50](50-RUNBOOKS.md) | Designed |
 | D-037 | Deployment guide | [52](52-DEPLOYMENT-GUIDE.md) | Designed |
-| D-032 | **Auth mechanism: credential lookup, session storage, plugin principal** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Proposed** — ADR-032 drafted; Accept at Phase 0 |
+| D-032 | **Auth mechanism: credential lookup, session storage, plugin principal** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Accepted** — ADR-032 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
 | D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Accepted** — claim → commit → HTTP → record |
@@ -183,12 +183,28 @@ implementation:
   `allowed_domains` are per-workspace — so which workspace's policy governs a
   login, before any workspace is known, is undecided.
 
-  **Now drafted as ADR-032, `Proposed`.** The proposed resolutions are in
-  [40](40-IDENTITY-AUTH-AND-SESSION.md) §Mechanism, each with its cost stated
-  and the one genuine judgement call marked as such. Two of them change the
-  `Gated` schema — the `principal_type` enum, and a new auth-storage migration —
-  which is the argument for settling this while the tables are still empty.
-  Nothing is implemented; C-001 stays `Blocked`.
+  **Accepted as ADR-032, with amendments** — the resolutions are in
+  [40](40-IDENTITY-AUTH-AND-SESSION.md) §Mechanism. Two proposals were rejected
+  in favour of better ones, and both rejections removed a cost:
+
+  - **Selector/verifier, not a keyed HMAC.** The pepper would have made a secret
+    outside the database load-bearing for every authentication — lose it and
+    every session dies, rotate it and they die without a versioning window —
+    which forced `hash_key_id` onto two tables and key custody into the
+    runbooks. Selector/verifier gets the same dump-resistance for a longer
+    token and no key at all.
+  - **`principal_type` is not extended.** A plugin installation authenticates
+    but is not something a role is assigned to. Making it a principal would have
+    put it in the resolver's principal set and invited grants assigned directly
+    to installations — a second authority model reaching the same resources.
+    [04](04-RBAC-AND-AUTHORIZATION.md) stays the only answer to "who may do
+    what", and the enum needs no migration.
+
+  Carried into C-001: `api_token.token_hash` becomes `token_selector` +
+  `verifier_hash`, and the auth-storage tables land with a written exemption in
+  migration 0010's block. The `SECURITY DEFINER` seam is accepted **on the
+  condition** that the F-015 gate is extended to assert the function's
+  definition, not only its tables.
 - **D-044.** [08](08-ADR-REGISTER.md) §Pending lists "MSRV and toolchain pin" —
   once the workspace is scaffolded". The workspace *is* scaffolded, so the ADR
   is due. Until it exists, `rust-version = "1.90.0"` in `Cargo.toml` and the
@@ -293,7 +309,7 @@ the code that proves it.
 
 | ID | Item | Status |
 | --- | --- | --- |
-| C-001 | Identity, sessions, MFA, invitations | **Blocked** — D-032 |
+| C-001 | Identity, sessions, MFA, invitations | Accepted |
 | C-002 | Workspace, membership, teams | Accepted |
 | C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | Accepted |
@@ -317,17 +333,18 @@ the code that proves it.
 `casual-task-authz` — the scope containment chain, the additive union, the
 closed five-constraint set, `allows`, and `explain` — with 17 tests and no
 database, which is what [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) isolates that
-crate for. It does **not** depend on D-032: the resolver takes an
-already-authenticated actor, so the auth *mechanism* being unsettled does not
-reach it. Still missing before it can be `Gated`: the `authz_epoch` cache, the
+crate for. It did **not** depend on D-032: the resolver takes an
+already-authenticated actor, so the auth mechanism could be settled separately —
+and was. Still missing before it can be `Gated`: the `authz_epoch` cache, the
 grant and scope ceilings, and the C-004 matrix and escalation suites that are
 its acceptance gates.
 
-**C-001 is `Blocked`, not `Accepted`.** This document defines `Accepted` as
-"design final **and** its ADRs Accepted", and C-001's ADR is D-032, which is
-still `Blocked`. The row said `Accepted` while its own precondition was open —
-the status vocabulary is only worth having if it is applied to the row that
-makes it inconvenient.
+**C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
+`Accepted` requires — "design final **and** its ADRs Accepted". It carries two
+schema changes into C-001's first migration: `api_token.token_hash` becomes
+`token_selector` + `verifier_hash`, and the auth-storage tables are added with a
+written exemption in migration 0010's block. `principal_type` is deliberately
+**unchanged**.
 
 ## Phases 2–4
 

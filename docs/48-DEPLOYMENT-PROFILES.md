@@ -98,7 +98,8 @@ Environment variables, twelve-factor, with documented defaults for every key.
 DATABASE_URL                 required
 TF_BIND_ADDR                 0.0.0.0:8080
 TF_PUBLIC_URL                required — used in emails and OIDC redirects
-TF_SECRET_KEY                required — session/cookie signing
+TF_SECRET_KEY                required — CSRF token binding (ADR-032). NOT cookie signing:
+                             the session cookie is opaque and unsigned
 TF_STORAGE_BACKEND           fs | s3            (default fs)
 TF_STORAGE_PATH              ./data/attachments
 TF_S3_*                      endpoint, bucket, region, credentials
