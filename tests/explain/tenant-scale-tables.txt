@@ -28,3 +28,7 @@ audit_event
 role_assignment
 notification
 outbox_event
+# Six rows per event (migration 0013), so this is the largest table in the
+# corpus and the one the dispatch poll actually reads. Its probe keeps the
+# per-aggregate-ordering NOT EXISTS, which is the part most likely to scan.
+outbox_delivery

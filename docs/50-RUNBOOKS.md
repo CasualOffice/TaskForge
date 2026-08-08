@@ -147,37 +147,54 @@ out before touching the dispatcher.
 **1. Is there a backlog, and how old is it?** ✅ executable
 
 ```sql
-SELECT count(*)                                      AS pending,
-       now() - min(created_at)                       AS oldest_pending,
-       count(*) FILTER (WHERE attempts > 0)          AS retrying,
-       count(*) FILTER (WHERE attempts >= 6)         AS dead_lettered
-  FROM outbox_event
- WHERE dispatched_at IS NULL;
+SELECT d.consumer,
+       count(*)                                                 AS pending,
+       count(*) FILTER (WHERE d.next_attempt_at <= now())       AS actionable,
+       now() - min(e.created_at) FILTER (WHERE d.next_attempt_at <= now())
+                                                                AS oldest_actionable,
+       count(*) FILTER (WHERE d.attempts > 0)                   AS retrying,
+       count(*) FILTER (WHERE d.dead_lettered_at IS NOT NULL)   AS dead_lettered
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE d.dispatched_at IS NULL
+ GROUP BY d.consumer
+ ORDER BY oldest_actionable DESC NULLS LAST;
 ```
 
-`attempts >= 6` is the dead-letter threshold — the backoff ladder in
-[25](25-EVENTS-OUTBOX-AND-AUDIT.md) is six attempts, and migration
-[0007](../migrations/0007_events_activity_audit.sql) hard-codes it in
-`outbox_dlq_ix`. If `dead_lettered` is most of `pending`, this is **RB-02**, not
-RB-01: dead rows are never dispatched, never deleted by the 7-day sweep, and stay
-pending forever.
+**Read `oldest_actionable`, not `oldest_pending`.** They differ, and the
+difference is the whole point: a delivery inside its backoff window is *waiting
+on purpose*. Counting it as lag makes the primary health signal rise during
+normal retry behaviour, which is how a paging alert gets muted (D-047).
+
+The breakdown is **per consumer** because delivery state is per consumer
+(migration [0013](../migrations/0013_outbox_delivery.sql)). One row per consumer
+with a large `pending` and five healthy ones is the single most common shape of
+this incident, and it used to be invisible here.
+
+`dead_lettered_at IS NOT NULL` is the dead-letter condition — not `attempts >=
+6`. The ladder in [25](25-EVENTS-OUTBOX-AND-AUDIT.md) is six attempts, but the
+state is now recorded explicitly rather than inferred from a count, so a change
+to the ladder length cannot silently change what this query means. If
+`dead_lettered` dominates, this is **RB-02**, not RB-01: dead rows are never
+dispatched and never leave the table on their own.
 
 **2. Is it growing or draining?** ✅ executable
 
 ```sql
-SELECT date_trunc('minute', created_at)                        AS minute,
+SELECT date_trunc('minute', e.created_at)                       AS minute,
        count(*)                                                AS created,
-       count(*) FILTER (WHERE dispatched_at IS NOT NULL)       AS dispatched,
-       count(*) FILTER (WHERE dispatched_at IS NULL)           AS still_pending
-  FROM outbox_event
- WHERE created_at > now() - interval '30 minutes'
+       count(*) FILTER (WHERE d.dispatched_at IS NOT NULL)     AS dispatched,
+       count(*) FILTER (WHERE d.dispatched_at IS NULL)         AS still_pending
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE e.created_at > now() - interval '30 minutes'
  GROUP BY 1
  ORDER BY 1;
 ```
 
 The window is complete: dispatched rows are deleted 7 days after dispatch, not
-sooner. If `still_pending` falls minute over minute and `oldest_pending` from
-step 1 shrinks between two samples 60 s apart, **the system is recovering on its
+sooner. If `still_pending` falls minute over minute and `oldest_actionable`
+from step 1 shrinks between two samples 60 s apart, **the system is recovering on its
 own** — go to the wait branch in Action.
 
 **3. Is the dispatcher alive?** ⏳ designed
@@ -193,7 +210,7 @@ The database-side approximation, available now: ✅ executable
 SELECT pid, usename, state, wait_event_type, wait_event,
        now() - query_start AS running_for, left(query, 120) AS query
   FROM pg_stat_activity
- WHERE query ILIKE '%outbox_event%'
+ WHERE query ILIKE '%outbox_delivery%'
    AND state <> 'idle'
  ORDER BY query_start;
 ```
@@ -205,25 +222,31 @@ unprivileged role the column is `<insufficient privilege>`.
 **4. Which events are failing, and with what?** ✅ executable
 
 ```sql
-SELECT event_type,
-       count(*)                       AS pending,
-       max(attempts)                  AS worst_attempts,
-       left(min(last_error), 200)     AS sample_error
-  FROM outbox_event
- WHERE dispatched_at IS NULL
-   AND attempts > 0
- GROUP BY event_type
+SELECT d.consumer,
+       e.event_type,
+       count(*)                        AS pending,
+       max(d.attempts)                 AS worst_attempts,
+       left(min(d.last_error), 200)    AS sample_error
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE d.dispatched_at IS NULL
+   AND d.attempts > 0
+ GROUP BY d.consumer, e.event_type
  ORDER BY pending DESC
  LIMIT 20;
 ```
 
-**Limitation, stated:** `last_error` is one column on the event row, so it holds
-the most recent failure across the fan-out, not a per-consumer breakdown. "Which
-consumer is slow" comes from `plugin_call_duration` and the per-consumer metrics
-in [46](46-OBSERVABILITY-AND-OPERATIONS.md) (⏳), not from this table. If those
-metrics are unavailable, the event-type grouping above is the best available
-proxy — `task.*` failing while `comment.*` succeeds points at a consumer
-subscribed to task events.
+This answers "which consumer is failing, and on what" directly. It did not used
+to: `last_error` was a single column on the event, holding the most recent
+failure across the whole fan-out, so a webhook returning 502 and a search
+projection timing out overwrote each other and the operator had to infer the
+culprit from event types. Per-consumer delivery state (migration
+[0013](../migrations/0013_outbox_delivery.sql)) is what makes the error
+attributable.
+
+Corroborate with `plugin_call_duration` and the per-consumer metrics in
+[46](46-OBSERVABILITY-AND-OPERATIONS.md) (⏳) when they exist — a consumer that
+is *slow* rather than *failing* has few errors here and a rising lag in step 1.
 
 **5. Is the database the actual cause?** ✅ executable
 
@@ -247,19 +270,21 @@ is also alerting, the outbox is a symptom — fix the saturation.
 **6. Is the pending index doing its job?** ✅ executable
 
 ```sql
-SELECT n_live_tup, n_dead_tup, last_autovacuum, last_autoanalyze
+SELECT relname, n_live_tup, n_dead_tup, last_autovacuum, last_autoanalyze
   FROM pg_stat_user_tables
- WHERE relname = 'outbox_event';
+ WHERE relname IN ('outbox_event', 'outbox_delivery');
 
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT id FROM outbox_event
- WHERE dispatched_at IS NULL
- ORDER BY created_at
+SELECT id FROM outbox_delivery
+ WHERE dispatched_at IS NULL AND dead_lettered_at IS NULL
+   AND next_attempt_at <= now()
+ ORDER BY next_attempt_at, created_at
  LIMIT 100;
 ```
 
-`outbox_event` is high churn: every row is inserted, updated once on dispatch,
-and deleted a week later. The plan must use `outbox_pending_ix`. A sequential
+`outbox_delivery` is the high-churn table now, and it churns **six times harder
+than the event table** — one row per consumer per event, each updated at claim
+and again at record. The plan must use `outbox_delivery_pending_ix`. A sequential
 scan here, or a dead-tuple count far above the live count, means autovacuum is
 not keeping up and the poll itself has become the bottleneck.
 
@@ -269,14 +294,14 @@ not keeping up and the poll itself has become the bottleneck.
 | --- | --- | --- |
 | Backlog draining, `oldest_pending` shrinking (step 2) | **Do nothing.** Re-check in 15 minutes. Silence the alert for the drain window rather than acting on it. | Continued lag for the drain duration. A bulk operation, an import, or a deploy legitimately produces a spike; intervening adds a variable to a system that is already recovering. |
 | No dispatcher running (step 3) | Restart the worker (or the API on the single-node profile). Undispatched rows are picked up on the next poll; rows a dead worker held under `FOR UPDATE` were released when its connection dropped. | Some events dispatch twice. Acceptable (rule 2). |
-| One consumer failing, others fine (step 4) | Pause that consumer. The dispatcher keeps draining the rest. ⏳ — there is no consumer registry to pause against yet. | Delivery to that consumer stops until it is resumed; its events stay pending, and after six attempts land in the DLQ (RB-02). |
+| One consumer failing, others fine (step 4) | Nothing, first. Per-consumer delivery state means a failing consumer already backs off on its own ladder without touching the other five — confirm that in step 1 before acting. To stop it entirely: ⏳ there is no consumer registry to pause against yet. | Delivery to that consumer stops until it is resumed; its deliveries stay pending, and after six attempts land in the DLQ (RB-02). The other five are unaffected — which is what migration 0013 bought. |
 | Database saturated or blocked (step 5) | Fix the database first: kill the blocking transaction, relieve the pool. Then re-measure. | — |
-| Vacuum/bloat (step 6) | `VACUUM (ANALYZE) outbox_event;` as the owner, and lower `autovacuum_vacuum_scale_factor` for the table. | A manual vacuum competes for I/O with the workload it is meant to relieve. Run it, then watch. |
+| Vacuum/bloat (step 6) | `VACUUM (ANALYZE) outbox_delivery;` as the owner, and lower `autovacuum_vacuum_scale_factor` for the table. | A manual vacuum competes for I/O with the workload it is meant to relieve. Run it, then watch. |
 | Sustained genuine volume, dispatcher healthy, database healthy | Scale workers. Beyond ~10,000 events/s, shard dispatch by `workspace_id` hash ([48](48-DEPLOYMENT-PROFILES.md) Profile 3). ⏳ | More workers means more connections. On Profile 1 there is nothing to scale — the ceiling is the ceiling. |
 
 **Do not:**
 
-- **Do not clear the backlog by marking rows dispatched.** `UPDATE outbox_event
+- **Do not clear the backlog by marking rows dispatched.** `UPDATE outbox_delivery
   SET dispatched_at = now() WHERE dispatched_at IS NULL` makes the alert stop and
   silently discards every undelivered event — no SSE update, no notification, no
   search projection, no webhook. This is the exact failure the outbox exists to
@@ -290,11 +315,13 @@ not keeping up and the poll itself has become the bottleneck.
 
 ### Verification
 
-- `oldest_pending` from step 1 below 5 s across three consecutive samples.
+- `oldest_actionable` from step 1 below 5 s across three consecutive samples,
+  **for every consumer** — an aggregate that looks healthy can hide one starved
+  consumer.
 - `outbox_lag_seconds` p95 back under 1 s ⏳ (the metric is part of F-009).
 - `pending` returned to its pre-incident baseline — not zero. A healthy outbox is
   never empty on a busy system; it is *young*.
-- The `EXPLAIN` in step 6 uses `outbox_pending_ix`.
+- The `EXPLAIN` in step 6 uses `outbox_delivery_pending_ix`.
 
 ### Prevention
 
@@ -308,12 +335,15 @@ not keeping up and the poll itself has become the bottleneck.
 - The at-least-once acceptance test (kill the dispatcher mid-batch; assert every
   event is delivered, some twice, none lost) is a named gate in
   [25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Acceptance gates. ⏳
-- **Open design item, surfaced not decided:** the dispatch poll shown in
-  [25](25-EVENTS-OUTBOX-AND-AUDIT.md) selects on `dispatched_at IS NULL` alone.
-  Dead-lettered rows are the oldest pending rows, so unless the implementation
-  also filters `attempts < 6`, they sit at the head of `outbox_pending_ix` and are
-  re-selected on every poll — a growing DLQ would then degrade dispatch latency.
-  This belongs in the outbox design note or an ADR, not in a runbook.
+- **Closed** (was: "open design item, surfaced not decided"). This runbook
+  warned that dead-lettered rows are the *oldest* pending rows, so a poll
+  selecting on `dispatched_at IS NULL` alone would re-read them on every pass and
+  a growing DLQ would degrade dispatch latency for healthy events. Migration
+  [0013](../migrations/0013_outbox_delivery.sql) removes the possibility rather
+  than documenting the care needed: `outbox_delivery_pending_ix` is partial on
+  `dispatched_at IS NULL AND dead_lettered_at IS NULL`, so dead rows leave the
+  index the moment they are dead-lettered. The claim query cannot see them
+  whatever it asks for.
 
 ---
 
@@ -326,13 +356,18 @@ is never expected to be non-zero
 ([46](46-OBSERVABILITY-AND-OPERATIONS.md) §Domain metrics), so this alert fires on
 *movement*, not on a threshold.
 
-Definition, concretely: `dispatched_at IS NULL AND attempts >= 6` — six attempts
-across the backoff ladder 1 s, 4 s, 16 s, 1 m, 5 m, 30 m
-([25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Retry and dead-letter). The threshold is
-literal in `outbox_dlq_ix`.
+Definition, concretely: `outbox_delivery.dead_lettered_at IS NOT NULL` — set
+after six attempts across the backoff ladder 1 s, 4 s, 16 s, 1 m, 5 m, 30 m
+([25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Retry and dead-letter), indexed by
+`outbox_delivery_dlq_ix`.
+
+**A dead letter is one (event, consumer) pair, not an event.** The same event can
+be dead for the webhook consumer and delivered fine to the other five, and the
+counts below are of deliveries. An operator who reads them as events will
+overestimate the blast radius by up to six times.
 
 **A dead-lettered event is not lost.** It is durable, indexed, and replayable. The
-urgency is that it is *undelivered*, and that it will stay pending forever: the
+urgency is that it is *undelivered*, and that it will stay that way forever: the
 7-day cleanup only removes rows that were dispatched.
 
 ### Diagnosis
@@ -340,13 +375,15 @@ urgency is that it is *undelivered*, and that it will stay pending forever: the
 **1. Shape and age.** ✅ executable
 
 ```sql
-SELECT event_type,
-       count(*)          AS dead,
-       min(created_at)   AS oldest,
-       max(created_at)   AS newest
-  FROM outbox_event
- WHERE dispatched_at IS NULL AND attempts >= 6
- GROUP BY event_type
+SELECT d.consumer,
+       e.event_type,
+       count(*)               AS dead,
+       min(e.created_at)      AS oldest,
+       max(e.created_at)      AS newest
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE d.dead_lettered_at IS NOT NULL
+ GROUP BY d.consumer, e.event_type
  ORDER BY dead DESC;
 ```
 
@@ -354,17 +391,20 @@ SELECT event_type,
 
 ```sql
 SELECT workspace_id,
-       count(*)                    AS dead,
-       left(min(last_error), 200)  AS sample_error
-  FROM outbox_event
- WHERE dispatched_at IS NULL AND attempts >= 6
+       count(*)                      AS dead,
+       count(DISTINCT consumer)      AS consumers_affected,
+       left(min(last_error), 200)    AS sample_error
+  FROM outbox_delivery
+ WHERE dead_lettered_at IS NOT NULL
  GROUP BY workspace_id
  ORDER BY dead DESC
  LIMIT 20;
 ```
 
 One workspace means a customer-side endpoint or a single bad installation. Many
-workspaces at once means our code, our egress, or our deploy. That distinction
+workspaces at once means our code, our egress, or our deploy. `consumers_affected`
+sharpens it further: one consumer across many workspaces is that consumer's
+problem, all six in one workspace is that workspace's data. That distinction
 decides the entire action branch, so run this before anything else.
 
 (`workspace_id` in a query result is fine. It must never become a metric label —
@@ -373,13 +413,14 @@ decides the entire action branch, so run this before anything else.
 **3. Group the errors.** ✅ executable
 
 ```sql
-SELECT left(last_error, 120) AS error_class,
-       count(*)              AS n,
-       min(created_at)       AS first_seen,
-       max(created_at)       AS last_seen
-  FROM outbox_event
- WHERE dispatched_at IS NULL AND attempts >= 6
- GROUP BY 1
+SELECT consumer,
+       left(last_error, 120)   AS error_class,
+       count(*)                AS n,
+       min(created_at)         AS first_seen,
+       max(dead_lettered_at)   AS last_seen
+  FROM outbox_delivery
+ WHERE dead_lettered_at IS NOT NULL
+ GROUP BY 1, 2
  ORDER BY n DESC
  LIMIT 20;
 ```
@@ -387,15 +428,18 @@ SELECT left(last_error, 120) AS error_class,
 **4. Inspect a sample — metadata only.** ✅ executable
 
 ```sql
-SELECT id, event_type, aggregate_type, aggregate_id, workspace_id,
-       schema_version, attempts, created_at, last_error
-  FROM outbox_event
- WHERE dispatched_at IS NULL AND attempts >= 6
- ORDER BY created_at
+SELECT d.id AS delivery_id, d.consumer, d.attempts, d.last_error,
+       d.dead_lettered_at,
+       e.id AS event_id, e.event_type, e.aggregate_type, e.aggregate_id,
+       e.workspace_id, e.schema_version, e.created_at
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE d.dead_lettered_at IS NOT NULL
+ ORDER BY e.created_at
  LIMIT 5;
 ```
 
-`payload` is deliberately not selected. Event payloads carry changed field values
+`e.payload` is deliberately not selected. Event payloads carry changed field values
 — which for `task.created` includes the title
 ([25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Event envelope). Customer content does not
 belong in an operator's terminal scrollback or in a ticket. If a payload must be
@@ -417,7 +461,7 @@ these:
 | Class | Action |
 | --- | --- |
 | Endpoint outage, customer-run | **Do nothing to the events.** Leave the circuit open — it will close on its own when the endpoint recovers ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)). Notify the workspace admin through the plugin health view. Replay after the endpoint is confirmed healthy, not before. Waiting here is the whole action. |
-| Contract / payload bug | Fix the code. Deploy. **Then** replay. Replaying first burns six more attempts per event and re-runs delivery on every consumer that already succeeded. |
+| Contract / payload bug | Fix the code. Deploy. **Then** replay, scoped to the affected consumer. Replaying first burns six more attempts and re-runs delivery for nothing. |
 | Authorization | Do not replay. An uninstalled or revoked installation has no valid destination — the uninstall lifecycle drops its queued jobs by design ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) §Uninstall). If a token merely expired, rotate it, then replay. |
 | Poison event | Fix the consumer to reject the event at the contract boundary rather than panic ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) §Failure isolation). A consumer that can be killed by one malformed row will be. |
 
@@ -430,22 +474,34 @@ bounded, never global:
 
 ```sql
 -- Run as the owner/migration role, inside a transaction, after the cause is fixed.
--- ALWAYS bounded by event_type and a time window. Never the whole table.
+-- ALWAYS bounded by consumer and a time window. Never the whole table.
 BEGIN;
-UPDATE outbox_event
-   SET attempts = 0, last_error = NULL
- WHERE dispatched_at IS NULL
-   AND attempts >= 6
-   AND event_type = 'task.status.changed'
-   AND created_at >= '2026-08-08T09:00:00Z'
-   AND created_at <  '2026-08-08T10:00:00Z';
+UPDATE outbox_delivery d
+   SET dead_lettered_at = NULL,
+       attempts         = 0,
+       next_attempt_at  = now(),
+       last_error       = NULL
+  FROM outbox_event e
+ WHERE e.id = d.event_id
+   AND d.dead_lettered_at IS NOT NULL
+   AND d.consumer = 'webhook_delivery'
+   AND e.created_at >= '2026-08-08T09:00:00Z'
+   AND e.created_at <  '2026-08-08T10:00:00Z';
 -- Read the row count. If it is not what step 1 predicted, ROLLBACK.
 COMMIT;
 ```
 
+**Replay one consumer, not the event.** This is the difference migration
+[0013](../migrations/0013_outbox_delivery.sql) makes to this procedure: a replay
+used to reset the event and re-deliver to all six consumers, so fixing a broken
+webhook meant re-running the search projection and re-sending every notification
+for those events. Users saw duplicate notifications for a webhook incident they
+had no part in. Scoping the `UPDATE` to `d.consumer` re-delivers only to the one
+that failed — and omitting that predicate is now the mistake to watch for, since
+the query still runs and still looks correct.
+
 Then re-run the step 1 query and watch the DLQ fall. Replay in windows, not all
-at once: a full replay delivers to every consumer again, and a large one is
-indistinguishable from the traffic spike in RB-01.
+at once: a large replay is indistinguishable from the traffic spike in RB-01.
 
 **Do not:**
 
@@ -454,8 +510,9 @@ indistinguishable from the traffic spike in RB-01.
   Deleting is the one irreversible action available here.
 - **Do not replay before the cause is fixed** (standing rule 3).
 - **Do not treat redelivery as free.** It is *safe* — consumers are idempotent on
-  `event_id` by contract — but every consumer pays the work again, including the
-  notification fan-out, which is the one users notice.
+  `event_id` by contract — but the consumer pays the work again. Leaving the
+  `d.consumer` predicate off the replay above spreads that cost to all six,
+  including the notification fan-out, which is the one users notice.
 - **Do not edit `payload` to "fix" a bad event.** The payload is what the
   transaction committed. Rewriting it makes the event stream disagree with the
   history that was written alongside it in the same transaction.
@@ -658,10 +715,18 @@ staleness is the system operating as specified. This runbook is about *minutes*.
 **1. Confirm the outbox is not the cause — check it first.** ✅ executable
 
 ```sql
-SELECT count(*) AS pending, now() - min(created_at) AS oldest_pending
-  FROM outbox_event
- WHERE dispatched_at IS NULL;
+SELECT count(*)                    AS pending,
+       now() - min(e.created_at)   AS oldest_pending
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE d.consumer = 'search_projection'
+   AND d.dispatched_at IS NULL
+   AND d.dead_lettered_at IS NULL;
 ```
+
+Scoped to `search_projection`, because that is the only consumer that can make
+the index stale. A global outbox count would implicate a webhook backlog that has
+nothing to do with search.
 
 The projection is maintained by an outbox consumer. If the outbox is backed up,
 **this is RB-01** and there is nothing to do here. Fixing the dispatcher fixes
@@ -861,11 +926,16 @@ the check.
 **4. What was in flight?** ✅ executable
 
 ```sql
-SELECT count(*)        AS pending,
-       min(created_at) AS oldest,
-       max(created_at) AS newest
-  FROM outbox_event
- WHERE dispatched_at IS NULL;
+SELECT d.consumer,
+       count(*)          AS pending,
+       min(e.created_at) AS oldest,
+       max(e.created_at) AS newest
+  FROM outbox_delivery d
+  JOIN outbox_event e ON e.id = d.event_id
+ WHERE d.dispatched_at IS NULL
+   AND d.dead_lettered_at IS NULL
+ GROUP BY d.consumer
+ ORDER BY oldest;
 ```
 
 **5. Where did the data actually stop?** ✅ executable

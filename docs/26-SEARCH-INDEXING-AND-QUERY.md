@@ -170,8 +170,8 @@ drop rather than a `DELETE` of millions of rows.
 
 | Index | Definition | Serves |
 | --- | --- | --- |
-| `outbox_pending_ix` | `(created_at)` `WHERE dispatched_at IS NULL` | the dispatch poll — stays tiny because dispatched rows leave the partial index |
-| `outbox_dlq_ix` | `(created_at)` `WHERE attempts >= max_attempts` | dead-letter review |
+| `outbox_delivery_pending_ix` | `(consumer, next_attempt_at, created_at)` `WHERE dispatched_at IS NULL AND dead_lettered_at IS NULL` | the dispatch poll. Led by `consumer` because a worker polls for exactly one — a time-leading index makes it walk five other consumers' due rows to reach its own. Both partial predicates matter: dispatched rows leave it so it stays tiny, and dead-lettered rows leave it so a growing DLQ — whose rows are by definition the *oldest* pending ones — cannot sit at its head and be re-read on every poll |
+| `outbox_delivery_dlq_ix` | `(workspace_id, dead_lettered_at)` `WHERE dead_lettered_at IS NOT NULL` | dead-letter review (RB-02) |
 | `notification_unread_ix` | `(user_id, created_at DESC)` `WHERE read_at IS NULL` | the inbox badge |
 
 ### Everything else

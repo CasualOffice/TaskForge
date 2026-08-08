@@ -368,7 +368,11 @@ CREATE TABLE outbox_event (
     attempts       integer NOT NULL DEFAULT 0,
     last_error     text
 );
-CREATE INDEX outbox_pending_ix ON outbox_event (created_at) WHERE dispatched_at IS NULL;
+-- Delivery state is per (event, consumer) — see migration 0013 and docs/25
+-- §Per-consumer delivery state. outbox_event keeps only the immutable fact;
+-- its dispatched_at/attempts/last_error columns were dropped there.
+CREATE INDEX outbox_delivery_pending_ix ON outbox_delivery (consumer, next_attempt_at, created_at)
+    WHERE dispatched_at IS NULL AND dead_lettered_at IS NULL;
 
 CREATE TABLE activity_event (
     id             uuid PRIMARY KEY,

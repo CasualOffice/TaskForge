@@ -1,7 +1,7 @@
 # TaskForge
 
-[![Status: Phase 0](https://img.shields.io/badge/status-phase%200%20foundation-orange.svg)](docs/06-ROADMAP-AND-DELIVERY.md)
-[![Rust: MSRV 1.90](https://img.shields.io/badge/rust-MSRV%201.90-black.svg?logo=rust)](rust-toolchain.toml)
+[![Status: Phase 1](https://img.shields.io/badge/status-phase%201%20usable%20core-orange.svg)](docs/06-ROADMAP-AND-DELIVERY.md)
+[![Rust: MSRV 1.88](https://img.shields.io/badge/rust-MSRV%201.88-black.svg?logo=rust)](Cargo.toml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **A work tracker whose core stays small permanently** — because extension happens
@@ -32,12 +32,21 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > row-level security at 2 M tasks (**D-043**). And the Phase 0 threat-model
 > review was conducted by an agent, says so, and asks to be countersigned.
 >
-> **Phase 1 is under way.** Landed so far, all with tests and none yet gated:
-> the permission resolver and its escalation ceilings, the workflow state
-> machine, the filter AST and its closed field set, and the scoped-connection
-> seam that puts every repository behind row-level security. Four of the five
-> are pure logic with no database — which is why they run in milliseconds and
-> why the fifth is tested against a real PostgreSQL 16.
+> **Phase 1 is under way, and all of it is engine.** Landed so far, with tests
+> and none yet gated: the permission resolver and its escalation ceilings, the
+> workflow state machine, the filter AST and its closed field set, the
+> scoped-connection seam that puts every repository behind row-level security,
+> and the transactional outbox — a change and its activity, audit and per-consumer
+> delivery rows commit together or not at all, verified against a real
+> PostgreSQL 16 rather than asserted.
+>
+> **There is no user interface, and none is being built yet.** Everything above
+> is backend: crates, migrations, and gates. The web client — shell, board,
+> list, My Work, task drawer, command palette — is C-018, and it is deliberately
+> late in Phase 1 because it consumes an HTTP API that does not exist yet
+> (C-001 through C-014 build it). The only frontend artefact in the repository
+> is a measurement harness for the ADR-024 bundle budget, which exists to hold a
+> number, not to render anything.
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 ## The problem
@@ -102,8 +111,8 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 
 | Phase | Delivers | Status |
 | --- | --- | --- |
-| **0 — Foundation** | workspace + enforced layer division, CI gates, architecture lints, **schema + RLS + deployment image**, reference corpus, load-test harness, observability skeleton | 🟡 in progress |
-| 1 — Usable core | auth, workspaces, projects, tasks, comments, attachments, default workflow, **the full permission resolver**, activity/audit/outbox, filters, search, board/list/My Work, SSE, notifications | ⬜ |
+| **0 — Foundation** | workspace + enforced layer division, CI gates, architecture lints, **schema + RLS + deployment image**, reference corpus, load-test harness, observability skeleton | ✅ closed 2026-08-08 |
+| **1 — Usable core** | auth, workspaces, projects, tasks, comments, attachments, default workflow, **the full permission resolver**, activity/audit/outbox, filters, search, **then** the web client — board/list/My Work — SSE, notifications | 🟡 in progress (engine; no UI yet) |
 | 2 — Administration | custom roles, permission simulator, custom workflows + status migration, environments, milestones, dependencies, audit console, SSO | ⬜ |
 | 3 — Extension platform | declarative plugins → remote HTTPS → sandboxed frontend, integration SDK | ⬜ |
 | 4 — Advanced productivity | automation engine, reporting, calendar/timeline **as plugins**, SCIM | ⬜ |
@@ -217,9 +226,15 @@ not a convenience. Full walkthrough: [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 > and audit immutability both silently inert. `deploy/` sets this up correctly
 > and CI asserts it — see [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 
-**There is no runnable application yet** — the binaries are Phase 0 scaffolds.
-The image, the schema, and the deployment path are real and gated. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the full command set and the PR contract.
+**There is no runnable application yet, and nothing to look at.** The binaries
+are scaffolds: no HTTP endpoint serves a request and no page renders. What is
+real and gated is underneath — the image, the schema and its row-level security,
+the deployment path, and the crates listed in the status note above. If you are
+here to try the product, it is not ready; if you are here to read how it is
+built, start with `docs/`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full command set and the PR
+contract.
 
 ## Documentation
 

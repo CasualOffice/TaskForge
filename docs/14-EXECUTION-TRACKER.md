@@ -274,9 +274,9 @@ until now still described holding a database transaction open across consumer
 HTTP I/O — the shape D-038 rejected. Anyone implementing C-011 from that section
 would have built it. It now specifies claim → commit → HTTP → record, the claim
 expiry that makes a crashed worker recoverable, per-consumer delivery state, and
-the `next_attempt_at` the backoff ladder needs. Two of those are schema changes
-that migration 0007 does not have; the section says so rather than reading as
-though they exist.
+the `next_attempt_at` the backoff ladder needs. The two schema changes it named
+as missing are now made — migration
+[0013](../migrations/0013_outbox_delivery.sql), landed with C-011 below.
 
 The remaining seven are additive rather than contradictory: pool bounds and 503
 on exhaustion (D-039, [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)), queue
@@ -324,7 +324,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-008 | Task CRUD, assignees, tags | Accepted |
 | C-009 | Comments | Accepted |
 | C-010 | Attachment pipeline | Accepted |
-| C-011 | Activity + audit + **outbox** | Accepted |
+| C-011 | Activity + audit + **outbox** | `Building` |
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | Accepted |
 | C-014 | Cursor pagination | `Building` |
@@ -509,6 +509,53 @@ vacuously true.
 Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
+
+**C-011 is `Building`.** The transactional write path and the dispatch loop are
+implemented, with 11 integration tests against a real PostgreSQL 16 — the
+`#[ignore]`d suite CI runs in its `schema` job.
+
+`UnitOfWork::record` writes the activity record, the audit record, the outbox
+event, and one delivery row per consumer in the **caller's** transaction. It does
+not commit: a unit of work frequently spans more than one aggregate, and a type
+that committed on its own could not express that. Two tests carry the ADR-006
+guarantee — one that a commit leaves all four, one that a rollback leaves none.
+The second is the one that matters; a change whose history has a hole in it is
+the failure the outbox exists to prevent.
+
+`dispatch` is deliberately three functions and not one. `claim`, `succeeded` and
+`failed` cannot be composed into a call that holds a transaction across consumer
+HTTP, which is the shape D-038 rejected. A test proves it rather than the
+docstring asserting it: after the claim commits, a second connection takes
+`FOR UPDATE` on the claimed row and must not block.
+
+Migration [0013](../migrations/0013_outbox_delivery.sql) adds `outbox_delivery`
+— one row per `(event, consumer)` — and **drops** `dispatched_at`, `attempts`
+and `last_error` from `outbox_event`. Dropping them was the point: left in
+place, a dispatcher updating `outbox_event.dispatched_at` would run without
+error, report success, and deliver to none of the six consumers.
+
+Three things the gates caught that review would not have:
+
+- The lag gauge decoded `min(...)` as a plain `f64`. An aggregate over zero rows
+  returns one row containing NULL, so it worked with a backlog and failed with
+  none — the state a healthy system is in almost all of the time.
+- The schema gate failed on the dropped `outbox_pending_ix`, and the corpus gate
+  refused the new 654,000-row table until it was registered as tenant-scale with
+  a probe covering it.
+- The `EXPLAIN` gate preferred a different index over the first version of
+  `outbox_delivery_pending_ix`. Leading it with `consumer` fixed that, and the
+  reason is now in the migration: a worker polls for exactly one consumer, so a
+  time-leading index makes it walk five others' due rows to reach its own.
+
+The dead-letter design item RB-01 in [50](50-RUNBOOKS.md) raised — dead rows
+being the oldest pending rows and so sitting at the head of the poll index — is
+**closed**, by the partial index excluding them rather than by a rule asking the
+query to.
+
+Still missing before `Gated`: the dispatcher worker itself and its bypass role
+(the runtime half), the at-least-once acceptance test named in
+[25](25-EVENTS-OUTBOX-AND-AUDIT.md), and the 7-day cleanup sweep. C-011 is
+`Building`, not `Built`.
 
 **C-003 is `Building`.** The resolution core is implemented in
 `casual-task-authz` — the scope containment chain, the additive union, the
