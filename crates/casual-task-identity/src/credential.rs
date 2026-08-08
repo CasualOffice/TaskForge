@@ -123,17 +123,26 @@ pub fn mint() -> Result<Minted, rand::rand_core::OsError> {
 /// # Errors
 ///
 /// [`Invalid`] if it is not `<selector>.<verifier>` with both halves the
-/// expected length. Length is checked here so that a malformed credential is
-/// rejected before it reaches a database query.
+/// expected length and both halves hex. Checked here so that a malformed
+/// credential is rejected before it reaches a database query or a hash.
+///
+/// **Both** halves, not only the selector. [`mint`] emits hex on both sides, so
+/// anything else is malformed by construction — and accepting it means 48 bytes
+/// of arbitrary input reach [`verify`], and through it a hash of whatever an
+/// unauthenticated caller sent.
 pub fn split(presented: &str) -> Result<(&str, &str), Invalid> {
     let (selector, verifier) = presented.split_once(SEPARATOR).ok_or(Invalid)?;
     if selector.len() != SELECTOR_BYTES * 2 || verifier.len() != VERIFIER_BYTES * 2 {
         return Err(Invalid);
     }
-    if !selector.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !is_hex(selector) || !is_hex(verifier) {
         return Err(Invalid);
     }
     Ok((selector, verifier))
+}
+
+fn is_hex(half: &str) -> bool {
+    half.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Whether `verifier` matches `stored`.
@@ -254,10 +263,29 @@ mod tests {
             "short.short",
             &format!("{}.{}", "0".repeat(24), "0".repeat(47)), // verifier one short
             &format!("{}.{}", "0".repeat(23), "0".repeat(48)), // selector one short
-            &format!("{}.{}", "z".repeat(24), "0".repeat(48)), // not hex
+            &format!("{}.{}", "z".repeat(24), "0".repeat(48)), // selector not hex
+            // The verifier half, which was length-checked but never validated:
+            // without the check these reached `verify` as-is, so an
+            // unauthenticated caller chose 48 bytes of hash input.
+            &format!("{}.{}", "0".repeat(24), "z".repeat(48)),
+            &format!("{}.{}", "0".repeat(24), "0".repeat(47) + " "),
+            &format!("{}.{}", "0".repeat(24), "0".repeat(47) + "%"),
         ] {
             assert_eq!(split(bad), Err(Invalid), "accepted {bad:?}");
         }
+    }
+
+    #[test]
+    fn a_well_formed_credential_still_splits() {
+        // The companion to the refusals above: a validator that rejected
+        // everything would satisfy that test and break every login.
+        let minted = mint().expect("entropy");
+        let (selector, verifier) = split(&minted.presented).expect("well formed");
+        assert_eq!(selector.len(), SELECTOR_BYTES * 2);
+        assert_eq!(verifier.len(), VERIFIER_BYTES * 2);
+        // Upper-case hex is accepted too: a proxy or client that normalised the
+        // case would otherwise turn a valid credential into a parse failure.
+        assert!(split(&minted.presented.to_uppercase()).is_ok());
     }
 
     #[test]
