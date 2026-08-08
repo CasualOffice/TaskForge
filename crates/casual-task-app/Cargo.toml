@@ -1,0 +1,22 @@
+[package]
+name = "casual-task-app"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+casual-task-model = { workspace = true }
+casual-task-authz = { workspace = true }
+casual-task-identity = { workspace = true }
+casual-task-project = { workspace = true }
+casual-task-workflow = { workspace = true }
+casual-task-task = { workspace = true }
+casual-task-activity = { workspace = true }
+casual-task-attachment = { workspace = true }
+casual-task-notification = { workspace = true }
+
+[lints]
+workspace = true

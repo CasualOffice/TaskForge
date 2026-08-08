@@ -1,0 +1,97 @@
+[workspace]
+resolver = "3"
+members = [
+    # Bedrock — depends on nothing in the workspace.
+    "crates/casual-task-model",
+
+    # Authorization — consulted by the app layer, never by a domain crate.
+    "crates/casual-task-authz",
+
+    # Domain modules — none may depend on another (docs/19 invariant 1).
+    "crates/casual-task-identity",
+    "crates/casual-task-project",
+    "crates/casual-task-workflow",
+    "crates/casual-task-task",
+    "crates/casual-task-activity",
+    "crates/casual-task-attachment",
+    "crates/casual-task-notification",
+
+    # Application — the only layer allowed to compose domain crates.
+    "crates/casual-task-app",
+
+    # Infrastructure.
+    "crates/casual-task-persistence",
+    "crates/casual-task-search",
+    "crates/casual-task-infra",
+    "crates/casual-task-observability",
+
+    # Extension contract — shared with external plugin SDKs, versioned
+    # independently of the application (ADR-015).
+    "crates/casual-task-plugin-contract",
+
+    # Binaries.
+    "crates/casual-task-api",
+    "crates/casual-task-worker",
+
+    # Tooling.
+    "tools/casual-task-lint",
+    "tools/casual-task-seed",
+    "tools/casual-task-loadtest",
+]
+# The fuzz workspace is separate: it pulls nightly-only cargo-fuzz deps that must
+# stay out of the product dependency graph (docs/19, docs/21).
+exclude = ["fuzz"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/CasualOffice/taskforge"
+rust-version = "1.90.0"          # MSRV — ADR-pending, see docs/08-ADR-REGISTER.md
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"           # docs/19 §Workspace-level policy
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.dependencies]
+# Intra-workspace
+casual-task-model            = { path = "crates/casual-task-model" }
+casual-task-authz            = { path = "crates/casual-task-authz" }
+casual-task-identity         = { path = "crates/casual-task-identity" }
+casual-task-project          = { path = "crates/casual-task-project" }
+casual-task-workflow         = { path = "crates/casual-task-workflow" }
+casual-task-task             = { path = "crates/casual-task-task" }
+casual-task-activity         = { path = "crates/casual-task-activity" }
+casual-task-attachment       = { path = "crates/casual-task-attachment" }
+casual-task-notification     = { path = "crates/casual-task-notification" }
+casual-task-app              = { path = "crates/casual-task-app" }
+casual-task-persistence      = { path = "crates/casual-task-persistence" }
+casual-task-search           = { path = "crates/casual-task-search" }
+casual-task-infra            = { path = "crates/casual-task-infra" }
+casual-task-observability    = { path = "crates/casual-task-observability" }
+casual-task-plugin-contract  = { path = "crates/casual-task-plugin-contract" }
+
+# Third-party — one version per concern, declared once (docs/42 applies the same
+# rule to the client: no duplicate libraries for the same job).
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid       = { version = "1", features = ["v7", "serde"] }
+time       = { version = "0.3", features = ["serde", "macros", "formatting", "parsing"] }
+thiserror  = "2"
+anyhow     = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# The API keeps unwinding: a panic in one request handler must not take down the
+# process serving every other request (docs/19 §Workspace-level policy).
+# The worker overrides this to panic = "abort" in its own profile when it gains
+# one; it is not set here because profiles are workspace-global.

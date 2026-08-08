@@ -1,0 +1,40 @@
+# Developer profile — docs/48-DEPLOYMENT-PROFILES.md §Profile 1.
+#
+# PostgreSQL only. Redis, object storage, and a separate worker are deliberately
+# absent: the single-node profile must remain a real, supported deployment, and
+# keeping the dev profile honest is how that stays true.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taskforge
+      POSTGRES_PASSWORD: taskforge
+      POSTGRES_DB: taskforge
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Opt-in only: `docker compose --profile full up -d`.
+  # Nothing in the default profile may depend on these.
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["full"]
+    ports: ["8025:8025", "1025:1025"]
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["full"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: taskforge
+      MINIO_ROOT_PASSWORD: taskforge
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+
+volumes:
+  pgdata:
+  miniodata:

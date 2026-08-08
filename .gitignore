@@ -1,0 +1,15 @@
+/target
+**/target
+Cargo.lock.bak
+.env
+.env.*
+!.env.example
+/data
+node_modules
+webapp/dist
+webapp/.vite
+*.profraw
+.DS_Store
+
+# Local session/permission config — machine-specific, not shared.
+.claude/settings.local.json

@@ -1,0 +1,111 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Job names are the CI contract; see docs/15-CI-AND-RELEASE-GATES.md.
+#
+# Gates whose harnesses do not exist yet are listed in that document's
+# "Future gates" section and are added by their own Phase 0/1 tracker items —
+# explain-no-seq-scan (F-008), latency (F-007), bundle-size (F-012, C-019),
+# openapi-diff and error-registry (Phase 1), a11y (C-019), fuzz (Phase 1).
+# A gate is never silently omitted; it is either here or recorded as pending.
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --all -- --check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  # The layer division from docs/19, enforced. An illegal dependency, SQL
+  # outside casual-task-persistence, HTTP outside casual-task-api, OFFSET, an
+  # unbounded channel, or an AuthContext minted outside the API edge all fail
+  # the build here rather than in review.
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo run -q -p casual-task-lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --workspace --all-features --locked
+
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo doc --workspace --all-features --no-deps
+
+  dependency-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check bans licenses sources
+
+  # docs/16-DOCUMENTATION-MAINTENANCE.md — the design record is the source of
+  # truth, so a broken cross-reference is a build failure.
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Internal documentation links resolve
+        run: python3 scripts/check-doc-links.py
+      - name: Reject merge-conflict markers
+        run: |
+          if git grep -nE '^(<{7}|={7}|>{7})( |$)' -- ':!*.yml' ; then
+            echo "merge-conflict markers found" >&2
+            exit 1
+          fi
+      - name: Reject banned words in docs
+        run: |
+          # docs/16 §Writing standards — each hides an unverified claim.
+          # The three docs that *define* the ban are excluded, as is the
+          # archive, which is preserved verbatim for provenance.
+          if git grep -nEi '\b(seamless|lossless)\b' -- 'docs/*.md' \
+               ':!docs/10-PROJECT-GOAL-AND-STANDARDS.md' \
+               ':!docs/16-DOCUMENTATION-MAINTENANCE.md' \
+               ':!docs/17-GLOSSARY.md' \
+               ':!docs/_archive/*' ; then
+            echo "banned word in docs (docs/16 §Writing standards)" >&2
+            exit 1
+          fi
+
+  platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            toolchain: "1.96.0"
+          - os: ubuntu-latest
+            toolchain: "1.90.0"   # MSRV check (ADR-pending, D-032)
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal
+      - run: rustup override set ${{ matrix.toolchain }}
+      - run: cargo test --workspace --all-features --locked
