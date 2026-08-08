@@ -528,6 +528,48 @@ Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
 
+**Sessions are now consumed, not just created.** Two extractors, and the split
+between them is the design `docs/40` §Workspace-level SSO and MFA step-up
+describes: "signed in" and "may enter this workspace" are different questions,
+because the browser session is user-scoped while membership and MFA policy are
+per workspace.
+
+- `Authenticated` — a live session cookie or bearer token. Knows *who*, not
+  *where*.
+- `WorkspaceMember` — the above plus a workspace validated against membership on
+  **this** request. It is the only thing in the codebase that mints an
+  `AuthContext`, which is what makes `WorkspaceScope` unforgeable elsewhere
+  ([32](32-TENANCY-AND-ISOLATION.md)).
+
+A handler taking `Authenticated` **cannot reach tenant data**, because it has no
+`AuthContext` to build a scope from. That is a compile-time property rather than
+a review note, which is the shape [10](10-PROJECT-GOAL-AND-STANDARDS.md) §3 asks
+for.
+
+**A workspace an actor is not a member of is 404, not 403** — including a
+workspace that genuinely exists. [04](04-RBAC-AND-AUTHORIZATION.md) requires
+absent and invisible to be indistinguishable, and a 403 would let an
+authenticated stranger enumerate workspace ids by probing a header. The test
+compares a real workspace against an imaginary one and asserts the responses
+match.
+
+**CSRF is enforced as a layer over every route**, not per handler. `docs/05` says
+"every unsafe method without a valid token is rejected", and *every* means the
+guard has to sit somewhere a new route cannot be added beside. It sits **under**
+the observability layer, so a CSRF rejection still gets a request id and still
+counts in the metrics — a refusal nobody can measure is a refusal nobody
+notices. Bearer-authenticated requests are exempt: a token is not sent
+automatically by a browser, so requiring a CSRF token from a service account
+would be asking a machine to defend against an attack that needs a browser.
+
+**The guard broke an existing test the moment it landed**, which is the guard
+working: `logging_out_revokes_the_session_immediately` posted with only a
+session cookie — exactly the shape of a cross-site form submission — and now
+gets a 403. It carries the token.
+
+Bearer tokens authenticate through the ADR-032 pre-workspace seam, so C-001's
+credential layer and its runtime half now meet.
+
 **Login works.** `POST /api/v1/auth/login` and `/auth/logout`, with the session
 cookie `docs/40` specifies flag for flag, and seven end-to-end tests against a
 real PostgreSQL.

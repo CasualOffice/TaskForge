@@ -141,6 +141,27 @@ pub async fn insert_workspace(
     Ok(())
 }
 
+/// Add a user to a workspace, so the membership check passes.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_workspace_member(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO workspace_membership (workspace_id, user_id, member_type)
+         VALUES ($1, $2, 'MEMBER')",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing

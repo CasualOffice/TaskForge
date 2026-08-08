@@ -222,6 +222,16 @@ async fn logging_out_revokes_the_session_immediately() -> Result<()> {
         .and_then(|c| c.split(';').next())
         .expect("session cookie")
         .to_owned();
+    // The CSRF token, because logout is a state-changing method and the guard
+    // added with the auth middleware rejects one without it. This test caught
+    // that the moment the layer landed, which is the layer working.
+    let csrf_token = cookies
+        .iter()
+        .find(|c| c.starts_with("tf_csrf"))
+        .and_then(|c| c.split(';').next())
+        .and_then(|c| c.split_once('='))
+        .map(|(_, value)| value.to_owned())
+        .expect("csrf cookie");
 
     let response = app(db.pool.clone())
         .oneshot(
@@ -229,6 +239,7 @@ async fn logging_out_revokes_the_session_immediately() -> Result<()> {
                 .method("POST")
                 .uri("/api/v1/auth/logout")
                 .header(header::COOKIE, &session_cookie)
+                .header("x-csrf-token", &csrf_token)
                 .body(Body::empty())?,
         )
         .await?;
