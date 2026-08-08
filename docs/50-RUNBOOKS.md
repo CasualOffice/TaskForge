@@ -89,7 +89,7 @@ application's: `SET LOCAL statement_timeout = '30s';` The 5 s application limit
 ([21](21-API-LIMITS-AND-QUOTAS.md)) exists to protect users from a runaway
 request, not to protect an operator from a deliberate one.
 
-## Five standing rules
+## Six standing rules
 
 These decide the cases where runbooks usually fail.
 
@@ -112,6 +112,15 @@ These decide the cases where runbooks usually fail.
    `/health/live` deliberately does not touch the database precisely so that a
    database blip does not restart every healthy instance at once
    ([46](46-OBSERVABILITY-AND-OPERATIONS.md) §Health endpoints).
+6. **Revoke an investigation admission when the incident closes.**
+   [46](46-OBSERVABILITY-AND-OPERATIONS.md) §Cardinality discipline allows a
+   tenant onto a per-workspace metric label "temporarily", and **nothing expires
+   it** — there is no clock in `InvestigationAllowList` (tracker **D-042**). An
+   admission left in place produces a per-tenant series forever, which is the
+   cardinality blowup the allow-list exists to prevent. Until the expiry is
+   designed, the last step of any incident that admitted a workspace is to
+   remove it, and the allow-list holds at most 8, so a forgotten one also
+   silently costs the next investigation a slot.
 
 ---
 

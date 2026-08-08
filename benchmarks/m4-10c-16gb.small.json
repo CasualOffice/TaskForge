@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "harness": "casual-task-loadtest",
+  "harnessVersion": "0.0.0",
+  "environment": "m4-10c-16gb",
+  "generatedAt": "2026-08-08T23:30:00Z",
+  "corpus": {
+    "scale": "small",
+    "workspaceId": "01887967-6800-7606-80ea-ebbf1b80534f",
+    "tasks": 49729,
+    "projects": 40,
+    "users": 120,
+    "searchDocuments": 49729,
+    "activityEvents": 513915
+  },
+  "iterations": 300,
+  "warmupIterations": 50,
+  "percentileMethod": "nearest-rank",
+  "cases": [
+    {
+      "id": "roundtrip_floor",
+      "samples": 300,
+      "minUs": 35,
+      "p50Us": 47,
+      "p95Us": 56,
+      "p99Us": 97,
+      "maxUs": 195,
+      "meanUs": 48,
+      "p99Confident": false,
+      "rowsReturned": 1
+    },
+    {
+      "id": "task_read_by_id",
+      "target": "Task read",
+      "samples": 300,
+      "minUs": 223,
+      "p50Us": 256,
+      "p95Us": 315,
+      "p99Us": 482,
+      "maxUs": 1457,
+      "meanUs": 270,
+      "p99Confident": false,
+      "rowsReturned": 1
+    },
+    {
+      "id": "task_read_by_key",
+      "target": "Task read",
+      "samples": 300,
+      "minUs": 86,
+      "p50Us": 97,
+      "p95Us": 119,
+      "p99Us": 266,
+      "maxUs": 700,
+      "meanUs": 103,
+      "p99Confident": false,
+      "rowsReturned": 1
+    },
+    {
+      "id": "board_column_load",
+      "target": "Board load (200 cards)",
+      "samples": 300,
+      "minUs": 229,
+      "p50Us": 249,
+      "p95Us": 288,
+      "p99Us": 432,
+      "maxUs": 2094,
+      "meanUs": 264,
+      "p99Confident": false,
+      "rowsReturned": 200
+    },
+    {
+      "id": "list_page_cursor",
+      "target": "List/filter page (50)",
+      "samples": 300,
+      "minUs": 144,
+      "p50Us": 159,
+      "p95Us": 193,
+      "p99Us": 333,
+      "maxUs": 991,
+      "meanUs": 169,
+      "p99Confident": false,
+      "rowsReturned": 51
+    },
+    {
+      "id": "full_text_search",
+      "target": "Full-text search",
+      "samples": 300,
+      "minUs": 14038,
+      "p50Us": 14527,
+      "p95Us": 17145,
+      "p99Us": 26468,
+      "maxUs": 52755,
+      "meanUs": 15199,
+      "p99Confident": false,
+      "rowsReturned": 51
+    },
+    {
+      "id": "my_work_assigned",
+      "target": "My Work",
+      "samples": 300,
+      "minUs": 5870,
+      "p50Us": 6274,
+      "p95Us": 7369,
+      "p99Us": 19056,
+      "maxUs": 25769,
+      "meanUs": 6645,
+      "p99Confident": false,
+      "rowsReturned": 51
+    },
+    {
+      "id": "permission_resolution_cold",
+      "target": "Permission resolution (cold)",
+      "samples": 300,
+      "minUs": 186,
+      "p50Us": 212,
+      "p95Us": 323,
+      "p99Us": 438,
+      "maxUs": 1574,
+      "meanUs": 232,
+      "p99Confident": false,
+      "rowsReturned": 62
+    },
+    {
+      "id": "accessible_projects",
+      "target": "Permission resolution (cold)",
+      "samples": 300,
+      "minUs": 197,
+      "p50Us": 219,
+      "p95Us": 269,
+      "p99Us": 450,
+      "maxUs": 1556,
+      "meanUs": 233,
+      "p99Confident": false,
+      "rowsReturned": 6
+    },
+    {
+      "id": "activity_page",
+      "target": "Activity page",
+      "samples": 300,
+      "minUs": 96,
+      "p50Us": 110,
+      "p95Us": 144,
+      "p99Us": 365,
+      "maxUs": 982,
+      "meanUs": 121,
+      "p99Confident": false,
+      "rowsReturned": 3
+    }
+  ],
+  "notMeasured": [
+    {
+      "operation": "Task create",
+      "reason": "A write measured with COMMIT mutates the corpus and makes the run non-repeatable; measured with ROLLBACK it omits the WAL flush, which is the dominant cost. Neither is worth a baseline.",
+      "arrives": "Phase 1 (C-004), against a disposable corpus"
+    },
+    {
+      "operation": "Task update",
+      "reason": "As Task create, plus optimistic-concurrency retry cost that does not exist until the command layer does.",
+      "arrives": "Phase 1 (C-004)"
+    },
+    {
+      "operation": "Status transition",
+      "reason": "A transition is a command with guard evaluation, dependency checks, and four writes in one transaction (docs/23). Its SQL alone would understate it by more than it measures.",
+      "arrives": "Phase 1 (C-006)"
+    },
+    {
+      "operation": "Permission resolution (cached)",
+      "reason": "There is no cache. The docs/30 target is a property of the epoch-keyed cache in docs/04, which is Phase 1 code.",
+      "arrives": "Phase 1 (C-003)"
+    },
+    {
+      "operation": "HTTP, serialization, and middleware overhead",
+      "reason": "No API process exists. Every number here is a database round trip and excludes everything the server does around it.",
+      "arrives": "Phase 1 (C-001)"
+    },
+    {
+      "operation": "Concurrent workload mix",
+      "reason": "Cases run single-threaded, one query in flight. Contention, pool saturation, and the read/write mix in docs/30 \u00a7Throughput are not exercised.",
+      "arrives": "Phase 1"
+    }
+  ],
+  "baseline": {
+    "status": "measured",
+    "justification": "First reference-tooling baseline for the m4-10c-16gb environment (F-007). Corpus is tools/casual-task-seed --scale small (50,000 tasks), generated after the one-level comment-threading fix, loaded into a clean PostgreSQL 16 and ANALYZEd. Recorded on an otherwise idle machine. NOT a gating baseline: docs/30 names an 8 vCPU / 32 GB reference machine and this is a laptop, so the harness will refuse to compare a run from anywhere else against it. It exists as the worked example benchmarks/README.md points new work at, replacing smoke-local.smoke.json's hand-written corpus with the real generator, and as a real datapoint for the docs/30 targets at a scale that fits a developer machine. Every case is far inside its docs/30 p95 target at this scale; full_text_search at 17.1 ms is the one to watch, because D-043 shows its plan degrades to a sequential scan under RLS at reference scale.",
+    "recordedBy": "F-007"
+  }
+}

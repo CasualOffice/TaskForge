@@ -70,25 +70,120 @@ The documentation phase. All complete unless noted.
 | D-032 | Auth protocol ADR (session/token specifics) | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
+| D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Blocked** — Accept before C-011 |
+| D-039 | Connection pool sizing, acquisition timeout, exhaustion behaviour | [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) | **Blocked** — Accept before C-001 |
+| D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Blocked** — Accept before C-011 |
+| D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
+| D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-001 |
+| D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Blocked** — Accept before C-013 |
+| D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Blocked** — Accept at Phase 0 |
+| D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
+| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Blocked** — Accept before C-016 |
+
+Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
+the concurrency, async, and observability design; **D-044** and **D-045** were
+already listed as pending ADRs in [08](08-ADR-REGISTER.md) §Pending and had no
+tracker row at all, which AGENTS.md forbids — an untracked decision is one
+nobody is accountable for. They are recorded rather than resolved because each
+is a decision, and AGENTS.md forbids settling one silently in an
+implementation:
+
+- **D-038.** [25](25-EVENTS-OUTBOX-AND-AUDIT.md) describes dispatch as holding a
+  transaction open across consumer I/O, which pins a connection for the duration
+  of an HTTP call to a webhook endpoint. It specifies six consumers that are
+  "independently retried", but `outbox_event` carries one row-level state for all
+  of them, so one consumer's failure and another's success have nowhere to be
+  recorded separately. It also claims per-aggregate ordering with no mechanism
+  that provides it. Three related holes, one decision.
+- **D-039.** The exponential-backoff ladder in [25](25-EVENTS-OUTBOX-AND-AUDIT.md)
+  is unimplementable against the committed schema: `outbox_event` (migration
+  0007) has no next-attempt column, so "retry in 4 minutes" cannot be expressed
+  and the dispatch poll cannot exclude a row that is waiting. This one is
+  schema-visible and is cheapest to settle before the table has data in it.
+- **D-040.** [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) says "all queues are
+  bounded" without naming a bound or what happens when one is full. The bound is
+  now enforced mechanically — `clippy.toml` rejects every unbounded-channel
+  constructor by resolved path — but "bounded" without a policy for the full case
+  just moves the failure from an out-of-memory crash to an unspecified one.
+- **D-042.** [46](46-OBSERVABILITY-AND-OPERATIONS.md) contradicts itself: §Domain
+  metrics writes `rate_limit_hits_total` "by workspace", and §Cardinality
+  discipline forbids a raw `workspace_id` label on any metric. The registry
+  resolved it in favour of the discipline — a hashed bucket, which answers
+  "is throttling concentrated?" and not "which tenant?" — and the code claimed
+  that resolution was "recorded as an open question", which it was not. It is
+  now. Second half of the same row: §Cardinality discipline permits per-tenant
+  labels "enabled temporarily", and the allow-list enforces *small* but not
+  *temporarily*. There is no clock, so an admission lasts forever. Deciding the
+  expiry is a design choice, not an implementation detail.
+- **D-043.** Measured, not predicted. `tests/explain/queries/11` already
+  documented that `tsvector @@ tsquery` resolves to `ts_match_vq`, which is not
+  `LEAKPROOF`, so PostgreSQL will not evaluate it before the row-security qual
+  and therefore cannot use `task_search_gin` as an index qual under RLS. It
+  concluded "it is not a Seq Scan, so this gate passes it." That conclusion is
+  corpus-size-dependent, and it is false at the corpus the product targets. On a
+  loaded 2,000,000-task corpus, same query, same 6%-selective term, same
+  instance:
+
+  | connected as | RLS | plan |
+  | --- | --- | --- |
+  | `taskforge_app` | applied | **`Parallel Seq Scan on task_search`** |
+  | owner | not applied | `Bitmap Index Scan on task_search_gin` |
+
+  RLS is the only difference. So the product's own search path performs the
+  sequential scan on a tenant-scale table that [26](26-SEARCH-INDEXING-AND-QUERY.md)
+  NFR-5 and ADR-011 forbid, and the `explain-no-seq-scan` gate cannot see it,
+  because it runs at ~109k rows where the same query still resolves to an index
+  scan. **A green gate does not mean the rule holds at reference scale.**
+
+  This touches ADR-011, ADR-014, and ADR-020 and is a decision, not a fix:
+  the options (a `LEAKPROOF` wrapper, a security-definer function, dropping RLS
+  on the projection table in favour of an explicit predicate, or the dedicated
+  search engine ADR-014 already names as its tripwire) trade tenant-isolation
+  guarantees against query plans, and that trade is exactly what an ADR is for.
+  Separately: raising the gate's corpus, or running it at reference scale
+  nightly, is what would have caught this.
+- **D-044.** [08](08-ADR-REGISTER.md) §Pending lists "MSRV and toolchain pin —
+  once the workspace is scaffolded". The workspace *is* scaffolded, so the ADR
+  is due. Until it exists, `rust-version = "1.90.0"` in `Cargo.toml` and the
+  `platform` job's MSRV matrix entry are a number nobody agreed to; both used to
+  cite **D-032**, which is the auth item, so the pointer was wrong as well as
+  dangling. F-002 cannot be `Gated` until this lands.
+- **D-046.** [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) specifies TLS 1.3
+  for traffic *into* the system. Nothing specifies anything about traffic *out*
+  of it to an SMTP relay: not whether STARTTLS is required, not whether the
+  relay's certificate is verified, not what happens when a relay offers no TLS
+  at all. Email does not appear in the threat model. This is not academic —
+  [29](29-NOTIFICATIONS-AND-DELIVERY.md) §Email content puts the task title in
+  the subject line (`[WR-125] Task title`), so every notification carries tenant
+  content, and `TF_SMTP_PASS` crosses the same connection. Silently falling back
+  to cleartext is the failure mode to design out, and which way to fail is a
+  security decision rather than a client-library default to inherit.
+- **D-045.** [08](08-ADR-REGISTER.md) §Pending also lists SSE vs WebSocket.
+  `Deferred` rather than `Blocked`: SSE is the Phase 1 decision and no feature
+  yet needs client→server streaming, so this only becomes live if one does.
+- **D-041.** No document describes cancellation or graceful shutdown: what
+  happens to an in-flight request, a half-dispatched outbox row, or a held
+  advisory lock when a pod is terminated. Retrofitting cancellation through a
+  codebase that never considered it is materially harder than designing it in.
 
 ## Phase 0 — Foundation (F)
 
 | ID | Item | Status | Blocked by |
 | --- | --- | --- | --- |
-| F-001 | Cargo workspace + all crates with declared edges | Accepted | — |
-| F-002 | Toolchain pin, MSRV ADR, `deny.toml` | Accepted | — |
-| F-003 | CI: fmt, clippy, deny, nextest | Accepted | F-001 |
-| F-004 | Custom architecture lints ([15](15-CI-AND-RELEASE-GATES.md)) | Accepted | F-001 |
-| F-005 | PostgreSQL testcontainers harness + migration runner | Accepted | F-001 |
-| F-006 | `tools/casual-task-seed` reference corpus | Accepted | F-005 |
-| F-007 | `tools/casual-task-loadtest` + baselines | Accepted | F-006 |
-| F-008 | `EXPLAIN` no-seq-scan harness | Accepted | F-006 |
-| F-009 | Observability skeleton | Accepted | F-001 |
-| F-010 | Docker Compose dev profile | Accepted | F-001 |
-| F-011 | Governance files, Apache-2.0, AGENTS.md | Accepted | — |
-| F-012 | **Bundle floor measurement** (ADR-024) | Accepted | — |
+| F-001 | Cargo workspace + all crates with declared edges | **Gated** | — |
+| F-002 | Toolchain pin, MSRV ADR, `deny.toml` | `Building` | D-044 |
+| F-003 | CI: fmt, clippy, deny, nextest | **Gated** | F-001 |
+| F-004 | Custom architecture lints ([15](15-CI-AND-RELEASE-GATES.md)) | **Gated** | F-001 |
+| F-005 | PostgreSQL testcontainers harness + migration runner | `Building` | F-001 |
+| F-006 | `tools/casual-task-seed` reference corpus | **Gated** | F-005 |
+| F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
+| F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
+| F-009 | Observability skeleton | `Built` | F-001 |
+| F-010 | Docker Compose dev profile | **Gated** | F-001 |
+| F-011 | Governance files, Apache-2.0, AGENTS.md | `Built` | — |
+| F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
 | F-013 | Threat model review | Accepted | D-007 |
-| F-014 | Runbooks (initial set) | Accepted | F-009 |
+| F-014 | Runbooks (initial set) | `Built` | F-009 |
 | F-015 | Migrations + application role + schema verification gate | **Gated** | F-005 |
 | F-016 | Container image, deployment compose, deployment guide | **Gated** | F-015 |
 
@@ -132,14 +227,60 @@ Rolled up until Phase 1 closes; expanded at each phase gate.
 **Phase 0 — foundation. Design record complete; scaffolding under way.**
 
 Landed and `Gated`: the Cargo workspace and dependency DAG (F-001), architecture
-lints (F-004), CI (F-003), and the schema — 12 migrations, the non-superuser
-application role, and the verification gate proving tenant isolation and
-append-only history against a real PostgreSQL 16 (F-015).
+lints (F-004), CI (F-003), the dev compose profile (F-010), the schema — 12
+migrations, the non-superuser application role, and the verification gate
+proving tenant isolation and append-only history against a real PostgreSQL 16
+(F-015) — the container image and deployment compose (F-016), and three gates
+added since:
 
-Remaining Phase 0: the reference corpus (F-006), load-test harness (F-007), the
-`EXPLAIN` no-seq-scan gate (F-008), the observability skeleton (F-009), the
-bundle floor measurement (F-012), and runbooks (F-014). None of these build
-product functionality — they exist to make every later phase verifiable.
+- **F-006, the reference corpus.** `tools/casual-task-seed` generates the
+  docs/30 workspace deterministically — 2,000,000 tasks, 38,981,941 rows, 10.2
+  GiB of `COPY` text in 18.2 s at a 26 MiB peak RSS, byte-identical across runs
+  and loaded into PostgreSQL 16 end to end. Gated by determinism and
+  corpus-invariant tests in the `test` job.
+- **F-008, the `EXPLAIN` no-seq-scan gate.** All 20 read paths planned as the
+  non-superuser `taskforge_app` with RLS applied; 20 index-served, 0 sequential
+  scans, 0 skips. Gated by the `explain-no-seq-scan` job.
+- **F-012, the bundle floor.** Measured at 113.2 KiB gzip against ADR-024's 200
+  KiB. Gated by the `bundle-size` job.
+
+Remaining Phase 0:
+
+- **F-007** is `Built`, not `Gated`, for one reason: the comparison gate has no
+  baseline it may legitimately compare against, because the docs/30 reference
+  machine does not exist. The harness, the corpus, and the gate all work and are
+  tested. Recorded in [15](15-CI-AND-RELEASE-GATES.md) §Pending gates.
+- **F-009** is `Built`. An audit found three defects, all now fixed and each
+  covered by a test that fails without its fix: correlation fields dropped out
+  of every log line emitted inside a nested span (which docs/46 §Traces makes
+  the common case, so most lines would have lost them); the cardinality guard
+  constrained label *keys* while leaving label *values* free, so a tenant id
+  admitted for one label was accepted on another and a plugin installation id
+  was accepted as a `statement` name — unbounded series on a histogram; and an
+  event field named `level` silently rewrote a line's severity, which docs/46
+  §Alerts fires on. It is `Built` rather than `Gated` because nothing installs
+  the subscriber yet — both binaries declare the dependency and neither calls
+  `init()` — and there is no CI gate on metric conformance beyond the crate's
+  own tests.
+- **F-014** is `Built`: the runbooks are written and cross-referenced. There is
+  no meaningful CI gate on prose beyond link resolution.
+- **F-002** is `Building`. The toolchain is pinned and `deny.toml` is enforced by
+  the `dependency-policy` job, but the MSRV ADR the row names does not exist —
+  **D-044**. `rust-version = "1.90.0"` is currently a number with no accepted
+  decision behind it.
+- **F-005** is `Building`. The migration runner exists and is gated
+  (`scripts/verify-schema.sh`), but the *testcontainers* half of the row does
+  not: there is no `testcontainers` dependency anywhere in the workspace. The
+  schema and query gates use a service container directly instead. The Rust
+  harness arrives with the first repository that needs one, and
+  [15](15-CI-AND-RELEASE-GATES.md) §Pending gates records the `Integration` gate
+  as waiting on it.
+- **F-013** is unchanged and unverifiable from here: [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md)
+  §Threat model is written, but nothing records that a *review* happened. If one
+  did, the row should say so and by whom; if not, it is Phase 0 work still open.
+
+None of these build product functionality — they exist to make every later phase
+verifiable.
 
 Three items are genuinely open and tracked as such: **D-032** (auth protocol
 specifics, to be Accepted at Phase 0), **D-033** (custom-field storage, before

@@ -274,10 +274,17 @@ the exceeded limit — never a generic 400.
 ## Acceptance gates
 
 - **`EXPLAIN` assertion suite** — every endpoint × every sortable field, asserting
-  `Index Scan`/`Bitmap Heap Scan` and **no `Seq Scan`** on `task`, `task_search`,
-  `activity_event`, or `role_assignment`. Runs in CI against a seeded corpus.
+  `Index Scan`/`Bitmap Heap Scan` and **no `Seq Scan`** on any tenant-scale table
+  (the list is `tests/explain/tenant-scale-tables.txt`, which covers `task`,
+  `task_search`, `activity_event`, and `role_assignment` among others). Runs in
+  CI as the `explain-no-seq-scan` job, against a seeded corpus, planned as the
+  non-superuser `taskforge_app` so the RLS predicate is in the plan.
 - **Reference corpus** — 2M tasks / 200 projects / 500 users, generated
-  deterministically, committed as a seed script.
+  deterministically by `tools/casual-task-seed` as PostgreSQL `COPY` files. It is
+  *generated*, not committed: at reference scale it is ~10.5 GiB of text. The
+  `EXPLAIN` gate therefore runs against a reduced corpus (`tests/explain/seed.sql`,
+  ~109k tasks) which proves plan **shape**; the reference corpus is for the
+  latency gates ([30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) §Measurement).
 - **Latency gates** — p95 board load < 150 ms, full-text < 200 ms, My Work
   < 200 ms at reference scale ([15](15-CI-AND-RELEASE-GATES.md)).
 - **Cursor property test** — for random insert/update interleavings, paging the

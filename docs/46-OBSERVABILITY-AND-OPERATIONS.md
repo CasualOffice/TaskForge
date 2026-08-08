@@ -58,13 +58,36 @@ Beyond RED, these are the ones that describe *this* system's health:
 | `sse_connections_active` | Live-update load |
 | `db_pool_utilization`, `db_query_duration` by statement | Saturation |
 | `attachment_scan_queue_depth` | Files stuck invisible |
-| `rate_limit_hits_total` by workspace | Who is being throttled |
+| `rate_limit_hits_total` by workspace **bucket** — see D-042 | Whether throttling is concentrated. *Not* which tenant: "by workspace" here contradicts §Cardinality discipline below, and that contradiction is open, not settled. |
 
 **Cardinality discipline:** `workspace_id` appears as a raw label on **no** metric
 — a 10,000-tenant deployment would produce an unusable time series database.
 Per-workspace detail lives in logs and traces, which are queryable by tenant. The
 exception is a small allow-list of workspaces under active investigation, enabled
 temporarily.
+
+### How that rule is enforced, and with what numbers
+
+A rule survives until the eleventh engineer, so it is a mechanism in
+`crates/casual-task-observability` instead. The numbers it picks are recorded
+here rather than living only in the source:
+
+| Constant | Value | What it bounds |
+| --- | ---: | --- |
+| `WORKSPACE_BUCKET_COUNT` | 64 | Tenants are hashed (FNV-1a) into this many buckets. Caps the series count per metric regardless of tenant count. Enough resolution to distinguish "one tenant is causing this" from "everyone is", which is the diagnostic question; it does **not** identify a tenant. |
+| `MAX_LABELS_PER_METRIC` | 6 | Series count is the product of label cardinalities, so this is a second, blunter guard. |
+| `InvestigationAllowList::MAX_ENTRIES` | 8 | How many tenants may carry a raw id at once — the "small allow-list" above. |
+
+`LabelValue` has no `From<String>`, no `From<Uuid>`, and no `Display`-based
+constructor, so a runtime identifier cannot become a label by accident. The two
+constructors that *can* widen cardinality are named, cost-documented, and bound
+to the one label key each is for.
+
+**"Temporarily" is not yet enforced.** Admission to the allow-list has no
+expiry: nothing revokes it, and an admitted tenant produces a per-tenant series
+until an operator removes it. That is the one half of this paragraph the code
+does not deliver — tracked as **D-042**, with the revocation step in
+[50](50-RUNBOOKS.md) until it is.
 
 ## Alerts
 

@@ -1,0 +1,49 @@
+# Compile-time enforcement of the invariants docs/24 §Backpressure and docs/30
+# §Anti-patterns commit to.
+#
+# WHY THIS FILE EXISTS ALONGSIDE tools/casual-task-lint
+#
+# The custom lint checks source text: it greps for `unbounded_channel` and
+# `channel::unbounded`. That catches the two spellings someone thought of, and
+# misses `flume::unbounded()`, `async_channel::unbounded()`,
+# `futures::channel::mpsc::unbounded()`, `std::sync::mpsc::channel()` (unbounded
+# by definition), and any call split across two lines. A rule that is one rename
+# away from silence is not a gate.
+#
+# `disallowed-methods` resolves real paths after name resolution, so an alias, a
+# re-export, or a line break cannot evade it. AGENTS.md: make the wrong thing
+# impossible, not discouraged.
+#
+# NOTE ON UNRESOLVED PATHS
+#
+# Most of the crates below are not workspace dependencies yet — no async runtime
+# exists at Phase 0 (docs/14). Clippy ignores a disallowed path it cannot
+# resolve, so these entries sit dormant and begin enforcing the moment the
+# dependency is added, which is exactly when they are needed. They are written
+# now because adding them after the first unbounded channel ships is too late.
+
+disallowed-methods = [
+    # ── Unbounded queues (docs/24 §Backpressure: "all queues are bounded") ───
+    # An unbounded channel does not remove backpressure, it defers it into an
+    # out-of-memory crash under exactly the load where it hurts most.
+    { path = "tokio::sync::mpsc::unbounded_channel", reason = "unbounded queue — docs/24 §Backpressure requires a bounded channel; use tokio::sync::mpsc::channel(n)" },
+    { path = "futures::channel::mpsc::unbounded", reason = "unbounded queue — docs/24 §Backpressure; use futures::channel::mpsc::channel(n)" },
+    { path = "futures_channel::mpsc::unbounded", reason = "unbounded queue — docs/24 §Backpressure; use futures_channel::mpsc::channel(n)" },
+    { path = "crossbeam_channel::unbounded", reason = "unbounded queue — docs/24 §Backpressure; use crossbeam_channel::bounded(n)" },
+    { path = "flume::unbounded", reason = "unbounded queue — docs/24 §Backpressure; use flume::bounded(n)" },
+    { path = "async_channel::unbounded", reason = "unbounded queue — docs/24 §Backpressure; use async_channel::bounded(n)" },
+    { path = "std::sync::mpsc::channel", reason = "std's mpsc::channel is unbounded — docs/24 §Backpressure; use std::sync::mpsc::sync_channel(n)" },
+
+    # ── Blocking inside async (docs/30 §Anti-patterns) ───────────────────────
+    # Blocking a runtime worker thread stalls every task scheduled on it, and
+    # the symptom is unrelated latency somewhere else entirely.
+    { path = "std::thread::sleep", reason = "blocks the runtime worker thread — use tokio::time::sleep in async code" },
+    { path = "tokio::runtime::Runtime::block_on", reason = "block_on inside a runtime panics or deadlocks — restructure, or use spawn_blocking at the edge" },
+]
+
+disallowed-types = [
+    { path = "tokio::sync::mpsc::UnboundedSender", reason = "unbounded queue — docs/24 §Backpressure" },
+    { path = "tokio::sync::mpsc::UnboundedReceiver", reason = "unbounded queue — docs/24 §Backpressure" },
+    { path = "futures::channel::mpsc::UnboundedSender", reason = "unbounded queue — docs/24 §Backpressure" },
+    { path = "futures::channel::mpsc::UnboundedReceiver", reason = "unbounded queue — docs/24 §Backpressure" },
+]

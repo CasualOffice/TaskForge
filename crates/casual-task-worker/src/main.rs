@@ -10,6 +10,19 @@
 //!
 //! Phase 0 scaffold — no consumers yet. See `docs/14-EXECUTION-TRACKER.md`.
 
-fn main() {
-    println!("taskforge worker — Phase 0 scaffold, no consumers yet (docs/06)");
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    // See the note in casual-task-api's main: installing the subscriber is what
+    // makes the configuration in docs/48 real rather than declared.
+    if let Err(error) = casual_task_observability::init() {
+        eprintln!("failed to initialise telemetry: {error}");
+        return ExitCode::FAILURE;
+    }
+
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "taskforge worker — Phase 0 scaffold, no consumers yet (docs/06)"
+    );
+    ExitCode::SUCCESS
 }

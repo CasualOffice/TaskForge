@@ -46,7 +46,7 @@ exclude = ["fuzz"]
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/CasualOffice/taskforge"
-rust-version = "1.90.0"          # MSRV — ADR-pending, see docs/08-ADR-REGISTER.md
+rust-version = "1.90.0"          # MSRV — ADR-pending (D-044), see docs/08-ADR-REGISTER.md
 publish = false
 
 [workspace.lints.rust]
@@ -85,6 +85,10 @@ uuid       = { version = "1", features = ["v7", "serde"] }
 time       = { version = "0.3", features = ["serde", "macros", "formatting", "parsing"] }
 thiserror  = "2"
 anyhow     = "1"
+rand       = { version = "0.9", features = ["small_rng"] }
+clap       = { version = "4", features = ["derive"] }
+tracing    = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [profile.release]
 lto = "thin"

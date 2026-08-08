@@ -13,6 +13,38 @@ when it moves.
 
 ## [Unreleased]
 
+### Added — Phase 0 foundation
+
+No product functionality. Everything here exists to make later phases
+verifiable, and each item is tracked in
+[docs/14](docs/14-EXECUTION-TRACKER.md).
+
+- **Database schema (F-015)** — 12 migrations, the non-superuser
+  `taskforge_app` role, and a verification gate that applies every migration to
+  a clean PostgreSQL 16 and proves tenant isolation and append-only history *as
+  that role*, because neither guarantee holds for a superuser.
+- **Deployable image (F-016)** — multi-stage build, non-root uid 65532, under
+  the 100 MB budget, with an end-to-end gate that brings the deployment compose
+  up and asserts it is actually isolated.
+- **Reference corpus (F-006)** — `tools/casual-task-seed` generates the docs/30
+  workspace deterministically: 2,000,000 tasks and 38,981,941 rows as
+  PostgreSQL `COPY` files in 18.2 s at a 26 MiB peak RSS. Byte-identity across
+  runs, one-level threading, and manifest accuracy are gated by tests.
+- **Latency harness (F-007)** — `tools/casual-task-loadtest` measures 10 read
+  paths and compares against a committed baseline, refusing to compare at all
+  when the environment, corpus size, or a case's returned-row count has moved.
+  Built, not gated: there is no reference machine to measure a baseline on.
+- **`EXPLAIN` no-seq-scan gate (F-008)** — all 20 read paths planned as
+  `taskforge_app` with the row-level-security predicate in the plan; 20
+  index-served, 0 sequential scans. Runs per pull request.
+- **Bundle budget (F-012)** — the ADR-024 shell budget measured rather than
+  assumed: a 113.2 KiB gzip dependency floor against 200 KiB, with the unit,
+  the definition of "initial", and the bundler's 4.4% influence all pinned down.
+  Runs per pull request.
+- **Observability skeleton (F-009)** — metrics, label-cardinality types,
+  redaction, correlation, and a JSON subscriber. Building; see docs/14 for the
+  two defects blocking it.
+
 ### Added — design record
 
 The complete design record for Phases 0–4: 37 numbered documents in `docs/`, and

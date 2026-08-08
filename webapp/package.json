@@ -1,0 +1,38 @@
+{
+  "name": "@taskforge/webapp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bundle-floor harness for the TaskForge authenticated shell (ADR-024, docs/42).",
+  "scripts": {
+    "build": "vite build",
+    "size-check": "node scripts/size-check.mjs",
+    "measure": "vite build && node scripts/size-check.mjs",
+    "measure:deps": "node scripts/measure-deps.mjs",
+    "typecheck": "tsc --noEmit",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.23",
+    "@tanstack/react-virtual": "3.14.9",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "rollup-plugin-visualizer": "7.0.1",
+    "typescript": "5.9.3",
+    "vite": "8.2.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

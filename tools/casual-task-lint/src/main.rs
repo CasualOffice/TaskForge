@@ -95,9 +95,86 @@ fn check_no_cross_domain_dep(root: &Path, out: &mut Vec<Violation>) -> anyhow::R
     Ok(())
 }
 
+/// Whether a source line uses SQL's `OFFSET`, as opposed to merely containing
+/// the letters.
+///
+/// The rule used to be `line.to_uppercase().contains(" OFFSET ")`, which fires
+/// on `let offset = ...` — a Rust binding named `offset` is not cursor
+/// pagination — and misses a line that is exactly `OFFSET $1`, which is what
+/// `OFFSET` in a multi-line SQL string actually looks like. Both cases occur in
+/// this repository.
+///
+/// Two narrower rules, each of which a plain identifier cannot trigger:
+/// inside a string literal, or at the start of a line and followed by a
+/// parameter or a number.
+fn mentions_sql_offset(line: &str) -> bool {
+    // Odd-indexed segments of a `"`-split are the insides of string literals.
+    // Approximate for escaped quotes, exact for the raw SQL strings that matter.
+    let in_a_string = line.split('"').skip(1).step_by(2).any(offset_takes_a_value);
+
+    // A continuation line of a multi-line SQL string carries no quote at all.
+    // Anchored at the start so a Rust `offset:` struct field cannot reach it.
+    let upper = line.to_uppercase();
+    let continues_sql = upper.starts_with("OFFSET") && offset_takes_a_value(line);
+
+    in_a_string || continues_sql
+}
+
+/// Whether `OFFSET` appears applied to a value — `OFFSET $1`, `OFFSET 20` —
+/// rather than merely named.
+///
+/// The distinction earns its keep: `assert!(!sql.contains("OFFSET"))` is a test
+/// *enforcing* this rule, and flagging it would make the lint fire on the code
+/// that agrees with it.
+fn offset_takes_a_value(s: &str) -> bool {
+    let upper = s.to_uppercase();
+    upper.match_indices("OFFSET").any(|(i, _)| {
+        // Preceded by a boundary, so `BYTE_OFFSET` does not count.
+        let boundary = i == 0
+            || !upper.as_bytes()[i - 1].is_ascii_alphanumeric() && upper.as_bytes()[i - 1] != b'_';
+        let tail = upper[i + "OFFSET".len()..].trim_start();
+        boundary && tail.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '$' | ':' | '?'))
+    })
+}
+
+/// Every spelling of "queue with no backpressure" this lint knows about.
+///
+/// Deliberately more than the two the rule started with: `unbounded_channel`
+/// and `channel::unbounded` cover tokio and one futures path, and miss flume,
+/// async-channel, crossbeam, and `std::sync::mpsc::channel` — which is
+/// unbounded by definition and does not contain the word "unbounded" anywhere.
+const UNBOUNDED_QUEUE_SPELLINGS: &[&str] = &[
+    "unbounded_channel",
+    "channel::unbounded",
+    "mpsc::unbounded",
+    "flume::unbounded",
+    "async_channel::unbounded",
+    "crossbeam_channel::unbounded",
+    "UnboundedSender",
+    "UnboundedReceiver",
+    // Fully qualified on purpose. `std::sync::mpsc::channel` is unbounded,
+    // `tokio::sync::mpsc::channel(n)` is bounded and correct, and the shorter
+    // `sync::mpsc::channel` matches both. A backstop that flags the right
+    // answer is worse than one that misses a wrong one — clippy.toml resolves
+    // this properly by path.
+    "std::sync::mpsc::channel",
+];
+
 /// Invariants 2–4 and the banned-pattern list, checked over crate sources.
+///
+/// `tools/` is walked as well as `crates/`. The rules are about how this
+/// system is built, and a tool that ships in this repository can violate them
+/// as easily as a crate can — the earlier crates-only walk left every harness
+/// in `tools/` unchecked.
 fn check_source_placement(root: &Path, out: &mut Vec<Violation>) -> anyhow::Result<()> {
-    for entry in walk_rs(&root.join("crates")) {
+    //
+    // This lint's own source is excluded: it necessarily contains every banned
+    // pattern as *data*, and a rule table is not a use of the thing it bans.
+    let sources = walk_rs(&root.join("crates"))
+        .into_iter()
+        .chain(walk_rs(&root.join("tools")))
+        .filter(|p| !p.starts_with(root.join("tools").join("casual-task-lint")));
+    for entry in sources {
         let crate_name = crate_of(root, &entry);
         let text = fs::read_to_string(&entry)?;
 
@@ -136,7 +213,7 @@ fn check_source_placement(root: &Path, out: &mut Vec<Violation>) -> anyhow::Resu
 
             // Banned: offset pagination (docs/26). It scans, and it skips or
             // duplicates rows under concurrent writes.
-            if line.to_uppercase().contains(" OFFSET ") {
+            if mentions_sql_offset(line) {
                 out.push(at(
                     "no-offset",
                     "OFFSET is banned; use cursor pagination (docs/26).".into(),
@@ -144,7 +221,15 @@ fn check_source_placement(root: &Path, out: &mut Vec<Violation>) -> anyhow::Resu
             }
 
             // Banned: unbounded channels — a deferred out-of-memory crash.
-            if line.contains("unbounded_channel") || line.contains("channel::unbounded") {
+            //
+            // This is the BACKSTOP, not the gate. Matching source text cannot
+            // see through an alias, a re-export, or a call split over two
+            // lines, so the real enforcement is `clippy.toml`'s
+            // `disallowed-methods`, which resolves paths after name resolution
+            // and fails the build. What this adds is a readable message at the
+            // exact line, and coverage of spellings that arrive with a crate
+            // nobody has added yet.
+            if UNBOUNDED_QUEUE_SPELLINGS.iter().any(|s| line.contains(s)) {
                 out.push(at(
                     "bounded-channels",
                     "Unbounded channel; every queue needs backpressure (docs/24).".into(),
@@ -157,7 +242,10 @@ fn check_source_placement(root: &Path, out: &mut Vec<Violation>) -> anyhow::Resu
                 && crate_name != "casual-task-model"
             {
                 out.push(at(
-                    "scope-required",
+                    // Its own rule id. It was reported as `scope-required`,
+                    // which is a different invariant — a violation named after
+                    // the wrong rule sends the reader to the wrong document.
+                    "auth-context-at-edge",
                     format!(
                         "{crate_name} mints an AuthContext. Only the authentication \
                          middleware in casual-task-api may do this."
@@ -169,11 +257,20 @@ fn check_source_placement(root: &Path, out: &mut Vec<Violation>) -> anyhow::Resu
     Ok(())
 }
 
+/// The crate a file belongs to, under either `crates/` or `tools/`.
+///
+/// `tools/` matters now that the walk covers it: without it every violation in
+/// a tool reported an empty crate name, which reads as a bug in the lint rather
+/// than a finding.
 fn crate_of(root: &Path, file: &Path) -> String {
-    file.strip_prefix(root.join("crates"))
-        .ok()
-        .and_then(|p| p.components().next())
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+    ["crates", "tools"]
+        .iter()
+        .find_map(|dir| {
+            file.strip_prefix(root.join(dir))
+                .ok()
+                .and_then(|p| p.components().next())
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        })
         .unwrap_or_default()
 }
 
@@ -195,4 +292,73 @@ fn walk_rs(dir: &Path) -> Vec<PathBuf> {
         }
     }
     out.into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rust_binding_named_offset_is_not_cursor_pagination() {
+        // The real line from tools/casual-task-seed that the earlier
+        // `contains(" OFFSET ")` rule flagged.
+        assert!(!mentions_sql_offset(
+            "let offset = (i128::from(span) * i as i128 / n as i128) as i64;"
+        ));
+        assert!(!mentions_sql_offset("offset += 1;"));
+        assert!(!mentions_sql_offset("self.offset = other.offset;"));
+        assert!(!mentions_sql_offset("let byte_offset: usize = 3;"));
+        // A test that ENFORCES the rule must not be flagged by it.
+        assert!(!mentions_sql_offset(
+            r#"assert!(!c.sql.to_uppercase().contains("OFFSET"), "{}", c.id);"#
+        ));
+    }
+
+    #[test]
+    fn sql_offset_is_caught_in_every_shape_it_is_written() {
+        assert!(mentions_sql_offset(
+            r#"let q = "SELECT id FROM task OFFSET $1";"#
+        ));
+        assert!(mentions_sql_offset(
+            r#""... ORDER BY id OFFSET 20 LIMIT 10""#
+        ));
+        // A continuation line inside a multi-line SQL string, which has no
+        // quote on it at all. This is what the old rule could not see.
+        assert!(mentions_sql_offset("OFFSET $1"));
+        assert!(mentions_sql_offset("OFFSET 100"));
+    }
+
+    #[test]
+    fn every_unbounded_queue_spelling_is_recognised() {
+        for spelling in [
+            "let (tx, rx) = tokio::sync::mpsc::unbounded_channel();",
+            "use futures::channel::mpsc::unbounded;",
+            "let (s, r) = flume::unbounded();",
+            "let (s, r) = async_channel::unbounded();",
+            "let (s, r) = crossbeam_channel::unbounded();",
+            "let (tx, rx) = std::sync::mpsc::channel();",
+            "fn take(tx: UnboundedSender<Event>) {}",
+        ] {
+            assert!(
+                UNBOUNDED_QUEUE_SPELLINGS
+                    .iter()
+                    .any(|s| spelling.contains(s)),
+                "not recognised as an unbounded queue: {spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bounded_queue_is_not_flagged() {
+        for ok in [
+            "let (tx, rx) = tokio::sync::mpsc::channel(64);",
+            "let (tx, rx) = std::sync::mpsc::sync_channel(64);",
+            "let (s, r) = flume::bounded(64);",
+        ] {
+            assert!(
+                !UNBOUNDED_QUEUE_SPELLINGS.iter().any(|s| ok.contains(s)),
+                "bounded queue wrongly flagged: {ok}"
+            );
+        }
+    }
 }
