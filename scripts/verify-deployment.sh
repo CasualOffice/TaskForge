@@ -28,6 +28,7 @@ trap cleanup EXIT
 
 sed -e 's/CHANGE_ME_owner_password/ownerpw/' \
     -e 's/CHANGE_ME_app_password/apppw/' \
+    -e 's/CHANGE_ME_dispatcher_password/dispw/' \
     -e 's/CHANGE_ME_generate_with_openssl_rand_base64_48/dGVzdC1vbmx5LW5vdC1hLXJlYWwtc2VjcmV0LTAwMDAwMDA=/' \
     deploy/.env.example > "$ENVF"
 
@@ -55,6 +56,15 @@ assert_eq "role exists, is NOT a superuser, does NOT bypass RLS, can log in" \
   "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
       "select rolsuper||'|'||rolbypassrls||'|'||rolcanlogin from pg_roles where rolname='taskforge_app'" | tr -d '[:space:]')"
 
+# The dispatcher exists to bypass RLS, so it is the one role where getting the
+# flags wrong is silently catastrophic in BOTH directions: without BYPASSRLS it
+# claims nothing and reports healthy, and with SUPERUSER it would also ignore
+# the REVOKEs that make audit history append-only.
+assert_eq "dispatcher exists, is NOT a superuser, DOES bypass RLS, can log in" \
+  "false|true|true" \
+  "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
+      "select rolsuper||'|'||rolbypassrls||'|'||rolcanlogin from pg_roles where rolname='taskforge_dispatcher'" | tr -d '[:space:]')"
+
 step "Applying migrations"
 for f in migrations/*.sql; do
   $DC exec -T postgres psql -U taskforge_owner -d taskforge -v ON_ERROR_STOP=1 -q < "$f" >/dev/null
@@ -80,6 +90,24 @@ assert_eq "row-level security is enabled on every tenant table" "none" \
           and exists (select 1 from pg_attribute a
                        where a.attrelid=c.oid and a.attname='workspace_id'
                          and a.attnum > 0 and not a.attisdropped)" | tr -d '[:space:]')"
+
+# BYPASSRLS is database-wide; the grants are what actually bound the dispatcher.
+# A dispatcher that could read `task` would be a cross-tenant read of customer
+# content wearing a background worker's name.
+# 'f'/'t', not 'false'/'true': these select a bare boolean column rather than
+# concatenating it to text, and that is the form psql renders — as the note on
+# the role assertion above says.
+assert_eq "the dispatcher has no privilege on tenant content" "f" \
+  "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
+      "select has_table_privilege('taskforge_dispatcher','task','SELECT')" | tr -d '[:space:]')"
+
+assert_eq "the dispatcher can read the outbox it exists to drain" "t" \
+  "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
+      "select has_table_privilege('taskforge_dispatcher','outbox_delivery','SELECT')" | tr -d '[:space:]')"
+
+assert_eq "the dispatcher cannot manufacture an event that never happened" "f" \
+  "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
+      "select has_table_privilege('taskforge_dispatcher','outbox_event','INSERT')" | tr -d '[:space:]')"
 
 step "A real application connection is genuinely constrained"
 assert_eq "unscoped session sees no tenant data" "0" \

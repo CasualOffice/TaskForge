@@ -19,7 +19,9 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > covers Phases 0 through 4 (numbered documents in `docs/`, 32 accepted ADRs).
 >
 > Phase 0 built no product functionality, by design — it built the ability to
-> tell when a later phase is wrong. Gated on every pull request: the enforced
+> tell when a later phase is wrong. It closed at **11 of 16 items `Gated`**;
+> the other five are built and tested but not yet behind an acceptance gate,
+> and are reported that way rather than rounded up. Gated on every pull request: the enforced
 > dependency DAG, architecture lints, the database schema with row-level
 > security proven as the non-superuser role, a deployable image with a verified
 > deployment path, a deterministic 2,000,000-task reference corpus, an `EXPLAIN`
@@ -109,13 +111,15 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 
 ## Scope, in a planned order
 
-| Phase | Delivers | Status |
-| --- | --- | --- |
-| **0 — Foundation** | workspace + enforced layer division, CI gates, architecture lints, **schema + RLS + deployment image**, reference corpus, load-test harness, observability skeleton | ✅ closed 2026-08-08 |
-| **1 — Usable core** | auth, workspaces, projects, tasks, comments, attachments, default workflow, **the full permission resolver**, activity/audit/outbox, filters, search, **then** the web client — board/list/My Work — SSE, notifications | 🟡 in progress (engine; no UI yet) |
-| 2 — Administration | custom roles, permission simulator, custom workflows + status migration, environments, milestones, dependencies, audit console, SSO | ⬜ |
-| 3 — Extension platform | declarative plugins → remote HTTPS → sandboxed frontend, integration SDK | ⬜ |
-| 4 — Advanced productivity | automation engine, reporting, calendar/timeline **as plugins**, SCIM | ⬜ |
+<!-- phase-progress:begin -->
+| Phase | Delivers | Gated | Progress |
+| --- | --- | --- | --- |
+| **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 11/16 (5 built) | `███████░░░` 69% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 0/19 (7 building) | `░░░░░░░░░░` 0% |
+| 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
+
+*Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*
+<!-- phase-progress:end -->
 
 Full detail and exit gates: [docs/06-ROADMAP-AND-DELIVERY.md](docs/06-ROADMAP-AND-DELIVERY.md).
 

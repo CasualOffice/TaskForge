@@ -15,6 +15,8 @@
 pub mod compile;
 pub mod dispatch;
 pub mod scoped;
+#[cfg(feature = "test-support")]
+pub mod test_support;
 pub mod unit_of_work;
 
 pub use compile::{AuthorizedProjectSet, Compiled, Page, Param, compile};

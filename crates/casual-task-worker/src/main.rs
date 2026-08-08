@@ -20,9 +20,13 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // The dispatch loop is implemented (C-011) but has no consumers to run:
+    // the six named in docs/25 arrive with C-013, C-015 and C-016. Starting a
+    // loop with nothing to deliver would poll an empty table forever and look
+    // like a working worker, so it is not started. Stated, not hidden.
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
-        "taskforge worker — Phase 0 scaffold, no consumers yet (docs/06)"
+        "taskforge worker — dispatch loop built (C-011); no consumers registered yet"
     );
     ExitCode::SUCCESS
 }

@@ -72,16 +72,17 @@ The documentation phase. All complete unless noted.
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
 | D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Accepted** — claim → commit → HTTP → record |
 | D-039 | Connection pool sizing, acquisition timeout, exhaustion behaviour | [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) | **Accepted** — bounded pool, short acquire timeout, 503 |
-| D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Accepted** — every queue bounded, explicit overflow policy |
-| D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Accepted** — bounded drain; transactions roll back |
+| D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Consumed** — written into docs/24 §Every bound names its overflow policy, C-011 |
+| D-041 | Cancellation and graceful shutdown | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Consumed** — written into docs/24 §Cancellation and graceful shutdown, C-011 |
 | D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Accepted** — no workspace ids in labels; admissions expire |
 | D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Accepted** — keep RLS; try a tenant-filtered projection first |
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Accepted** — ADR-031 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
 | D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Accepted** — STARTTLS + certificate/hostname verification |
-| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Accepted** — gauge: age of oldest actionable pending event |
+| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** (lag half) — gauge, age of oldest actionable pending delivery, C-011. The cache-hit ratio half stays open until C-003's cache exists. |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Blocked** — Accept before C-002 |
+| D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
 
@@ -266,6 +267,16 @@ implementation:
   advisory lock when a pod is terminated. Retrofitting cancellation through a
   codebase that never considered it is materially harder than designing it in.
 
+- **D-052.** C-011's acceptance gate lives in `casual-task-worker` and needs the
+  same PostgreSQL-container harness `casual-task-persistence` already has.
+  Integration tests are per-crate binaries, so it was **copied**. Two copies
+  drift, and the drift would be silent — a worker test passing against a schema
+  the persistence tests no longer describe. Consolidating it into a shared dev
+  crate changes the workspace dependency DAG that
+  [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) fixes and `casual-task-lint` enforces,
+  which is a design decision rather than a refactor. The duplication is marked
+  in both files rather than left to be discovered.
+
 **Eight decisions were Accepted on 2026-08-08.** Their design notes are rewritten
 as each is consumed, so the change lands with the code that proves it.
 
@@ -288,6 +299,12 @@ before weakening RLS (D-043), STARTTLS with certificate and hostname
 verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 `outbox_lag_seconds` as a gauge over the oldest *actionable* pending event
 (D-047, [46](46-OBSERVABILITY-AND-OPERATIONS.md)).
+
+> The README's per-phase progress table is **generated from the tables below**
+> by `scripts/phase-progress.py` and checked in CI. Changing a status here moves
+> the README; a README edited by hand fails the build. That is deliberate — the
+> status badge said "Phase 0" for a week after Phase 0 closed, because a number
+> written in a second place has no reason to change when the first place does.
 
 ## Phase 0 — Foundation (F)
 
@@ -509,6 +526,56 @@ vacuously true.
 Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
+
+**C-011's runtime half is in.** The dispatch loop, the dispatcher role, the
+retention sweep, and the acceptance gate `docs/25` names.
+
+The loop is claim → commit → deliver → record, arranged so the shape is visible:
+`claim_batch` commits before returning and nothing borrowed from its transaction
+escapes, so a caller *cannot* hold one across delivery.
+
+**`Dispatcher` is a capability type, and it verifies itself.** The dispatcher
+polls every workspace, so it needs to bypass the policy on `outbox_delivery`.
+Built on `Scoped` it would have seen nothing — and seen it without erroring,
+reporting healthy while delivering silence. `Dispatcher::assume` asks the
+database whether the connected role can actually bypass RLS and refuses if not,
+naming the role. Wiring the wrong role now fails at startup instead of
+succeeding into that silence.
+
+Migration [0014](../migrations/0014_dispatcher_role.sql) creates
+`taskforge_dispatcher`: `BYPASSRLS`, `NOSUPERUSER`, and granted on the two
+outbox tables and nothing else. `BYPASSRLS` is database-wide, so the grants are
+what bound it — bypassing a policy on a table you cannot select from grants
+nothing. `verify-deployment.sh` asserts all three directions: it cannot read
+`task`, it can read `outbox_delivery`, and it cannot INSERT an `outbox_event`
+(which would be manufacturing an event that never happened).
+
+Two things caught while building it:
+
+- The first version of the loop awaited `deliver()` **before** spawning, which
+  serialised every delivery behind the previous one and made the semaphore
+  decorative — concurrency of one, bounded by a permit nobody contended for.
+- Migration 0014 used a bare `CREATE ROLE`, which passes every test that starts
+  from an empty database and fails a real deployment on first `up`, because
+  `deploy/` creates the role in the entrypoint before migrations run. The
+  deployment gate caught it; the schema gate could not have.
+
+D-040 and D-041 are **consumed**, written into
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md) with the bounds this loop actually
+enforces rather than as intentions. D-047's lag half is consumed too:
+`outbox_lag_seconds` is now a Gauge in the registry and in
+[46](46-OBSERVABILITY-AND-OPERATIONS.md), which had flagged the contradiction
+itself.
+
+CI now runs `cargo test --workspace -- --ignored` rather than naming one crate.
+The step's own comment argued for "every ignored test in the crate, not one
+named file"; the same argument applies a level up, and the C-011 gate lives in a
+different crate.
+
+Still missing before `Gated`: the six consumers themselves (C-013, C-015,
+C-016), the sweep's scheduling under a leader lease, and metric *emission* —
+the registry declares the series and `dispatch` computes the readings, but
+nothing exports them yet (F-009 is `Built`, not `Gated`).
 
 **C-011 is `Building`.** The transactional write path and the dispatch loop are
 implemented, with 11 integration tests against a real PostgreSQL 16 — the

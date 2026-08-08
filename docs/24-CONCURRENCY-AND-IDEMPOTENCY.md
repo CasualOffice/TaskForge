@@ -174,7 +174,46 @@ it releases automatically.
 - **Consumers are idempotent on `event_id`.** Delivery is at-least-once; a
   consumer that assumes exactly-once is a bug waiting for a redeploy.
 - **All queues are bounded**, with backpressure. An unbounded channel is a
-  deferred out-of-memory crash.
+  deferred out-of-memory crash. `clippy.toml` rejects every unbounded-channel
+  constructor by resolved path, so this is a build failure rather than a rule.
+
+### Every bound names its overflow policy (D-040)
+
+"Bounded" without a policy for the full case moves the failure from an
+out-of-memory crash to an unspecified one. Each bound below states what happens
+when it is reached; a new bound without that line is incomplete.
+
+| Bound | Value | When it is reached |
+| --- | --- | --- |
+| Outbox claim batch | 64 deliveries per poll | The rest stay in the database — **the database is the queue**. There is no in-memory backlog to lose, and a worker restart costs a poll, not a batch. |
+| Outbox deliveries in flight | 16 per consumer loop | The loop **waits for a permit before claiming more**, which stops claiming and lets `next_attempt_at` and the claim expiry do the rest. Spawning instead is how a slow consumer becomes thousands of sockets. |
+| Delivery attempts | 6, then the dead-letter queue | The delivery is dead-lettered and **kept**, never dropped ([25](25-EVENTS-OUTBOX-AND-AUDIT.md)); RB-02 in [50](50-RUNBOOKS.md) is the recovery path. |
+
+The permit is acquired **before** the delivery task is spawned. Acquiring inside
+the task would bound the concurrent *work* while leaving the number of tasks
+unbounded, which is the same memory problem wearing a semaphore.
+
+### Cancellation and graceful shutdown (D-041)
+
+On `SIGTERM` a worker **stops claiming first, then drains**, bounded by a
+deadline shorter than the orchestrator's kill grace. The order is the
+load-bearing part: a drain that kept claiming would never finish under load, and
+the process would be `SIGKILL`ed mid-delivery instead — which is strictly worse
+than a clean abandon.
+
+- Every sleep in the loop is cancellable. A worker asked to stop must not first
+  sit out its poll interval.
+- Deliveries still running when the drain expires are **abandoned, not awaited**.
+  Their rows stay claimed and become claimable again after the claim expiry, so
+  the work is delayed rather than lost. The duplicate delivery that follows is
+  expected under at-least-once, not an incident.
+- The drain deadline is shorter than the claim expiry. Otherwise a drain could
+  still be running when another worker becomes entitled to the same rows,
+  turning every shutdown into a guaranteed double delivery rather than a rare
+  one.
+- Database transactions need no special handling: a dropped connection rolls
+  back. That is why the claim commits before delivery begins — there is no
+  transaction open to lose.
 
 ## Transaction discipline
 

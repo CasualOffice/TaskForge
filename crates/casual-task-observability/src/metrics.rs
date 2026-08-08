@@ -118,19 +118,46 @@ impl fmt::Display for Metric {
 
 /// The primary health signal: it moves first under database pressure, consumer
 /// failure, or a dead worker (`docs/46` §Domain metrics).
+///
+/// **A gauge, not a histogram** (D-047). "The age of the oldest thing still
+/// waiting" is a single current value; there is no distribution to bucket,
+/// because there is only ever one oldest. Declared as a histogram it would
+/// report percentiles over a sequence of readings of the same number, which
+/// looks like a latency distribution and is not one.
+///
+/// **"Actionable" is load-bearing.** The reading excludes deliveries inside
+/// their backoff window and deliveries already dead-lettered. Counting those
+/// would make the primary health signal rise during normal retry behaviour and
+/// stay high forever after one permanent failure — which is how a paging alert
+/// gets muted.
 pub const OUTBOX_LAG_SECONDS: Metric = Metric::new(
     "outbox_lag_seconds",
-    MetricKind::Histogram,
+    MetricKind::Gauge,
     &[keys::CONSUMER],
-    "Age of the oldest undispatched outbox event, by consumer",
+    "Age of the oldest actionable pending delivery, by consumer",
 );
 
-/// Events that gave up. `docs/46` alerts on any sustained increase.
+/// Deliveries that gave up. `docs/46` alerts on any sustained increase.
+///
+/// Labelled by consumer as well as event type: since migration 0013 a dead
+/// letter is one `(event, consumer)` pair, not an event, and "which consumer"
+/// is the first question RB-02 asks. Both labels are bounded sets — no
+/// workspace id, per D-042.
 pub const OUTBOX_DLQ_DEPTH: Metric = Metric::new(
     "outbox_dlq_depth",
     MetricKind::Gauge,
-    &[keys::EVENT_TYPE],
-    "Events in the dead letter queue; never expected to be non-zero",
+    &[keys::CONSUMER, keys::EVENT_TYPE],
+    "Deliveries in the dead letter queue; never expected to be non-zero",
+);
+
+/// Dispatch outcomes. RB-01 step 3 reads this to answer "is the dispatcher
+/// alive at all", which a lag gauge cannot distinguish from "the dispatcher is
+/// alive and everything is slow".
+pub const OUTBOX_DISPATCH_TOTAL: Metric = Metric::new(
+    "outbox_dispatch_total",
+    MetricKind::Counter,
+    &[keys::CONSUMER, keys::OUTCOME],
+    "Delivery attempts by consumer and outcome (dispatched, failed, dead_lettered)",
 );
 
 /// How stale search is (`docs/26`).
@@ -341,6 +368,7 @@ pub const HTTP_REQUEST_DURATION_SECONDS: Metric = Metric::new(
 /// or a mis-suffixed name.
 pub const ALL: &[Metric] = &[
     OUTBOX_LAG_SECONDS,
+    OUTBOX_DISPATCH_TOTAL,
     OUTBOX_DLQ_DEPTH,
     SEARCH_PROJECTION_LAG_SECONDS,
     AUTHZ_RESOLUTION_DURATION,
@@ -380,11 +408,24 @@ mod tests {
     /// not see a metric changing from a Histogram to a Gauge, or losing the
     /// label the doc asks for it to be broken down by.
     const DOCUMENTED: &[(&str, MetricKind, &[LabelKey])] = &[
-        ("outbox_lag_seconds", MetricKind::Histogram, &[]),
-        ("outbox_dlq_depth", MetricKind::Gauge, &[]),
-        // Gauge, not Histogram: docs/46 asks for `p50/p95/max` on
-        // `outbox_lag_seconds` specifically and says nothing about the kind of
-        // this one, and "how stale is search right now" is a point-in-time
+        // Gauge since D-047 was Accepted. docs/46 previously asked for
+        // `p50/p95/max` here and flagged the contradiction itself: the help
+        // text described the age of the single oldest pending event, which is
+        // a gauge quantity, while the registry declared a histogram. There is
+        // only ever one oldest, so the percentiles would have been taken over
+        // repeated readings of the same number.
+        ("outbox_lag_seconds", MetricKind::Gauge, &[keys::CONSUMER]),
+        (
+            "outbox_dlq_depth",
+            MetricKind::Gauge,
+            &[keys::CONSUMER, keys::EVENT_TYPE],
+        ),
+        (
+            "outbox_dispatch_total",
+            MetricKind::Counter,
+            &[keys::CONSUMER, keys::OUTCOME],
+        ),
+        // Gauge because "how stale is search right now" is a point-in-time
         // reading.
         ("search_projection_lag_seconds", MetricKind::Gauge, &[]),
         ("authz_resolution_duration", MetricKind::Histogram, &[]),

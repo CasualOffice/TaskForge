@@ -9,9 +9,84 @@
 //! claim, drop the transaction, do its own network call, then record. Making
 //! that awkward to get wrong is the point.
 
+use sqlx::PgConnection;
 use uuid::Uuid;
 
-use crate::scoped::Scoped;
+/// A connection that may see across tenants.
+///
+/// # Why this type exists
+///
+/// The dispatcher polls every workspace: a background worker cannot know the
+/// set of workspace ids in advance. `outbox_delivery` has a row-level security
+/// policy, so a normal connection sees **nothing** — and sees it without
+/// erroring. A dispatcher built on [`Scoped`](crate::Scoped) would report
+/// healthy, claim zero deliveries forever, and the first symptom would be
+/// silence: no notifications, no search updates, no webhooks. Nothing in a log.
+///
+/// So the capability is a type, and [`Dispatcher::assume`] **verifies** it
+/// against the database rather than trusting the caller. Wiring the dispatcher
+/// to the wrong role now fails at startup with a message naming the role,
+/// instead of succeeding into that silence.
+///
+/// It is the deliberate counterpart to `Scoped`: `Scoped` cannot exist without
+/// a tenant, and `Dispatcher` cannot exist without the privilege to ignore one.
+/// A grep for this type returns every cross-tenant read in the system.
+#[allow(missing_debug_implementations)]
+pub struct Dispatcher<'t> {
+    conn: &'t mut PgConnection,
+}
+
+/// The role a [`Dispatcher`] was asked to run as cannot bypass row-level
+/// security, so it would silently see no work at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotPrivileged {
+    /// `current_user` as the database reports it.
+    pub role: String,
+}
+
+impl std::fmt::Display for NotPrivileged {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "role `{}` cannot bypass row-level security, so the dispatcher would \
+             claim nothing and report healthy. Connect as taskforge_dispatcher \
+             (migration 0014).",
+            self.role
+        )
+    }
+}
+
+impl std::error::Error for NotPrivileged {}
+
+impl<'t> Dispatcher<'t> {
+    /// Take a connection as the dispatcher, after checking it can actually see
+    /// across tenants.
+    ///
+    /// # Errors
+    ///
+    /// [`sqlx::Error`] on any database failure, or a boxed [`NotPrivileged`]
+    /// when the connected role is subject to row-level security.
+    pub async fn assume(conn: &'t mut PgConnection) -> Result<Self, sqlx::Error> {
+        // `rolsuper` as well as `rolbypassrls`: a superuser bypasses policies
+        // unconditionally without the flag being set on some installations, and
+        // the test harness connects as the owner.
+        let (role, privileged): (String, bool) = sqlx::query_as(
+            "SELECT current_user::text, bool_or(rolsuper OR rolbypassrls)
+               FROM pg_roles WHERE rolname = current_user",
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+
+        if !privileged {
+            return Err(sqlx::Error::Configuration(Box::new(NotPrivileged { role })));
+        }
+        Ok(Self { conn })
+    }
+
+    fn conn(&mut self) -> &mut PgConnection {
+        self.conn
+    }
+}
 
 /// How long a claim survives before another worker may take it.
 ///
@@ -59,7 +134,7 @@ pub struct Claimed {
 ///
 /// Any database error.
 pub async fn claim(
-    scoped: &mut Scoped<'_>,
+    dispatcher: &mut Dispatcher<'_>,
     consumer: &str,
     worker: &str,
     limit: i64,
@@ -100,7 +175,7 @@ pub async fn claim(
     .bind(worker)
     .bind(limit)
     .bind(pg_interval(CLAIM_EXPIRY))
-    .fetch_all(scoped.conn())
+    .fetch_all(dispatcher.conn())
     .await?;
 
     Ok(rows
@@ -126,14 +201,17 @@ pub async fn claim(
 /// # Errors
 ///
 /// Any database error.
-pub async fn succeeded(scoped: &mut Scoped<'_>, delivery_id: Uuid) -> Result<(), sqlx::Error> {
+pub async fn succeeded(
+    dispatcher: &mut Dispatcher<'_>,
+    delivery_id: Uuid,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE outbox_delivery
             SET dispatched_at = now(), claimed_at = NULL, claimed_by = NULL, last_error = NULL
           WHERE id = $1",
     )
     .bind(delivery_id)
-    .execute(scoped.conn())
+    .execute(dispatcher.conn())
     .await?;
     Ok(())
 }
@@ -148,7 +226,7 @@ pub async fn succeeded(scoped: &mut Scoped<'_>, delivery_id: Uuid) -> Result<(),
 ///
 /// Any database error.
 pub async fn failed(
-    scoped: &mut Scoped<'_>,
+    dispatcher: &mut Dispatcher<'_>,
     delivery_id: Uuid,
     attempts: i32,
     error: &str,
@@ -163,7 +241,7 @@ pub async fn failed(
         )
         .bind(delivery_id)
         .bind(error)
-        .execute(scoped.conn())
+        .execute(dispatcher.conn())
         .await?;
         return Ok(true);
     };
@@ -177,7 +255,7 @@ pub async fn failed(
     .bind(delivery_id)
     .bind(error)
     .bind(pg_interval(*delay))
-    .execute(scoped.conn())
+    .execute(dispatcher.conn())
     .await?;
     Ok(false)
 }
@@ -200,7 +278,7 @@ fn pg_interval(d: time::Duration) -> String {
 ///
 /// Any database error.
 pub async fn oldest_pending_seconds(
-    scoped: &mut Scoped<'_>,
+    dispatcher: &mut Dispatcher<'_>,
     consumer: &str,
 ) -> Result<Option<f64>, sqlx::Error> {
     // `Option<f64>`, and read with `fetch_one`, because an aggregate over zero
@@ -218,9 +296,88 @@ pub async fn oldest_pending_seconds(
             AND d.next_attempt_at <= now()",
     )
     .bind(consumer)
-    .fetch_one(scoped.conn())
+    .fetch_one(dispatcher.conn())
     .await?;
     Ok(lag)
+}
+
+/// How long a fully-delivered event is kept (`docs/25`: dispatched rows are
+/// removed after 7 days).
+///
+/// Not zero, because RB-01 step 2 reads the last 30 minutes of dispatch history
+/// to decide whether a backlog is draining, and a sweep that deleted on success
+/// would leave it nothing to read.
+pub const RETENTION: time::Duration = time::Duration::days(7);
+
+/// Delete deliveries that completed more than [`RETENTION`] ago, and the events
+/// left with none.
+///
+/// Returns `(deliveries, events)` removed.
+///
+/// **Dead-lettered rows are never swept.** `docs/25`: "a dead-lettered event is
+/// never silently dropped". They leave only by being replayed or by an operator
+/// deciding, in RB-02, that they should not be — and that decision is recorded
+/// in an incident, not made by a timer at 3 a.m.
+///
+/// Bounded by `limit` so one call cannot take a lock on millions of rows and
+/// stall the dispatch loop it shares a database with. The caller repeats until
+/// it returns zero.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn sweep(dispatcher: &mut Dispatcher<'_>, limit: i64) -> Result<(u64, u64), sqlx::Error> {
+    let deliveries = sqlx::query(
+        "DELETE FROM outbox_delivery
+          WHERE id IN (SELECT id FROM outbox_delivery
+                        WHERE dispatched_at IS NOT NULL
+                          AND dispatched_at < now() - $1::interval
+                        LIMIT $2)",
+    )
+    .bind(pg_interval(RETENTION))
+    .bind(limit)
+    .execute(dispatcher.conn())
+    .await?
+    .rows_affected();
+
+    // An event whose deliveries are all gone has nothing left to deliver. The
+    // NOT EXISTS is what makes this safe to run while a slow consumer still has
+    // rows outstanding: the event survives as long as any consumer needs it.
+    let events = sqlx::query(
+        "DELETE FROM outbox_event e
+          WHERE e.created_at < now() - $1::interval
+            AND NOT EXISTS (SELECT 1 FROM outbox_delivery d WHERE d.event_id = e.id)",
+    )
+    .bind(pg_interval(RETENTION))
+    .execute(dispatcher.conn())
+    .await?
+    .rows_affected();
+
+    Ok((deliveries, events))
+}
+
+/// Dead-letter depth by `(consumer, event_type)` — the labels
+/// `outbox_dlq_depth` declares.
+///
+/// Grouped in the database rather than counted per consumer in a loop: `docs/46`
+/// alerts on *any* sustained increase, so this is read on every scrape cycle and
+/// six round trips per scrape is six times the cost for the same answer.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn dlq_depth(
+    dispatcher: &mut Dispatcher<'_>,
+) -> Result<Vec<(String, String, i64)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT d.consumer, e.event_type, count(*)
+           FROM outbox_delivery d
+           JOIN outbox_event e ON e.id = d.event_id
+          WHERE d.dead_lettered_at IS NOT NULL
+          GROUP BY d.consumer, e.event_type",
+    )
+    .fetch_all(dispatcher.conn())
+    .await
 }
 
 #[cfg(test)]
@@ -252,6 +409,14 @@ mod tests {
         // order of magnitude, which is what stops a slow-but-alive worker from
         // having its work stolen.
         assert!(CLAIM_EXPIRY > time::Duration::seconds(30));
+    }
+
+    #[test]
+    fn retention_is_long_enough_for_the_runbook_that_reads_history() {
+        // RB-01 step 2 reads 30 minutes of dispatch history to decide whether a
+        // backlog is draining. A sweep on success would leave it nothing.
+        assert!(RETENTION > time::Duration::hours(1));
+        assert_eq!(RETENTION.whole_days(), 7, "docs/25 says seven days");
     }
 
     #[test]
