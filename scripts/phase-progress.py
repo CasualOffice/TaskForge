@@ -44,6 +44,14 @@ README = ROOT / "README.md"
 BEGIN = "<!-- phase-progress:begin -->"
 END = "<!-- phase-progress:end -->"
 
+# The narrative half. The percentage table was generated from the first day and
+# the prose beside it was not, so the prose went stale in exactly the way the
+# "Phase 0" badge did — two merged pull requests of work missing from a sentence
+# that begins "Landed so far". Anything in the README that states what exists is
+# derived now, not just the numbers.
+LANDED_BEGIN = "<!-- phase-1-landed:begin -->"
+LANDED_END = "<!-- phase-1-landed:end -->"
+
 # Prefix → (phase label, roadmap description). Phases 2-4 share one tracker
 # section and are reported together, because that is how they are tracked.
 PHASES = [
@@ -63,6 +71,38 @@ def statuses_in(cells: str) -> str:
         if re.search(rf"`?{status}`?", cells):
             return status
     return "Accepted"
+
+
+def phase_one_items() -> list[tuple[str, str, str]]:
+    """(id, name, status) for Phase 1 rows that are underway or done."""
+    section = TRACKER.read_text(encoding="utf-8")
+    start = section.index("## Phase 1 — Core (C)")
+    end = section.index("## Phases 2–4", start)
+    rows: list[tuple[str, str, str]] = []
+    for line in section[start:end].splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 3 or not re.fullmatch(r"C-\d+", cells[0]):
+            continue
+        status = statuses_in(cells[2])
+        if status in ("Gated", "Built", "Building"):
+            rows.append((cells[0], cells[1].replace("**", ""), status))
+    return rows
+
+
+def render_landed() -> str:
+    items = phase_one_items()
+    if not items:
+        return "*Nothing in Phase 1 has started yet.*"
+
+    order = {"Gated": 0, "Built": 1, "Building": 2}
+    items.sort(key=lambda r: (order[r[2]], r[0]))
+    bullets = [f"- **{name}** ({item}) — `{status}`" for item, name, status in items]
+    gated = sum(1 for _, _, s in items if s == "Gated")
+    lead = (
+        f"**Phase 1 is under way, and all of it is engine.** {len(items)} items "
+        f"started, {gated} gated:"
+    )
+    return lead + "\n\n" + "\n".join(bullets)
 
 
 def tally() -> dict[str, dict[str, int]]:
@@ -119,28 +159,30 @@ def render() -> str:
     return "\n".join(lines)
 
 
+def splice(text: str, begin: str, end: str, block: str) -> str:
+    if begin not in text or end not in text:
+        print(f"README.md has no {begin} / {end} markers", file=sys.stderr)
+        raise SystemExit(1)
+    head, rest = text.split(begin, 1)
+    _, tail = rest.split(end, 1)
+    return f"{head}{begin}\n{block}\n{end}{tail}"
+
+
 def main() -> int:
-    block = render()
     text = README.read_text(encoding="utf-8")
-
-    if BEGIN not in text or END not in text:
-        print(f"README.md has no {BEGIN} / {END} markers", file=sys.stderr)
-        return 1
-
-    head, rest = text.split(BEGIN, 1)
-    _, tail = rest.split(END, 1)
-    updated = f"{head}{BEGIN}\n{block}\n{END}{tail}"
+    updated = splice(text, BEGIN, END, render())
+    updated = splice(updated, LANDED_BEGIN, LANDED_END, render_landed())
 
     if "--check" in sys.argv:
         if updated != text:
             print(
-                "README.md phase progress is out of date.\n"
-                "The tracker moved and the README did not. Run:\n"
+                "README.md is out of date — the phase table, the landed list,\n"
+                "or both. The tracker moved and the README did not. Run:\n"
                 "    scripts/phase-progress.py --write",
                 file=sys.stderr,
             )
             return 1
-        print("phase progress: README matches the tracker")
+        print("README matches the tracker (phase progress and landed list)")
         return 0
 
     if "--write" in sys.argv:
