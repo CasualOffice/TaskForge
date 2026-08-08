@@ -356,25 +356,26 @@ pub async fn sweep(dispatcher: &mut Dispatcher<'_>, limit: i64) -> Result<(u64, 
     Ok((deliveries, events))
 }
 
-/// Dead-letter depth by `(consumer, event_type)` — the labels
-/// `outbox_dlq_depth` declares.
+/// Dead-letter depth by consumer — the label `outbox_dlq_depth` declares.
 ///
 /// Grouped in the database rather than counted per consumer in a loop: `docs/46`
 /// alerts on *any* sustained increase, so this is read on every scrape cycle and
 /// six round trips per scrape is six times the cost for the same answer.
 ///
+/// Not grouped by event type. RB-02 does group by it — in SQL, where a high
+/// cardinality costs nothing — but as a metric label it would be unbounded
+/// (D-053), so it is deliberately absent here rather than dropped later by the
+/// caller.
+///
 /// # Errors
 ///
 /// Any database error.
-pub async fn dlq_depth(
-    dispatcher: &mut Dispatcher<'_>,
-) -> Result<Vec<(String, String, i64)>, sqlx::Error> {
+pub async fn dlq_depth(dispatcher: &mut Dispatcher<'_>) -> Result<Vec<(String, i64)>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT d.consumer, e.event_type, count(*)
-           FROM outbox_delivery d
-           JOIN outbox_event e ON e.id = d.event_id
-          WHERE d.dead_lettered_at IS NOT NULL
-          GROUP BY d.consumer, e.event_type",
+        "SELECT consumer, count(*)
+           FROM outbox_delivery
+          WHERE dead_lettered_at IS NOT NULL
+          GROUP BY consumer",
     )
     .fetch_all(dispatcher.conn())
     .await

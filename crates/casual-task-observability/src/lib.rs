@@ -33,9 +33,10 @@
 //!
 //! ## What this crate does *not* do yet
 //!
-//! - **No metric recording.** This is a registry of names, kinds, and legal
-//!   labels — not an exporter. No Prometheus client is a workspace dependency,
-//!   so wiring the registry to a `/metrics` endpoint is a later task.
+//! - **No `/metrics` endpoint.** [`Recorder`] records values and renders the
+//!   Prometheus exposition body ([`recorder`]); serving it over HTTP belongs to
+//!   `casual-task-api`, because `docs/19` puts every HTTP type there and
+//!   `casual-task-lint` enforces it. The endpoint arrives with C-001.
 //! - **No OpenTelemetry.** `docs/46` §The three signals specifies OTLP traces and
 //!   `docs/48` defines `TF_OTEL_ENDPOINT`; no `opentelemetry` crate is a
 //!   workspace dependency, so log lines carry `request_id` and `correlation_id`
@@ -47,6 +48,7 @@
 pub mod correlation;
 pub mod labels;
 pub mod metrics;
+pub mod recorder;
 pub mod redact;
 pub mod subscriber;
 
@@ -55,5 +57,6 @@ pub use labels::{
     CardinalityError, InvestigationAllowList, LabelKey, LabelSet, LabelValue, WorkspaceBucket,
 };
 pub use metrics::{Metric, MetricKind, MetricName};
+pub use recorder::{BUCKETS, Recorder, WrongKind};
 pub use redact::{Redact, Redacted};
 pub use subscriber::{LOG_FORMAT_ENV, LogFormat, TelemetryConfig, TelemetryError, init, init_with};

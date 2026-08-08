@@ -122,7 +122,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 <!-- phase-progress:begin -->
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
-| **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 12/16 (4 built) | `████████░░` 75% |
+| **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
 | **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 0/19 (7 building) | `░░░░░░░░░░` 0% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 

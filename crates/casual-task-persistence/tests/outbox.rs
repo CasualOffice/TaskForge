@@ -664,7 +664,7 @@ async fn the_sweep_keeps_an_event_while_any_consumer_still_needs_it() -> Result<
 
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
-async fn dlq_depth_is_reported_by_consumer_and_event_type() -> Result<()> {
+async fn dlq_depth_is_reported_per_consumer() -> Result<()> {
     let db = schema_harness::TestDatabase::start().await?;
     let workspace = a_workspace(&db.pool, "alpha").await?;
 
@@ -693,11 +693,7 @@ async fn dlq_depth_is_reported_by_consumer_and_event_type() -> Result<()> {
 
     assert_eq!(
         depth,
-        vec![(
-            "webhook_delivery".to_owned(),
-            "task.status.changed".to_owned(),
-            1
-        )],
+        vec![("webhook_delivery".to_owned(), 1)],
         "the DLQ gauge does not attribute the dead letter to a consumer, which \
          is the first question RB-02 asks"
     );
