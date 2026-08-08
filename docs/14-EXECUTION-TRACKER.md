@@ -64,6 +64,7 @@ The documentation phase. All complete unless noted.
 | D-029 | Process, glossary, gates, maintenance | [11](11-DESIGN-FIRST-PROCESS.md), [15](15-CI-AND-RELEASE-GATES.md), [16](16-DOCUMENTATION-MAINTENANCE.md), [17](17-GLOSSARY.md) | Designed |
 | D-030 | Support matrix | [18](18-SUPPORT-MATRIX.md) | Designed |
 | D-031 | Repository & contribution | [09](09-REPOSITORY-AND-CONTRIBUTION.md), [10](10-PROJECT-GOAL-AND-STANDARDS.md) | Designed |
+| D-035 | **Reporting, export & dashboards** | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Designed |
 | D-032 | Auth protocol ADR (session/token specifics) | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
@@ -86,6 +87,7 @@ The documentation phase. All complete unless noted.
 | F-012 | **Bundle floor measurement** (ADR-024) | Accepted | — |
 | F-013 | Threat model review | Accepted | D-007 |
 | F-014 | Runbooks (initial set) | Accepted | F-009 |
+| F-015 | Migrations + application role + schema verification gate | **Gated** | F-005 |
 
 ## Phase 1 — Core (C)
 
@@ -124,11 +126,17 @@ Rolled up until Phase 1 closes; expanded at each phase gate.
 
 ## Current state
 
-**Documentation phase. No code exists yet.**
+**Phase 0 — foundation. Design record complete; scaffolding under way.**
 
-The design record is complete for Phases 0–4. The immediate next step is Phase 0
-(F-001…F-014), which builds no product functionality — it exists to make every
-later phase verifiable.
+Landed and `Gated`: the Cargo workspace and dependency DAG (F-001), architecture
+lints (F-004), CI (F-003), and the schema — 12 migrations, the non-superuser
+application role, and the verification gate proving tenant isolation and
+append-only history against a real PostgreSQL 16 (F-015).
+
+Remaining Phase 0: the reference corpus (F-006), load-test harness (F-007), the
+`EXPLAIN` no-seq-scan gate (F-008), the observability skeleton (F-009), the
+bundle floor measurement (F-012), and runbooks (F-014). None of these build
+product functionality — they exist to make every later phase verifiable.
 
 Three items are genuinely open and tracked as such: **D-032** (auth protocol
 specifics, to be Accepted at Phase 0), **D-033** (custom-field storage, before

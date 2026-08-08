@@ -94,6 +94,7 @@ should be read before writing any code:
 | 32 | [Tenancy & Isolation](32-TENANCY-AND-ISOLATION.md) | Two independent mechanisms, neither optional |
 | 34 | [Plugin & Extension Architecture](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | **Open for extension, closed for modification** |
 | 36 | [Automation Rules](36-AUTOMATION-RULES-DESIGN.md) | When / if / then, with `run_as` and loop guards |
+| 38 | [Reporting, Export & Dashboards](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Export, metrics, and the dashboard model |
 | 40 | [Identity, Auth & Session](40-IDENTITY-AUTH-AND-SESSION.md) | Sessions, SSO, MFA, tokens |
 | 42 | [Frontend Architecture](42-FRONTEND-ARCHITECTURE.md) | The thin client and its budget |
 | 46 | [Observability & Operations](46-OBSERVABILITY-AND-OPERATIONS.md) | Signals, alerts, runbooks, SLOs |

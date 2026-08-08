@@ -1,0 +1,294 @@
+# 38 — Reporting, Export & Dashboards
+
+The analytics surface. The old drafts listed "reporting projections" as a Phase 4
+line item with no design, and [18](18-SUPPORT-MATRIX.md) marked it *not designed*
+— which meant it could not be promised to anyone. This closes that.
+
+Three capabilities, one substrate:
+
+| | What | Phase |
+| --- | --- | --- |
+| **Export** | Get my filtered data out, in a format I can use elsewhere | 2 |
+| **Reports** | Answer a fixed operational question — cycle time, throughput, workload | 4 |
+| **Dashboards** | Compose saved reports into a page I check every morning | 4 |
+
+## The governing constraint
+
+Analytics is where trackers quietly become slow. A report is a query nobody
+bounded, over a table nobody indexed for it, run by everyone at 9am.
+
+> **A report is a saved filter plus an aggregation, over the same closed field
+> set as everything else** ([26](26-SEARCH-INDEXING-AND-QUERY.md),
+> [27](27-FILTER-AND-SAVED-VIEW-DSL.md)).
+
+No report defines its own query. No report reaches a field the filter grammar
+cannot express. This is what keeps the index contract (ADR-011) true when
+reporting arrives, rather than making reporting the exception that breaks it.
+
+The simplicity contract applies too ([01](01-ORD.md)): reporting adds **no new
+user-facing noun**. A report is a saved view with an aggregation; a dashboard is
+a page of them. "Saved view" is already in the glossary.
+
+## Export
+
+The capability people actually ask for first, and the cheapest to get right.
+
+### What can be exported
+
+| Export | Contents | Permission |
+| --- | --- | --- |
+| **Task list** | The current filter's results, chosen columns | `task.read` on the projects in scope |
+| **Task detail** | Tasks + comments + activity + attachment metadata | `task.history.read` |
+| **Audit** | The audit stream for a period | `audit.read` |
+| **Workspace** | Everything, for migration or backup | `workspace.manage` |
+
+### Formats
+
+| Format | For | Notes |
+| --- | --- | --- |
+| **CSV** | spreadsheets, the 90% case | RFC 4180, UTF-8 with BOM so Excel opens it correctly |
+| **JSON Lines** | pipelines and scripts | one object per line, streamable |
+| **XLSX** | stakeholders who will not accept CSV | generated through **OpenCalc**, the suite's own engine — no new dependency |
+
+Using OpenCalc for XLSX is the one place the suite's shared architecture pays a
+direct dividend. It is a Rust crate we already maintain, so `.xlsx` export costs
+a dependency edge rather than a new vendor.
+
+**PDF is deliberately not an export format for data.** A PDF of 5,000 rows helps
+nobody. PDF belongs to *report rendering* (below), where layout is the point.
+
+### Export is a job, not a request
+
+Anything above 1,000 rows is asynchronous:
+
+```
+POST /api/v1/exports        { filter, format, columns }  → 202 { export_id }
+GET  /api/v1/exports/{id}                                → status + progress
+GET  /api/v1/exports/{id}/download                       → 302 to a signed URL
+```
+
+- Runs on the worker, streaming rows in cursor-paginated batches straight to
+  object storage. **The API process never holds the result set in memory** —
+  the same discipline as attachments ([28](28-ATTACHMENT-PIPELINE.md)).
+- **Permissions are evaluated per batch, not once at the start.** A long export
+  must not keep emitting rows from a project the actor lost access to halfway
+  through. The compiled filter carries the permission predicate
+  ([27](27-FILTER-AND-SAVED-VIEW-DSL.md)), and `authz_epoch` changes force
+  re-resolution.
+- Signed download URL, 1 hour, single-use where the backend supports it.
+- Artifacts are deleted after 7 days.
+- **Every export writes an `audit_event`** with the filter, row count, and
+  format. Bulk data leaving the system is exactly what an audit trail is for.
+
+### The CSV injection problem
+
+A cell beginning `=`, `+`, `-`, or `@` is executed as a formula when the file is
+opened in Excel or Sheets. A task titled `=cmd|'/c calc'!A1` becomes remote code
+execution on a colleague's laptop, and the attacker only needed permission to
+create a task.
+
+Every exported cell whose first character is one of those is prefixed with a
+single quote. This is non-negotiable and has its own test — it is the single most
+commonly shipped export vulnerability.
+
+## Reports
+
+### The report model
+
+```jsonc
+{
+  "name": "Cycle time by assignee, last 30 days",
+  "source": "task",
+  "filter":  { "op": "and", "clauses": [ ... ] },   // the SAME grammar, doc 27
+  "measure": { "fn": "p50", "of": "cycle_time" },
+  "group_by": ["assignee"],
+  "bucket":   { "field": "completed_at", "interval": "week" },
+  "limit":    20
+}
+```
+
+Four parts: **filter** (which tasks), **measure** (what number), **group_by**
+(which slices), **bucket** (which time grain). Nothing else. A report that needs
+a fifth part is a signal the model is wrong, not that the report is special.
+
+### Measures — a closed set
+
+| Measure | Definition |
+| --- | --- |
+| `count` | number of tasks |
+| `sum` / `avg` / `p50` / `p90` of a numeric field | over the matched set |
+| `cycle_time` | first entry to an `ACTIVE` state → first entry to `COMPLETED` |
+| `lead_time` | `created_at` → first entry to `COMPLETED` |
+| `age` | `created_at` → now, for open tasks |
+| `time_in_state` | duration in a given state |
+| `throughput` | count entering `COMPLETED` per bucket |
+| `created_vs_completed` | two series, per bucket |
+
+**`CANCELED` never counts as completed.** Cycle time and throughput exclude it
+entirely. Collapsing the two is the most common metric bug in trackers, and it is
+precisely why `CANCELED` is a separate state ([23](23-WORKFLOW-AND-STATE-MACHINE.md)).
+
+### Where the numbers come from
+
+Cycle time is not a column. It is derived from state-transition history, and
+computing it by scanning `activity_event` at query time would be exactly the
+unbounded query this document exists to prevent.
+
+A **projection** maintained by the outbox worker
+([25](25-EVENTS-OUTBOX-AND-AUDIT.md)):
+
+```sql
+CREATE TABLE task_state_interval (
+    task_id       uuid NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    workspace_id  uuid NOT NULL,
+    project_id    uuid NOT NULL,
+    state         task_state NOT NULL,
+    status_id     uuid NOT NULL,
+    entered_at    timestamptz NOT NULL,
+    exited_at     timestamptz,                 -- NULL = current
+    duration      interval GENERATED ALWAYS AS (exited_at - entered_at) STORED,
+    PRIMARY KEY (task_id, entered_at)
+);
+CREATE INDEX tsi_cycle_ix ON task_state_interval (workspace_id, project_id, state, entered_at);
+CREATE INDEX tsi_open_ix  ON task_state_interval (task_id) WHERE exited_at IS NULL;
+```
+
+One row per state occupancy. Cycle time becomes a bounded aggregate over an
+indexed table, and "how long was this stuck in Code Review?" becomes answerable —
+a question the raw activity stream can answer only by replay.
+
+It is **rebuildable from `activity_event`**, which is append-only and complete.
+A projection that cannot be rebuilt is a second source of truth; this one is a
+cache.
+
+### Report execution limits
+
+Same discipline as every other query ([21](21-API-LIMITS-AND-QUOTAS.md)):
+
+| Limit | Value |
+| --- | --- |
+| Time range | 2 years |
+| Result groups | 1,000 |
+| Buckets | 400 |
+| Statement timeout | 10 s (higher than search; still bounded) |
+| Concurrent reports per workspace | 5 |
+| Cached result TTL | 5 min |
+
+Reports read from a **read replica** where one exists
+([48](48-DEPLOYMENT-PROFILES.md)), and shed first under load
+([30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)). A slow report must never slow a
+board.
+
+### Permissions
+
+A report shows only what the viewer can see — the permission predicate is
+injected by the compiler, identically to a list query. Two people opening the
+same report see different numbers, and that is correct.
+
+**This has a consequence worth stating plainly:** aggregate numbers are not
+comparable between viewers. A manager's "47 open" and a guest's "12 open" are
+both right. Reports therefore display the project scope they were computed over,
+so nobody quotes a number without knowing whose view produced it.
+
+## Dashboards
+
+A dashboard is a **named layout of saved reports**. That is the whole model.
+
+```jsonc
+{
+  "name": "Team Monday",
+  "scope": { "project_ids": [...] },
+  "tiles": [
+    { "report_id": "...", "viz": "number",   "w": 1, "h": 1 },
+    { "report_id": "...", "viz": "line",     "w": 2, "h": 2 },
+    { "report_id": "...", "viz": "bar",      "w": 2, "h": 2 },
+    { "report_id": "...", "viz": "table",    "w": 4, "h": 3 }
+  ],
+  "refresh": "5m"
+}
+```
+
+- **Visualizations are a closed set**: `number`, `line`, `bar`, `stacked_bar`,
+  `table`, `heatmap`. No chart builder, no arbitrary viz config. Six well-made
+  charts beat a chart builder nobody can use.
+- Tiles load **independently and lazily**. One slow report degrades its own tile,
+  not the page.
+- The dashboard route is a **lazy chunk**; the charting library is not in the core
+  bundle ([42](42-FRONTEND-ARCHITECTURE.md), ADR-024).
+- Refresh is polled per tile, honouring the cache TTL — dashboards left open on a
+  wall display must not become a load generator.
+
+### Built-in dashboards
+
+Shipped, expressed entirely in the model above — which is the proof the model is
+sufficient:
+
+| Dashboard | Tiles |
+| --- | --- |
+| **My Week** | open by state · overdue count · completed this week · upcoming |
+| **Project Health** | throughput trend · cycle-time p50/p90 · created vs completed · blocked count · age of oldest open |
+| **Team Workload** | open per assignee · overdue per assignee · unassigned |
+| **Quality** | bugs opened vs closed · bug age · reopen rate |
+
+If a built-in dashboard needed a capability the model lacks, that is the signal
+the model is under-specified. That is why they are defined this way rather than
+hand-built.
+
+## What this deliberately is not
+
+- **Not a BI tool.** No joins the user defines, no custom SQL, no pivot builder,
+  no calculated fields. Those needs are real and are served by **exporting to a
+  real BI tool**, which is why export ships two phases earlier than reports.
+- **Not real-time.** Projections lag by seconds; dashboards cache for minutes.
+  A tracker's analytics do not need to be live, and pretending otherwise costs
+  the write path.
+- **Not cross-workspace.** Ever ([32](32-TENANCY-AND-ISOLATION.md)).
+- **Not a data warehouse.** For long-horizon analysis, export or stream events to
+  the customer's own warehouse via webhooks
+  ([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)).
+
+## Delivery
+
+| Phase | Ships |
+| --- | --- |
+| **2** | Export: CSV + JSONL, async jobs, per-batch permission checks, injection escaping, audit |
+| **2** | Audit export ([25](25-EVENTS-OUTBOX-AND-AUDIT.md)) |
+| **4** | `task_state_interval` projection + rebuild |
+| **4** | Reports: measures, grouping, bucketing, caching |
+| **4** | Dashboards: tiles, six visualizations, built-ins |
+| **4** | XLSX export via OpenCalc |
+| later | Scheduled report delivery by email; report subscriptions |
+
+Export first, deliberately. It is the capability with the highest ratio of demand
+to complexity, and shipping it early relieves most of the pressure for a
+half-built BI tool.
+
+## Acceptance gates
+
+- **CSV injection test** — tasks titled `=1+1`, `+x`, `-x`, `@x`, and
+  `=cmd|'/c calc'!A1` all export quote-prefixed. Non-negotiable.
+- **Streaming test** — exporting 500,000 rows leaves worker RSS flat.
+- **Mid-export revocation test** — an actor who loses project access partway
+  through a long export gets no further rows from that project.
+- **Cross-tenant test** — no export, report, or dashboard tile returns a row from
+  another workspace, including via a shared report.
+- **Metric correctness fixtures** — hand-calculated cycle time, throughput, and
+  reopen rate over a golden task history; the numbers must match exactly.
+- **`CANCELED` exclusion test** — canceled tasks never appear in throughput or
+  cycle time.
+- **Projection rebuild test** — dropping and rebuilding `task_state_interval`
+  from `activity_event` reproduces identical numbers.
+- **`EXPLAIN` suite** — every report query is index-served at the reference
+  corpus ([26](26-SEARCH-INDEXING-AND-QUERY.md)).
+- **Bundle test** — the charting library is absent from the core shell chunk.
+- **Tile isolation test** — one failing report degrades its tile only.
+
+## ADRs triggered
+
+- **ADR-027** — Reports are saved filters plus a closed measure set; no
+  user-defined SQL, no BI query builder.
+- **ADR-028** — `task_state_interval` projection as the metric substrate,
+  rebuildable from `activity_event`.
+- **ADR-029** — Export is asynchronous above 1,000 rows, permission-checked per
+  batch, and always audited.
+- **ADR-030** — XLSX export via OpenCalc rather than a third-party writer.

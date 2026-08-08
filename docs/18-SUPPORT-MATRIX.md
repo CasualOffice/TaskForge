@@ -57,13 +57,18 @@ it would mean a partial index and a second code path forever.
 | Environments, milestones, dependencies | 2 | [03](03-DOMAIN-MODEL.md) | not started |
 | User saved views + sharing | 2 | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | not started |
 | Audit console + export | 2 | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | not started |
+| Export — CSV / JSON Lines | 2 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
 | SSO — OIDC | 2 | [40](40-IDENTITY-AUTH-AND-SESSION.md) | not started |
 | SSO — SAML | 2 | [40](40-IDENTITY-AUTH-AND-SESSION.md) | not started |
 | Declarative plugins | 3a | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | Remote HTTPS plugins, webhooks | 3b | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | Sandboxed frontend plugins | 3c | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | Automation rules | 4 | [36](36-AUTOMATION-RULES-DESIGN.md) | not started |
-| Reporting projections | 4 | — | not designed |
+| Reports — measures, grouping, bucketing | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
+| Dashboards — tiles, six visualizations | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
+| Export — XLSX via OpenCalc | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
+| Scheduled report delivery | later | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | **deferred** |
+| User-defined SQL / BI query builder | — | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | **non-goal** — export to a real BI tool |
 | Calendar / timeline (as plugins) | 4 | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | SCIM provisioning | 4 | — | not designed |
 | Managed worker plugins | later | ADR-016 | **deferred** |

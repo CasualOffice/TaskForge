@@ -145,6 +145,66 @@ This is where TaskForge's central bet lives, so it gets the closest study.
   shows scopes, extension points, declared retention, declared PII, and egress
   allow-list before anything is granted.
 
+## Reporting, dashboards & export
+
+The area with the widest quality spread in the market, and the one where the
+cheap version is worst. Surveyed for [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md).
+
+### Jira dashboards & JQL — the power/comprehensibility trade
+
+- **Pattern:** gadget-based dashboards over JQL, plus a separate paid product
+  (Atlassian Analytics / Data Lake) once anyone wants real analysis.
+- **Take:** the confirmation that **one query language across search, saved
+  views, automation, and reports** is the right shape — JQL's reach is exactly
+  why it survived. TaskForge takes the idea and rejects the syntax: a typed AST
+  over a closed field set ([27](27-FILTER-AND-SAVED-VIEW-DSL.md)) gives the same
+  reuse without a language users must learn or an unbounded query planner.
+- **Reject:** the gadget zoo, and the fact that a serious question requires
+  leaving the product. Our answer to "I need real BI" is a first-class **export**
+  ([38](38-REPORTING-EXPORT-AND-DASHBOARDS.md)), shipped two phases before
+  reports, rather than a half-built warehouse.
+
+### Linear — the "few, correct metrics" position
+
+- **Pattern:** a small set of opinionated insights (cycle time, throughput,
+  scope change) rather than a report builder.
+- **Take:** substantially. Six good visualizations beat a chart builder nobody
+  can drive, and the built-in dashboards in [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md)
+  are expressed in the same model users get — which is the proof the model is
+  sufficient.
+- **Take also:** cycle time computed from **state history**, not from a
+  `resolved_at` column. This is why `task_state_interval` exists rather than a
+  timestamp pair.
+
+### Notion / Airtable — the flexible-view trap
+
+- **Pattern:** any view, any grouping, any rollup, user-defined.
+- **Take:** grouping and bucketing as first-class report parameters.
+- **Reject:** unbounded user-defined aggregation. It is the single clearest path
+  to a query nobody indexed, and it breaks the promise in
+  [26](26-SEARCH-INDEXING-AND-QUERY.md) that no user-reachable query scans.
+
+### Metabase / Superset — what a real BI tool looks like
+
+- **Role:** the honest comparison for "can't you just add dashboards?" They are
+  large products with query builders, caching layers, and permission models of
+  their own.
+- **Take:** the boundary. We are not competing here, and pretending otherwise
+  would produce a bad tracker *and* a bad BI tool. Instead: export cleanly, and
+  stream events to the customer's warehouse via webhooks.
+
+### Excel — the actual competitor for reporting
+
+- **Observation, not a joke:** the overwhelming majority of tracker "reports" end
+  as an export someone pivots by hand. It is the reason **export ships in Phase 2
+  and reports in Phase 4**, not the other way around.
+- **Take:** CSV that Excel opens correctly (UTF-8 BOM, RFC 4180), and `.xlsx`
+  through OpenCalc — the suite's own engine, so the format costs a dependency
+  edge rather than a vendor.
+- **Take the warning too:** CSV formula injection (`=cmd|'/c calc'!A1` in a task
+  title) is a live, widely-shipped vulnerability in this exact feature. It has
+  its own non-negotiable test in [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md).
+
 ## Where TaskForge deliberately differs
 
 | Axis | Most prior art | TaskForge |
@@ -157,6 +217,8 @@ This is where TaskForge's central bet lives, so it gets the closest study.
 | Client weight | grows with feature count | ≤ 200 KB gated in CI ([42](42-FRONTEND-ARCHITECTURE.md)) |
 | Self-hosting | full compose stack required | one binary + PostgreSQL ([48](48-DEPLOYMENT-PROFILES.md)) |
 | Ordering | float ranks (precision-fail) or integers (renumber) | lexicographic ranks (ADR-013) |
+| Reporting | a report builder, or a separate paid BI product | closed measure set over the same filter grammar; **export first** ([38](38-REPORTING-EXPORT-AND-DASHBOARDS.md)) |
+| Export | an afterthought, often synchronous and unaudited | async, streamed, permission-checked per batch, audited, injection-safe |
 
 ## What the survey says we are most likely to get wrong
 
