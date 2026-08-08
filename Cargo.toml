@@ -87,6 +87,10 @@ thiserror  = "2"
 anyhow     = "1"
 rand       = { version = "0.9", features = ["small_rng"] }
 clap       = { version = "4", features = ["derive"] }
+tokio      = { version = "1", features = ["rt-multi-thread", "macros"] }
+sqlx       = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls"] }
+testcontainers = "0.24"
+testcontainers-modules = { version = "0.12", features = ["postgres"] }
 tracing    = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 

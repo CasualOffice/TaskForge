@@ -185,7 +185,7 @@ a row in this table. Never neither.
 | Latency (subset + full) | **F-007** | The harness and the comparison gate are built and tested. There is no baseline to compare against: `benchmarks/reference-8vcpu-32gb.reference.json` is a placeholder that no run can pass, because the docs/30 reference machine does not exist yet. |
 | Frontend lint (`eslint`) | **C-019** | `tsc --noEmit` runs today in `bundle-size`. There is no ESLint config, and no product code to lint. |
 | Frontend tests (Vitest), E2E (Playwright) | **C-018**, **C-019** | No product frontend exists; `webapp/` is the bundle-floor harness only. |
-| Integration (testcontainers) | **F-005** onward | The schema and query gates use a service container directly. The Rust-side harness arrives with the first repository. |
+| ~~Integration (testcontainers)~~ | — | **Built (F-005).** `crates/casual-task-persistence/tests/schema_harness.rs` starts PostgreSQL 16, applies every migration, and reaches the invariants from Rust. Run by the `schema` job. The tests are `#[ignore]` so `cargo test` stays runnable without a Docker daemon; CI runs them explicitly, because otherwise nothing would. |
 | Query count (no N+1) | **C-012** | Needs a query layer to count. |
 | Permission matrix, escalation, cross-tenant | **C-004**, **C-005** | Phase 1. |
 | OpenAPI diff, event schema diff, plugin contract diff, error registry | Phase 1 | Nothing to diff until `/v1` and the registry exist. |
