@@ -193,12 +193,44 @@ fn an_unchanged_report_still_passes() {
     );
 }
 
+/// Every `*.json` in `benchmarks/`, by name.
+///
+/// Scanned rather than listed. The list was hard-coded to two files, so a third
+/// baseline could be committed and checked by nothing — which is the one thing
+/// this test exists to make impossible.
+fn committed_baseline_names() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(repo_root().join("benchmarks"))
+        .expect("reading benchmarks/")
+        .map(|e| e.expect("entry").path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .map(|p| p.file_name().expect("name").to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert!(!names.is_empty(), "benchmarks/ holds no baselines");
+    names
+}
+
+#[test]
+fn every_committed_baseline_parses_and_is_self_consistent() {
+    // `deny_unknown_fields` means parsing is a real check: a field renamed in
+    // the report schema without migrating the committed files fails here.
+    for name in committed_baseline_names() {
+        let out = compare(&name, &name);
+        let code = out.status.code();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            // A measured baseline compares cleanly against itself; a
+            // placeholder refuses, which is its whole purpose.
+            code == Some(0) || code == Some(EXIT_NOT_COMPARABLE),
+            "{name} exited {code:?} against itself:\n{stdout}"
+        );
+    }
+}
+
 #[test]
 fn every_committed_baseline_declares_a_status() {
-    for name in [
-        "smoke-local.smoke.json",
-        "reference-8vcpu-32gb.reference.json",
-    ] {
+    for name in committed_baseline_names() {
+        let name = name.as_str();
         let text = std::fs::read_to_string(benchmarks(name)).expect(name);
         let doc: serde_json::Value = serde_json::from_str(&text).expect(name);
         let status = doc["baseline"]["status"]

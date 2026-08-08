@@ -47,8 +47,26 @@ decoration.
 | --- | --- |
 | `<environment>.<corpus-scale>.json` | one committed baseline |
 | `reference-8vcpu-32gb.reference.json` | **placeholder** — see below |
-| `smoke-local.smoke.json` | a real measurement on a developer laptop; **not a gate** |
+| `m4-10c-16gb.small.json` | a real measurement on a developer laptop over a `casual-task-seed --scale small` corpus; **not a gate**. The worked example to copy. |
+| `smoke-local.smoke.json` | an earlier laptop measurement over `smoke-corpus.sql`; **not a gate**, kept for provenance |
 | `smoke-corpus.sql` | a reduced, disposable corpus; **not** the reference corpus |
+
+Reproducing `m4-10c-16gb.small.json`:
+
+```sh
+cargo run --release -p casual-task-seed -- --scale small --out target/corpus-small
+# load into a clean PostgreSQL 16, then:
+cargo run --release -p casual-task-loadtest -- run \
+  --environment m4-10c-16gb --corpus-scale small \
+  --generated-at "$(git log -1 --format=%cI)" \
+  --dsn "postgres://taskforge_app:...@127.0.0.1:5432/tf" \
+  --iterations 300 --warmup 50 --out /tmp/report.json
+```
+
+Every case in it is well inside its `docs/30` p95 target at 50,000 tasks. The
+one to watch is `full_text_search` at 17.1 ms: **D-043** shows that query's plan
+degrades to a sequential scan under row-level security at reference scale, so
+this number does not extrapolate.
 
 ### The reference baseline is a placeholder, and cannot be passed
 
