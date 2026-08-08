@@ -132,11 +132,47 @@ pub async fn list_for_user(
     Ok(rows.into_iter().map(into_workspace).collect())
 }
 
+/// A workspace row that exists and has no owner yet (D-054).
+///
+/// The inner record is `pub(crate)`, so no crate outside this one can open it —
+/// and the only thing in this crate that does is
+/// [`crate::role::bootstrap`], which opens it by granting the creator
+/// `workspace.owner`. A handler that creates a workspace and skips the grant
+/// therefore has nothing to build a response from and **does not compile**.
+///
+/// That is the point. Before this type existed, `insert` handed back a finished
+/// workspace and the grant was a step somebody had to remember; forgetting it
+/// produced a workspace that its own creator could not write to, and nothing
+/// anywhere reported it.
+#[derive(Debug)]
+#[must_use = "an unowned workspace has to be passed to role::bootstrap; \
+              dropping it leaves the transaction holding a workspace nobody \
+              can administer"]
+pub struct Unowned(pub(crate) WorkspaceRecord);
+
+impl Unowned {
+    /// The workspace's id, for a caller that needs it before the grant exists.
+    ///
+    /// Deliberately the *only* accessor: an id is not enough to build a
+    /// response with, so exposing it does not weaken the guarantee.
+    #[must_use]
+    pub fn id(&self) -> Uuid {
+        self.0.id
+    }
+
+    /// Open it. Crate-private, and called from exactly one place.
+    pub(crate) fn into_record(self) -> WorkspaceRecord {
+        self.0
+    }
+}
+
 /// Create the workspace the scope names.
 ///
 /// The id is taken from the scope, not from an argument: the caller has already
 /// committed to which workspace this transaction is for, and a second id would
 /// be a second chance to disagree with the row-level-security setting.
+///
+/// Returns an [`Unowned`], not a [`WorkspaceRecord`] — see that type.
 ///
 /// # Errors
 ///
@@ -146,7 +182,7 @@ pub async fn insert(
     scoped: &mut Scoped<'_>,
     name: &str,
     slug: &str,
-) -> Result<WorkspaceRecord, sqlx::Error> {
+) -> Result<Unowned, sqlx::Error> {
     let id = scoped.workspace_id().as_uuid();
     let row: (Uuid, String, String, i64, OffsetDateTime) = sqlx::query_as(
         "INSERT INTO workspace (id, name, slug)
@@ -158,7 +194,7 @@ pub async fn insert(
     .bind(slug)
     .fetch_one(scoped.conn())
     .await?;
-    Ok(into_workspace(row))
+    Ok(Unowned(into_workspace(row)))
 }
 
 /// The workspace the scope names, or `None` if it is absent or soft-deleted.

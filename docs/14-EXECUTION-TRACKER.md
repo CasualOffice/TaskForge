@@ -88,8 +88,10 @@ The documentation phase. All complete unless noted.
 | D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-006. Accept before C-002 closes |
 | D-055 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
-| D-054 | Which permission governs workspace membership and team management | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002; Accept before C-002 is `Gated` |
-| D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Open** — surfaced by C-002 |
+| D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Accepted** — `docs/04`'s five templates are materialized per workspace and its creator is granted `Owner` at `WORKSPACE` scope, in the creating transaction |
+| D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Consumed** — retired in favour of registry codes; the gate is now total |
+| D-056 | The template permission sets `docs/04`'s prose does not decide | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by D-054. Accept with C-004's golden matrix |
+| D-057 | Which permission governs workspace membership and team management | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — the enforcement half of D-054. Accept before C-002 is `Gated` |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -771,7 +773,7 @@ are not the last. And a user added to a team must already be a member of the
 workspace — `team_membership` has no policy of its own, so that check is its
 tenant boundary.
 
-**Still to come before C-002 is `Gated`:** D-054, and two gates that exist as
+**Still to come before C-002 is `Gated`:** D-057, and two gates that exist as
 tests here but not yet as CI-enforced suites — the cross-tenant property test
 [32](32-TENANCY-AND-ISOLATION.md) says must be *generated from the route table*
 (C-005), and the 404-not-403 sweep across every endpoint (C-004). This PR's
@@ -784,14 +786,32 @@ and building that layer is a unit of work in its own right with no tracker row.
 It is a gap in the contract, not an oversight, and it applies to every `POST`
 create Phase 1 will add.
 
-**D-055 is open and is a defect, not a design question.** Four codes this API
-already emits — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` — are
-not in [20](20-ERROR-CODE-REGISTRY.md), which has no `REQ` or `SRV` area at all,
-so the `docs` URL in those error bodies points at nothing. C-002 adds a unit test
-that reads the registry and fails on any code missing from it, with those four
-named as explicit exceptions rather than silently skipped. Renaming a shipped
-code is a public-contract change ([20](20-ERROR-CODE-REGISTRY.md) §Rules: codes
-are append-only), so it belongs in its own change.
+**D-055 is consumed.** Four codes this API emitted — `TF-REQ-0001`,
+`TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` — were not in
+[20](20-ERROR-CODE-REGISTRY.md), which has no `REQ` or `SRV` area at all, so the
+`docs` URL in those error bodies pointed at nothing. C-002 added the gate that
+found them and named them as exceptions; the exceptions are now gone:
+
+| was | is | why |
+| --- | --- | --- |
+| `TF-REQ-0001` | *removed* | unused, and a duplicate of `TF-VAL-0001` |
+| `TF-REQ-0004` | `TF-AZN-0008` | a new registry row: the generic form of `TF-PRJ-0001`/`TF-TSK-0001`, in `AZN` because it is a **visibility** answer |
+| `TF-SRV-0001` | `TF-SYS-0001` | "Internal error", already in the registry |
+| `TF-SRV-0003` | `TF-SYS-0002` | "Service temporarily unavailable", already in the registry |
+| `TF-AUT-0002` on every 403 | `TF-AUT-0008` / `TF-AUT-0013` | `-0002` is "Session expired". A CSRF failure and a wrong credential type are different answers leading to different actions, and one code sent both to the wrong page |
+
+Renaming a code is a public-contract change ([20](20-ERROR-CODE-REGISTRY.md)
+§Rules: append-only) — which is why this was its own change and not a line in
+C-002. It is safe here for a reason that will not be true again: **none of the
+four has ever been released.** After the first release the same drift would have
+to be carried, not corrected.
+
+The exception list is deleted rather than emptied, so the next code cannot be
+added to it, and two assertions were added beside the containment check: the
+gate is shown failing against a retired code, and every emitted code's **area**
+must be one of the fourteen the registry declares — `TF-XYZ-0001` would pass a
+substring check if the string happened to appear in prose, which is exactly the
+shape of the bug being fixed.
 
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.
@@ -1142,15 +1162,90 @@ dependencies, and the filter grammar on `GET /tasks` beyond `project_id`.
 `GET /tasks` compiles through the C-012 compiler, so adding the grammar is
 supplying a richer AST rather than a second query path.
 
-**One pre-existing divergence, reported rather than fixed.** `ApiError`'s
+**One pre-existing divergence, reported rather than fixed here.** `ApiError`'s
 original codes — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` —
 use areas that [20](20-ERROR-CODE-REGISTRY.md) does not define, and
-`ApiError::forbidden` uses `TF-AUT-0002`, which the registry assigns to "session
+`ApiError::forbidden` used `TF-AUT-0002`, which the registry assigns to "session
 expired". Every code added by C-006 and C-008 is copied from the registry, so
-the two sets now disagree in one direction only. Fixing the originals changes
-responses C-001 already ships and is a separate change; there is also no gate
-asserting that an emitted code exists in the registry, which is why it was
-possible.
+the two sets disagreed in one direction only. **Corrected under D-055** below,
+together with the gate whose absence allowed it.
+
+**D-054 is Accepted, and the product is usable end to end.** It was not a design
+question at heart; it was a hole that only looked like one. `role_assignment` is
+the only source of authority in the system (migration 0003: "No permission is
+granted anywhere else — not by a boolean column, not by an `is_admin` flag, and
+not by project membership"), and **nothing created one**. A person could sign up,
+create a workspace, create a project in it, and be refused every write to their
+own tenant with `403 TF-AZN-0001`, permanently — because the only way to get a
+grant is to hold one.
+
+The resolution is `docs/04` §Built-in role templates, executed rather than
+invented:
+
+- The five templates are materialized into each workspace when it is created.
+  They are **per workspace, not seeded by a migration**, and that is forced by
+  the schema rather than chosen: `role.workspace_id` is `NOT NULL REFERENCES
+  workspace(id)` and the table carries a row-level-security policy keyed on it,
+  so a global template row has no workspace to belong to and would be invisible
+  to everyone under the policy.
+- The creator is granted **Owner at `WORKSPACE` scope**, in the same transaction
+  as the workspace row, its membership row, and the `UnitOfWork::record` history
+  (ADR-006). The grant is in the audit record's `after`, which is `docs/04`
+  control 7.
+
+**Two of the five sets are literal; three are judgement calls, and they are
+listed rather than buried.** `docs/04` gives each template a one-line *shape*,
+not a set of keys. Owner is "Everything" — asserted against
+`permission::ALL` itself, so a permission added to the closed registry is
+carried by Owner without anyone remembering. Administrator is that minus
+`workspace.delete` and `workspace.owner`, asserted as a *difference* for the
+same reason. Project Manager, Member and Guest are prose, and the cells prose
+does not decide are **withheld** — AGENTS.md priority 1, and widening a template
+later is additive where narrowing one takes away authority somebody is using.
+They are data in `template::UNDECIDED`, with a test asserting each names a real
+template and a real key, and another asserting every one of them actually fails
+closed. **D-056**, settled by C-004's golden matrix.
+
+The sharpest is Member and `task.close`: `docs/04` says "transition tasks", and
+`docs/23` makes closing require `task.close` **in addition to** a valid edge — so
+a Member who may transition still cannot finish work. Nothing blocks on it
+today, because no endpoint assigns a role yet.
+
+**The state is made unreachable in two directions, by two different
+mechanisms.**
+
+- *Creation* — in the type system. `workspace::insert` no longer returns a
+  workspace; it returns an `Unowned` whose inner record is `pub(crate)`, and the
+  only thing that opens it is `role::bootstrap`. A handler that creates a
+  workspace and skips the grant has nothing to build a response from and **does
+  not compile**.
+- *Removal* — in the database. Migration 0021 implements `docs/04` control 4
+  ("the final grant carrying `workspace.owner` cannot be removed or downgraded.
+  Enforced as a database constraint check inside the transaction"), as a
+  `BEFORE DELETE OR UPDATE` trigger on `role_assignment`. It covers the `CASCADE`
+  from `role` too, and it refuses a *downgrade* — moving the last owner onto a
+  role without `workspace.owner` — while still permitting a *transfer*, which is
+  neither removal nor downgrade and which a naive rule would have made
+  impossible.
+
+**The symmetric database constraint was considered and not taken, deliberately.**
+"No `workspace` row exists without an owner grant" would be a `DEFERRABLE
+INITIALLY DEFERRED` constraint trigger firing at `COMMIT`. Nine call sites insert
+workspaces directly — the `EXPLAIN` corpus's 100 workspaces, the 2M-row reference
+corpus, the schema gate's own fixtures, four persistence tests — and every one
+would have to mint an owner grant. That changes the corpus the
+`explain-no-seq-scan` gate plans against, and that gate's value comes from the
+corpus being stable. Recorded in migration 0021 so the stronger option stays
+visible rather than being forgotten.
+
+**Ten tests, and each fails without the code it covers.** Seven in
+`casual-task-persistence` and three through the HTTP route. The persistence ones
+hand the written rows to `casual_task_authz::allows` rather than counting them:
+rows in a table are not authority, and the claim being made is that the resolver
+accepts them. They assert the owner may exercise every permission in the
+registry at workspace *and* project scope (the scope chain is what carries the
+grant down), that a stranger gets nothing, and that a grant in one workspace does
+not reach another.
 
 ## Phases 2–4
 

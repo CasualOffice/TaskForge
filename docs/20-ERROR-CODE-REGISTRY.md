@@ -45,6 +45,12 @@ code is part of the public contract once shipped.
 | `TF-AUT-0010` | Token revoked | 401 |
 | `TF-AUT-0011` | SSO required for this workspace | 403 |
 | `TF-AUT-0012` | Account locked — too many attempts | 429 |
+| `TF-AUT-0013` | Credential type not permitted for this endpoint | 403 |
+
+`TF-AUT-0013` is not `TF-AZN-0001`. It is a fact about the *credential*, not
+about a grant: a workspace-scoped bearer token cannot create a different
+workspace no matter what its principal holds, and the fix is a different
+credential rather than a different role.
 
 ### Authorization — `AZN`
 
@@ -57,6 +63,14 @@ code is part of the public contract once shipped.
 | `TF-AZN-0005` | Cannot remove the last workspace owner | 422 |
 | `TF-AZN-0006` | Self-elevation rejected | 422 |
 | `TF-AZN-0007` | Not a member of the target workspace | 403 |
+| `TF-AZN-0008` | Not found, or not visible to you | 404 |
+
+`TF-AZN-0008` is the generic form of `TF-PRJ-0001` and `TF-TSK-0001`, for the
+resources that have no code of their own. It sits in `AZN` and not in `VAL`
+because it is a **visibility** answer, not a validation one: `docs/04` requires
+absent and invisible to be indistinguishable, so one code has to cover both and
+the body must never say which. Anything that can be seen and may not be touched
+is `TF-AZN-0001` or `-0002` instead.
 
 `TF-AZN-0001` and `-0002` are distinct on purpose: the first means "you were never
 given this," the second means "you have it, but not for this object." They lead a

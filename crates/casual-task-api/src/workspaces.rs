@@ -236,6 +236,20 @@ pub async fn create(
         .await
         .map_err(|error| internal(&error, "adding the creator", &request_id))?;
 
+    // D-054. `repo::insert` returned an `Unowned`, and this is the only thing
+    // that opens it — so the workspace row and the grant that makes it usable
+    // are not two steps one of which can be forgotten. It seeds `docs/04`'s
+    // five role templates into the workspace and assigns the creator the one
+    // carrying `workspace.owner`, at WORKSPACE scope, in this transaction.
+    //
+    // Without it the workspace committed with no `role_assignment` row at all,
+    // and since that table is the only source of authority (migration 0003),
+    // its creator could read it and never write to it.
+    let (created, bootstrap) =
+        casual_task_persistence::role::bootstrap(&mut scoped, created, actor.actor_id.as_uuid())
+            .await
+            .map_err(|error| internal(&error, "granting the workspace owner", &request_id))?;
+
     let who = provenance(&actor, &request_id, &headers);
     UnitOfWork::record(
         &mut scoped,
@@ -244,15 +258,41 @@ pub async fn create(
             aggregate_id: created.id,
             project_id: None,
             event_type: "workspace.created".to_owned(),
-            activity_changes: serde_json::json!({ "name": created.name, "slug": created.slug }),
+            // Display values, not ids (`docs/25`): the stream is rendered years
+            // later, and "granted Owner to the creator" has to read correctly
+            // after the role has been renamed or deleted.
+            activity_changes: serde_json::json!({
+                "name": created.name,
+                "slug": created.slug,
+                "roles_seeded": bootstrap.template_names(),
+                "owner_granted_to": actor.actor_id.as_uuid(),
+            }),
+            // `docs/04` control 7: "Every grant, revoke, role edit, and consent
+            // writes an `audit_event` with before/after." The owner grant is
+            // made in this transaction, so it is audited in this record rather
+            // than in one of its own — `docs/25` lists `role.assigned` as
+            // audit-only, and `UnitOfWork` has no audit-only path yet (D-053).
             audit_changes: serde_json::json!({
                 "before": serde_json::Value::Null,
-                "after": { "name": created.name, "slug": created.slug },
+                "after": {
+                    "name": created.name,
+                    "slug": created.slug,
+                    "role_assignment": {
+                        "id": bootstrap.assignment,
+                        "principal_id": actor.actor_id.as_uuid(),
+                        "principal_type": "USER",
+                        "role_id": bootstrap.owner_role,
+                        "role_name": casual_task_model::template::owner().name,
+                        "scope_type": "WORKSPACE",
+                        "scope_id": created.id,
+                    },
+                },
             }),
             payload: serde_json::json!({
                 "workspace_id": created.id,
                 "name": created.name,
                 "slug": created.slug,
+                "owner_id": actor.actor_id.as_uuid(),
             }),
             schema_version: SCHEMA_VERSION,
         },
@@ -905,7 +945,10 @@ fn only_a_person(actor: &Authenticated, request_id: &str) -> Result<(), ApiError
     if matches!(actor.actor_type, ActorType::User) {
         Ok(())
     } else {
-        Err(ApiError::forbidden(request_id))
+        Err(ApiError::forbidden(
+            codes::WRONG_CREDENTIAL_TYPE,
+            request_id,
+        ))
     }
 }
 

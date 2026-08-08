@@ -222,7 +222,7 @@ async fn a_non_member_is_told_404_and_not_403() -> Result<()> {
             );
             let body = json_body(response).await?;
             assert_eq!(
-                body["error"]["code"], "TF-REQ-0004",
+                body["error"]["code"], "TF-AZN-0008",
                 "{label} {path} used a distinguishable error code"
             );
         }
@@ -828,5 +828,125 @@ async fn adding_a_member_twice_is_not_an_error() -> Result<()> {
     )
     .await?;
     assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// D-054 — a workspace acquires an owner when it is created
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn creating_a_workspace_makes_the_creator_its_owner() -> Result<()> {
+    // The defect this closes: `role_assignment` is the only source of authority
+    // (migration 0003), and nothing created one. The workspace committed, its
+    // creator was its only member, and every write they could ever attempt was
+    // refused — with no way out, because granting requires a grant.
+    //
+    // Asserted through the HTTP route rather than against the repository,
+    // because the guarantee is about what a *request* leaves behind.
+    let db = schema_harness::TestDatabase::start().await?;
+    let app = app(db.pool.clone());
+    let founder = sign_up(&app, &db.pool, "founder@example.com").await?;
+    let (workspace, _) = create_workspace(&app, &founder, "acme").await?;
+
+    let grants = test_support::workspace_grants(&db.pool, workspace).await?;
+    assert!(
+        grants.iter().any(|(principal, role, permission)| {
+            *principal == founder.user_id && role == "Owner" && permission == "workspace.owner"
+        }),
+        "POST /api/v1/workspaces left a workspace with no owner: {grants:?}"
+    );
+
+    // Exactly one owner, and it is the creator. A bootstrap that granted the
+    // role twice, or to somebody else as well, would pass the assertion above.
+    let owners: Vec<Uuid> = grants
+        .iter()
+        .filter(|(_, _, permission)| permission == "workspace.owner")
+        .map(|(principal, _, _)| *principal)
+        .collect();
+    assert_eq!(owners, vec![founder.user_id]);
+
+    // All five templates, with the sets docs/04 describes.
+    let templates = test_support::role_templates(&db.pool, workspace).await?;
+    let names: Vec<&str> = templates.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec![
+            "Administrator",
+            "Guest",
+            "Member",
+            "Owner",
+            "Project Manager"
+        ],
+        "the five docs/04 templates were not materialized"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn the_owner_grant_is_audited_in_the_transaction_that_made_it() -> Result<()> {
+    // docs/04 control 7: "Every grant, revoke, role edit, and consent writes an
+    // `audit_event` with before/after." A grant nobody can find in the audit
+    // trail is a grant nobody can explain during an incident.
+    let db = schema_harness::TestDatabase::start().await?;
+    let app = app(db.pool.clone());
+    let founder = sign_up(&app, &db.pool, "founder@example.com").await?;
+    let (workspace, _) = create_workspace(&app, &founder, "acme").await?;
+
+    let audited = test_support::audit_changes(&db.pool, workspace).await?;
+    let grant = audited
+        .iter()
+        .find_map(|entry| entry.get("after")?.get("role_assignment"))
+        .context("no audit record names the owner grant")?;
+
+    assert_eq!(grant["role_name"], "Owner");
+    assert_eq!(grant["scope_type"], "WORKSPACE");
+    assert_eq!(grant["principal_type"], "USER");
+    assert_eq!(grant["principal_id"], founder.user_id.to_string());
+    assert_eq!(grant["scope_id"], workspace.to_string());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_refused_create_leaves_no_roles_behind() -> Result<()> {
+    // The bootstrap runs in the same transaction as the workspace row, so a
+    // create that fails after the row is written must leave nothing — no
+    // workspace, no templates, no grant. A taken slug is the failure that
+    // actually happens.
+    let db = schema_harness::TestDatabase::start().await?;
+    let app = app(db.pool.clone());
+    let founder = sign_up(&app, &db.pool, "founder@example.com").await?;
+    let rival = sign_up(&app, &db.pool, "rival@example.com").await?;
+    let (workspace, _) = create_workspace(&app, &founder, "acme").await?;
+
+    let refused = send(
+        &app,
+        request(&rival, "POST", "/api/v1/workspaces")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                json!({ "name": "Also Acme", "slug": "acme" }).to_string(),
+            ))?,
+    )
+    .await?;
+    assert_eq!(refused.status(), StatusCode::CONFLICT);
+
+    // The winner's workspace is untouched: still five templates and one owner,
+    // and the loser's rolled-back attempt added nothing to it.
+    assert_eq!(
+        test_support::role_templates(&db.pool, workspace)
+            .await?
+            .len(),
+        5
+    );
+    let owners: Vec<Uuid> = test_support::workspace_grants(&db.pool, workspace)
+        .await?
+        .into_iter()
+        .filter(|(_, _, permission)| permission == "workspace.owner")
+        .map(|(principal, _, _)| principal)
+        .collect();
+    assert_eq!(owners, vec![founder.user_id]);
     Ok(())
 }

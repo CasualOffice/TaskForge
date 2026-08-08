@@ -451,6 +451,7 @@ name = "casual-task-persistence"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "casual-task-authz",
  "casual-task-identity",
  "casual-task-model",
  "casual-task-persistence",

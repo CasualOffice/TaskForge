@@ -49,18 +49,30 @@ impl Code {
 pub mod codes {
     use super::Code;
 
-    /// Malformed request, unknown field, bad filter.
-    pub const BAD_REQUEST: Code = Code::new("TF-REQ-0001");
     /// No credential, or one that is not valid.
     pub const UNAUTHENTICATED: Code = Code::new("TF-AUT-0001");
-    /// Authenticated, not permitted, **on a resource the actor can see**.
-    pub const FORBIDDEN: Code = Code::new("TF-AUT-0002");
+    /// The credential is valid and is not the kind this endpoint accepts.
+    ///
+    /// A bearer token is "scoped to one workspace" (`docs/40`), so using one on
+    /// a route that is *about* choosing a workspace is outside the contract it
+    /// was issued under. Not `TF-AZN-0001`: the fix is a different credential,
+    /// not a different role.
+    pub const WRONG_CREDENTIAL_TYPE: Code = Code::new("TF-AUT-0013");
+    /// The CSRF token was missing or did not verify.
+    pub const CSRF: Code = Code::new("TF-AUT-0008");
     /// Absent or invisible — never disambiguated (`docs/04`).
-    pub const NOT_FOUND: Code = Code::new("TF-REQ-0004");
-    /// The server is shedding load. Always carries `Retry-After`.
-    pub const UNAVAILABLE: Code = Code::new("TF-SRV-0003");
+    ///
+    /// The generic form of `TF-PRJ-0001` and `TF-TSK-0001`, for the resources
+    /// that have no code of their own.
+    pub const NOT_FOUND: Code = Code::new("TF-AZN-0008");
+    /// The last grant carrying `workspace.owner` cannot be removed or
+    /// downgraded (`docs/04` control 4, migration 0021).
+    pub const LAST_OWNER: Code = Code::new("TF-AZN-0005");
+    /// The service is temporarily unable to answer. Always carries
+    /// `Retry-After`.
+    pub const UNAVAILABLE: Code = Code::new("TF-SYS-0002");
     /// Anything unhandled.
-    pub const INTERNAL: Code = Code::new("TF-SRV-0001");
+    pub const INTERNAL: Code = Code::new("TF-SYS-0001");
 
     // ---------------------------------------------------------------------
     // C-006 / C-008. Every code below is copied from `docs/20`, area and
@@ -132,10 +144,11 @@ pub mod codes {
     /// The registry gate walks this list, so a code missing from it is a
     /// code whose `docs` URL is never checked against `docs/20`.
     pub const ALL: &[Code] = &[
-        BAD_REQUEST,
         UNAUTHENTICATED,
-        FORBIDDEN,
+        WRONG_CREDENTIAL_TYPE,
+        CSRF,
         NOT_FOUND,
+        LAST_OWNER,
         UNAVAILABLE,
         INTERNAL,
         MALFORMED_BODY,
@@ -238,11 +251,19 @@ impl ApiError {
     /// If the actor cannot see it, use [`Self::not_found`]: `docs/04` requires
     /// absent and invisible to be indistinguishable, and a 403 here tells an
     /// attacker the resource exists.
+    ///
+    /// The code is a parameter because 403 is not one answer. `docs/20` gives
+    /// a CSRF failure, a wrong credential type and a missing grant separate
+    /// codes, and they lead a user to three different actions: retry with a
+    /// token, use a different credential, ask an admin. One shared code sends
+    /// all three to the same documentation page — and the one this used to
+    /// send them to was `TF-AUT-0002`, "session expired", which is a fourth
+    /// thing none of them is.
     #[must_use]
-    pub fn forbidden(request_id: impl Into<String>) -> Self {
+    pub fn forbidden(code: Code, request_id: impl Into<String>) -> Self {
         Self::new(
             StatusCode::FORBIDDEN,
-            codes::FORBIDDEN,
+            code,
             "You do not have permission to do that",
             request_id,
         )
@@ -409,12 +430,12 @@ mod tests {
         let error = ApiError::not_found("018f2c").with_details(serde_json::json!({"a": 1}));
         let json = body_of(error).await;
 
-        assert_eq!(json["error"]["code"], "TF-REQ-0004");
+        assert_eq!(json["error"]["code"], "TF-AZN-0008");
         assert_eq!(json["error"]["request_id"], "018f2c");
         assert_eq!(json["error"]["details"]["a"], 1);
         assert_eq!(
             json["error"]["docs"],
-            "https://docs.taskforge.dev/errors/TF-REQ-0004"
+            "https://docs.taskforge.dev/errors/TF-AZN-0008"
         );
     }
 
@@ -459,22 +480,82 @@ mod tests {
             ApiError::unauthenticated("r").status(),
             StatusCode::UNAUTHORIZED
         );
-        assert_eq!(ApiError::forbidden("r").status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            ApiError::forbidden(codes::CSRF, "r").status(),
+            StatusCode::FORBIDDEN
+        );
         assert_eq!(ApiError::not_found("r").status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn every_code_this_binary_emits_is_in_the_registry() {
+        // docs/20 is what the `docs` URL in every error body points at. A code
+        // that is not there is a link to a 404 in the exact moment a user is
+        // trying to understand a failure.
+        //
+        // There is deliberately NO exception list. C-002 shipped this gate with
+        // four — TF-REQ-0001, TF-REQ-0004, TF-SRV-0001, TF-SRV-0003, in two
+        // areas the registry does not define — and opened D-055 rather than
+        // resolving it. D-055 is now resolved: the four were retired in favour
+        // of registry codes, which was safe for a reason that will not be true
+        // again — none of them had ever been released. An exception list is how
+        // a gate stops holding, one entry at a time, so this one has nowhere to
+        // put the next one.
+        //
+        // (This test also went missing: it exists on `feat/c002-workspaces` and
+        // was dropped by the merge into `feat/phase-1`. Restored here.)
+        let registry = include_str!("../../../docs/20-ERROR-CODE-REGISTRY.md");
+        for code in codes::ALL {
+            assert!(
+                registry.contains(code.as_str()),
+                "{code:?} is emitted by this binary and absent from docs/20"
+            );
+        }
+    }
+
+    #[test]
+    fn the_registry_gate_can_fail() {
+        // A gate nobody has watched fail is a gate nobody knows works. The
+        // retired codes are the values the check above would have to reject.
+        let registry = include_str!("../../../docs/20-ERROR-CODE-REGISTRY.md");
+        for retired in ["TF-REQ-0001", "TF-REQ-0004", "TF-SRV-0001", "TF-SRV-0003"] {
+            assert!(
+                !registry.contains(retired),
+                "{retired} is back in the registry, so the gate above would \
+                 pass for a code that should not exist"
+            );
+            assert!(
+                !codes::ALL.iter().any(|c| c.as_str() == retired),
+                "{retired} is emitted again"
+            );
+        }
+    }
+
+    #[test]
+    fn the_area_of_every_code_is_one_the_registry_declares() {
+        // Stronger than containment: `TF-XYZ-0001` would pass the test above if
+        // the string happened to appear anywhere in the prose. The registry
+        // declares its areas in one table, and a code outside them is a code in
+        // an area nobody defined — which is exactly what TF-REQ-* and TF-SRV-*
+        // were.
+        let areas = [
+            "AUT", "AZN", "VAL", "QRY", "WFL", "TSK", "PRJ", "CNC", "IDM", "ATT", "PLG", "AUM",
+            "LIM", "SYS",
+        ];
+        for code in codes::ALL {
+            let area = code.as_str().split('-').nth(1).unwrap_or_default();
+            assert!(
+                areas.contains(&area),
+                "{code:?} is in area {area}, which docs/20 does not declare"
+            );
+        }
     }
 
     #[test]
     fn every_code_follows_the_registry_format() {
         // docs/20: TF-XXX-NNNN. A code that does not match is one no client can
         // look up, and the URL in the envelope would 404.
-        for code in [
-            codes::BAD_REQUEST,
-            codes::UNAUTHENTICATED,
-            codes::FORBIDDEN,
-            codes::NOT_FOUND,
-            codes::UNAVAILABLE,
-            codes::INTERNAL,
-        ] {
+        for code in codes::ALL {
             let text = code.as_str();
             let parts: Vec<_> = text.split('-').collect();
             assert_eq!(parts.len(), 3, "{text}");

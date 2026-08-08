@@ -152,7 +152,7 @@ async fn readiness_reports_503_when_the_database_is_unreachable() {
 
     let body: serde_json::Value =
         serde_json::from_str(&body_string(response).await).expect("json envelope");
-    assert_eq!(body["error"]["code"], "TF-SRV-0003");
+    assert_eq!(body["error"]["code"], "TF-SYS-0002");
 }
 
 #[tokio::test]

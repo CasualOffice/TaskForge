@@ -23,6 +23,11 @@ casual-task-search = { workspace = true }
 workspace = true
 
 [dev-dependencies]
+# Tests only. The bootstrap's claim is not "rows were written" but "the resolver
+# accepts them as authority", and the only honest way to assert that is to ask
+# the real resolver. It is a dev-dependency so the production dependency graph
+# docs/19 fixes is unchanged: persistence still does not consult authz.
+casual-task-authz = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true }
 casual-task-persistence = { path = ".", features = ["test-support"] }

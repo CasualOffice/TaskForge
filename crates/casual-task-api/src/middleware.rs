@@ -333,7 +333,7 @@ pub async fn csrf_guard(
 
     // 403 rather than 401: the caller IS authenticated. Retrying with the same
     // credential and a correct token succeeds, which a 401 would not suggest.
-    ApiError::forbidden(request_id).into_response()
+    ApiError::forbidden(crate::error::codes::CSRF, request_id).into_response()
 }
 
 /// The whole presented session credential, not just the selector.

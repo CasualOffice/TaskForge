@@ -209,6 +209,25 @@ produces an ordinary custom role; nothing in the resolver knows a role is
 | **Member** | Create/update/comment/transition tasks; read the project. No config, no role assignment. |
 | **Guest** | Read + comment on projects they are explicitly a member of. Carries `not_external` exclusions elsewhere. |
 
+Each shape above is turned into an exact set of permission keys in
+`casual-task-model::template`, and the five are **materialized into every
+workspace when it is created** — `role.workspace_id` is `NOT NULL`, so a
+template cannot be a global row and a migration cannot seed one.
+
+**A workspace's creator is granted `Owner` at `WORKSPACE` scope in the same
+transaction as the workspace row.** Without it a workspace committed with no
+`role_assignment` at all, and since that table is the only source of authority
+its creator could see it and never write to it, with no way out — granting
+requires a grant. `workspace::insert` therefore returns an `Unowned` that only
+the bootstrap can open, so the two are not steps one of which can be forgotten.
+
+Two of the five sets follow from the words with nothing left over (Owner is the
+registry; Administrator is the registry minus `workspace.delete` and
+`workspace.owner`). The other three name capabilities in prose, and the cells
+that prose does not decide — `task.close`/`task.reopen` for Member most sharply —
+are **withheld** rather than guessed, listed in `template::UNDECIDED`, and
+settled by the matrix test below. Tracked as **D-056**.
+
 ## Caching, and why it is never the authority
 
 Resolution touches `role_assignment`, `role_permission`, and team membership.
