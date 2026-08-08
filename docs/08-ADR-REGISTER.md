@@ -66,9 +66,18 @@ The archived drafts ended with nine unanswered questions. Their disposition:
 
 ## Pending / to be written
 
-- **Auth protocol specifics** — session cookie vs bearer, refresh strategy, OIDC
-  claim mapping. Proposed in [40](40-IDENTITY-AUTH-AND-SESSION.md); to be
-  Accepted at Phase 0.
+- **Auth *mechanism*** — not the protocol. This bullet used to read "session
+  cookie vs bearer, refresh strategy, OIDC claim mapping", and
+  [40](40-IDENTITY-AUTH-AND-SESSION.md) decides all three explicitly: cookie for
+  browsers and bearer for machine actors (:14-18, :26), no refresh strategy at
+  all because the pattern is rejected by name (:29-36), and a
+  `{ email, name, groups }` claim mapping with authoritative group→role sync
+  (:76-88). Describing them as open invited a redesign of a finished document.
+
+  What is actually unsettled is the mechanism layer where that prose meets the
+  **already-`Gated` schema**, and in four places the two contradict each other.
+  Enumerated in [14](14-EXECUTION-TRACKER.md) under **D-032**; to be Accepted at
+  Phase 0.
 - **MSRV and toolchain pin** — once the workspace is scaffolded.
 - **SSE vs WebSocket for bidirectional features** — SSE is the Phase 1 decision;
   a WebSocket ADR is required if any feature genuinely needs client→server
