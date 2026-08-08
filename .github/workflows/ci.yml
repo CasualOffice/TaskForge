@@ -229,6 +229,12 @@ jobs:
           docker compose -f deploy/docker-compose.yml --env-file deploy/.env config >/dev/null
           docker compose -f docker-compose.yml config >/dev/null
           rm deploy/.env
+      # `config` above proves the dev file parses. It does not prove the profile
+      # starts, and it cannot see a service leaking out of `--profile full` into
+      # the default — which is the invariant that keeps docs/48 §Profile 1 a
+      # supported target rather than an aspiration (F-010).
+      - name: The developer profile is PostgreSQL and nothing else
+        run: ./scripts/verify-dev-profile.sh
       - name: Deployment is actually secure end-to-end
         # Brings up the deployment compose and asserts the application role is
         # created NOSUPERUSER/NOBYPASSRLS, RLS covers every tenant table, an
