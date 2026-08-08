@@ -168,7 +168,7 @@ every later phase verifiable, and most of that machinery now runs on every pull
 request: the enforced dependency DAG and architecture lints, the schema with
 row-level security proven as the non-superuser role, the deployable image, the
 deterministic 2M-task reference corpus, the `EXPLAIN` no-seq-scan gate over all
-20 read paths, and the ADR-024 bundle budget.
+23 read paths, and the ADR-024 bundle budget.
 
 Eleven of the sixteen Phase 0 rows are `Gated`; five are `Built` with the reason
 they are not `Gated` written down. [docs/14](docs/14-EXECUTION-TRACKER.md)

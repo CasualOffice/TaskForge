@@ -112,8 +112,12 @@ DECLARE required text[] := ARRAY[
     -- outbox_delivery_pending_ix replaces outbox_pending_ix: migration 0013
     -- moved delivery state off outbox_event onto (event, consumer), so the
     -- index the dispatcher's claim query needs is on the delivery table.
-    'team_membership_user_ix','outbox_delivery_pending_ix','notification_unread_ix',
-    'comment_task_ix','attachment_task_ix'];
+    -- outbox_event_aggregate_ix (migration 0018) is what answers the claim
+    -- query's per-aggregate ordering anti-join. Dropping it does not produce a
+    -- sequential scan in the full claim plan — the planner falls back to hashing
+    -- every pending delivery — so the EXPLAIN gate alone would not miss it here.
+    'team_membership_user_ix','outbox_delivery_pending_ix','outbox_event_aggregate_ix',
+    'notification_unread_ix','comment_task_ix','attachment_task_ix'];
     missing text[];
 BEGIN
     SELECT array_agg(r) INTO missing

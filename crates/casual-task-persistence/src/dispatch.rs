@@ -23,10 +23,11 @@ use uuid::Uuid;
 /// healthy, claim zero deliveries forever, and the first symptom would be
 /// silence: no notifications, no search updates, no webhooks. Nothing in a log.
 ///
-/// So the capability is a type, and [`Dispatcher::assume`] **verifies** it
-/// against the database rather than trusting the caller. Wiring the dispatcher
-/// to the wrong role now fails at startup with a message naming the role,
-/// instead of succeeding into that silence.
+/// So the capability is a type, and it cannot be built without a
+/// [`DispatcherRole`] — a token that exists only after the privilege was
+/// **verified** against the database rather than trusted from the caller.
+/// Wiring the dispatcher to the wrong role fails at startup with a message
+/// naming the role, instead of succeeding into that silence.
 ///
 /// It is the deliberate counterpart to `Scoped`: `Scoped` cannot exist without
 /// a tenant, and `Dispatcher` cannot exist without the privilege to ignore one.
@@ -58,15 +59,42 @@ impl std::fmt::Display for NotPrivileged {
 
 impl std::error::Error for NotPrivileged {}
 
-impl<'t> Dispatcher<'t> {
-    /// Take a connection as the dispatcher, after checking it can actually see
-    /// across tenants.
+/// Proof, taken **once**, that the role a pool connects as can bypass row-level
+/// security.
+///
+/// # Why the proof is separate from the capability
+///
+/// The check is a `pg_roles` lookup: a full round trip. It used to run inside
+/// every transaction that wanted a [`Dispatcher`], and the dispatch loop opens
+/// one transaction *per delivery outcome* — so a worker delivering a thousand
+/// events a second spent a thousand round trips a second re-asking a question
+/// whose answer is fixed for the lifetime of a connection. `current_user` does
+/// not change under a running worker; the DSN is process configuration.
+///
+/// What is being defended against is a **misconfiguration** — the wrong role in
+/// a deployment — and a misconfiguration is a startup fact. So the check runs at
+/// startup, and what it produces is this token. [`DispatcherRole::dispatcher`]
+/// then costs nothing, and there is still no way to obtain a [`Dispatcher`]
+/// without having passed the check, because the token is unforgeable.
+///
+/// **The cost, stated:** the token proves that *a* connection was privileged.
+/// A caller that verified against one pool and then handed in a connection from
+/// a different pool would defeat it. A worker has one pool, built from one DSN,
+/// and [`Dispatcher::assume`] remains available for callers that want the check
+/// on this exact connection.
+#[derive(Debug, Clone)]
+pub struct DispatcherRole {
+    role: String,
+}
+
+impl DispatcherRole {
+    /// Ask the database whether this connection's role can see across tenants.
     ///
     /// # Errors
     ///
     /// [`sqlx::Error`] on any database failure, or a boxed [`NotPrivileged`]
     /// when the connected role is subject to row-level security.
-    pub async fn assume(conn: &'t mut PgConnection) -> Result<Self, sqlx::Error> {
+    pub async fn verify(conn: &mut PgConnection) -> Result<Self, sqlx::Error> {
         // `rolsuper` as well as `rolbypassrls`: a superuser bypasses policies
         // unconditionally without the flag being set on some installations, and
         // the test harness connects as the owner.
@@ -80,7 +108,39 @@ impl<'t> Dispatcher<'t> {
         if !privileged {
             return Err(sqlx::Error::Configuration(Box::new(NotPrivileged { role })));
         }
-        Ok(Self { conn })
+        Ok(Self { role })
+    }
+
+    /// The role that passed, for logs and for the operator who has to be told
+    /// which one is running.
+    #[must_use]
+    pub fn role(&self) -> &str {
+        &self.role
+    }
+
+    /// Take a connection as the dispatcher. **Not** a round trip — the privilege
+    /// was proven when `self` was created.
+    #[must_use]
+    pub fn dispatcher<'t>(&self, conn: &'t mut PgConnection) -> Dispatcher<'t> {
+        Dispatcher { conn }
+    }
+}
+
+impl<'t> Dispatcher<'t> {
+    /// Verify this connection's role and take it as the dispatcher, in one call.
+    ///
+    /// One round trip **per call**. Anything in a loop should verify once with
+    /// [`DispatcherRole::verify`] and use [`DispatcherRole::dispatcher`]; this
+    /// is for one-off callers and for tests, where the connection under test is
+    /// the point.
+    ///
+    /// # Errors
+    ///
+    /// [`sqlx::Error`] on any database failure, or a boxed [`NotPrivileged`]
+    /// when the connected role is subject to row-level security.
+    pub async fn assume(conn: &'t mut PgConnection) -> Result<Self, sqlx::Error> {
+        let role = DispatcherRole::verify(&mut *conn).await?;
+        Ok(role.dispatcher(conn))
     }
 
     fn conn(&mut self) -> &mut PgConnection {
@@ -274,6 +334,28 @@ fn pg_interval(d: time::Duration) -> String {
 /// during normal retry behaviour and stay high forever after one permanent
 /// failure, which is how a paging alert gets muted.
 ///
+/// # Why this reads `outbox_delivery.created_at` and not the event's
+///
+/// It used to join `outbox_event` for `min(e.created_at)`. That join is the
+/// whole cost: an aggregate over the pending set cannot stop early, so every
+/// pending delivery meant one random primary-key lookup into `outbox_event` —
+/// two million heap fetches at a two-million backlog, for one number.
+///
+/// The three columns this needs are all in `outbox_delivery_pending_ix`
+/// (`consumer, next_attempt_at, created_at`, partial on exactly the two NULL
+/// predicates below), so without the join the whole gauge is one index-only
+/// scan: no heap, no join, no sort.
+///
+/// The two timestamps are the same instant. `UnitOfWork::record` inserts the
+/// event and its delivery rows in one transaction and both default to `now()`,
+/// which in PostgreSQL is the transaction's start time — identical to the
+/// microsecond, not merely close. `outbox.rs` asserts that against a real
+/// database, because it is an invariant this query depends on rather than
+/// something the type system holds.
+///
+/// It is also the more literal reading of D-047, which says the age of the
+/// oldest actionable **delivery**.
+///
 /// # Errors
 ///
 /// Any database error.
@@ -287,9 +369,8 @@ pub async fn oldest_pending_seconds(
     // moment there was nothing pending, which is the state a healthy system is
     // in almost all of the time.
     let lag: Option<f64> = sqlx::query_scalar(
-        "SELECT EXTRACT(EPOCH FROM (now() - min(e.created_at)))::float8
+        "SELECT EXTRACT(EPOCH FROM (now() - min(d.created_at)))::float8
            FROM outbox_delivery d
-           JOIN outbox_event e ON e.id = d.event_id
           WHERE d.consumer = $1
             AND d.dispatched_at IS NULL
             AND d.dead_lettered_at IS NULL
@@ -366,6 +447,17 @@ pub async fn sweep(dispatcher: &mut Dispatcher<'_>, limit: i64) -> Result<(u64, 
 /// cardinality costs nothing — but as a metric label it would be unbounded
 /// (D-053), so it is deliberately absent here rather than dropped later by the
 /// caller.
+///
+/// # This is O(dead letters), and dead letters are never swept
+///
+/// `sweep` deliberately never deletes a dead-lettered row, so this set only ever
+/// grows until an operator drains it through RB-02. Migration 0018 leads
+/// `outbox_delivery_dlq_ix` with `consumer` so the count is an index-only scan
+/// rather than one random heap read per dead row, but the scan itself still
+/// grows with the queue — which is why the caller samples it on a fixed cadence
+/// instead of once per poll. A dispatch loop that recomputed this every poll got
+/// slower every week the DLQ was not at zero, and polled hardest during exactly
+/// the backlog that made it slowest.
 ///
 /// # Errors
 ///

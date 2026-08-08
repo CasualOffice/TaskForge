@@ -664,6 +664,104 @@ async fn the_sweep_keeps_an_event_while_any_consumer_still_needs_it() -> Result<
 
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
+async fn a_delivery_row_is_created_at_the_same_instant_as_its_event() -> Result<()> {
+    // `oldest_pending_seconds` reads `outbox_delivery.created_at` and does NOT
+    // join `outbox_event` — that join was one random heap fetch per pending row,
+    // on an aggregate that cannot stop early. What makes the two readings the
+    // same number is that `UnitOfWork::record` writes both in one transaction
+    // and both default to now(), which in PostgreSQL is the transaction's start
+    // time, identical to the microsecond.
+    //
+    // That is an invariant of the writer, not of the type system, so it is
+    // asserted here. A fan-out moved out of the producing transaction would make
+    // the primary health signal quietly under-report.
+    let db = schema_harness::TestDatabase::start().await?;
+    let workspace = a_workspace(&db.pool, "alpha").await?;
+    let aggregate = Uuid::now_v7();
+
+    let mut tx = db.pool.begin().await?;
+    let mut scoped = Scoped::apply(&mut tx, &WorkspaceScope::for_job(workspace)).await?;
+    UnitOfWork::record(&mut scoped, &a_change(aggregate), &nobody()).await?;
+    tx.commit().await?;
+
+    let mismatched: i64 = sqlx::query_scalar(
+        "SELECT count(*)
+           FROM outbox_delivery d
+           JOIN outbox_event e ON e.id = d.event_id
+          WHERE e.aggregate_id = $1
+            AND d.created_at <> e.created_at",
+    )
+    .bind(aggregate)
+    .fetch_one(&db.pool)
+    .await?;
+    assert_eq!(
+        mismatched, 0,
+        "{mismatched} delivery rows do not share their event's creation instant; \
+         outbox_lag_seconds is measured from the delivery row and would now \
+         under-report by the gap"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_dispatcher_role_cannot_be_verified_by_a_role_that_rls_applies_to() -> Result<()> {
+    // The same refusal as the test above, on the path the worker actually takes.
+    // `Dispatcher::assume` checks the connection it is handed; the loop checks
+    // once and reuses the token, and a token that could be minted by an
+    // unprivileged role would move the silent failure rather than fix it.
+    let db = schema_harness::TestDatabase::start().await?;
+    sqlx::query("ALTER ROLE taskforge_app WITH LOGIN PASSWORD 'apppw'")
+        .execute(&db.pool)
+        .await?;
+    let app = sqlx::PgPool::connect(&db.app_url()).await?;
+
+    let mut conn = app.acquire().await?;
+    let refused = dispatch::DispatcherRole::verify(&mut conn).await;
+    assert!(
+        refused.is_err(),
+        "taskforge_app minted a dispatcher role token — every claim made with it \
+         would return nothing and report healthy"
+    );
+    assert!(
+        refused
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
+            .contains("taskforge_app"),
+        "the error does not name the role, which is the one thing an operator needs"
+    );
+
+    sqlx::query("ALTER ROLE taskforge_dispatcher WITH LOGIN PASSWORD 'dispw'")
+        .execute(&db.pool)
+        .await?;
+    let dispatcher = sqlx::PgPool::connect(&db.dispatcher_url()).await?;
+    let mut conn = dispatcher.acquire().await?;
+    assert!(
+        dispatch::DispatcherRole::verify(&mut conn).await.is_ok(),
+        "taskforge_dispatcher was refused; the worker cannot start"
+    );
+    Ok(())
+}
+
+/// Not a test — a compile-time assertion that taking a [`dispatch::Dispatcher`]
+/// from an already-verified role is **not** a round trip.
+///
+/// This is the whole fix for a `pg_roles` lookup that ran inside every
+/// transaction, including one per delivery outcome. If the privilege check ever
+/// moves back into this constructor it becomes `async`, and this function stops
+/// compiling — which is the failure mode AGENTS.md asks for over a comment
+/// saying "do not do this".
+#[allow(dead_code)]
+fn taking_a_dispatcher_from_a_verified_role_is_not_a_round_trip<'t>(
+    role: &dispatch::DispatcherRole,
+    conn: &'t mut sqlx::PgConnection,
+) -> dispatch::Dispatcher<'t> {
+    role.dispatcher(conn)
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
 async fn dlq_depth_is_reported_per_consumer() -> Result<()> {
     let db = schema_harness::TestDatabase::start().await?;
     let workspace = a_workspace(&db.pool, "alpha").await?;

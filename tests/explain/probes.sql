@@ -33,6 +33,11 @@ SELECT
     '02000000-0000-7000-8000-000000000008'                        AS probe_user,
     '06000000-0000-7000-8000-000000000001'                        AS probe_team,
     '14000000-0000-7000-8000-000000000001'                        AS probe_task,
+    -- The outbox event seed.sql writes for probe_task: kind 16 (0x10) over the
+    -- same ordinal, so the two address the same aggregate. The dispatch poll's
+    -- ordering predicate needs a (created_at, id) pair, and a real event id is
+    -- what makes that comparison the one `claim` issues.
+    '10000000-0000-7000-8000-000000000001'                        AS probe_outbox_event,
     '05000000-0000-7000-8000-000000000003'                        AS probe_tag,
     '0a000000-0000-7000-8000-000000000001'                        AS probe_milestone,
     -- The seed's anchor instant. Queries use it instead of now() so a plan is a

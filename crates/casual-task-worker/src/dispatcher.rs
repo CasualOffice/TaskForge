@@ -23,6 +23,24 @@
 //! - **Poll interval.** When a poll finds nothing, the loop sleeps
 //!   [`Config::idle`]. When it finds a full batch it polls again immediately —
 //!   a backlog should drain at the speed of the work, not the speed of a timer.
+//! - **Health-metric sampling.** The two gauges are read at most once per
+//!   [`Config::metrics_interval`], in their own transaction. Overflow policy:
+//!   the gauge keeps its last value, which is what a gauge is for.
+//!
+//! # Why the gauges are sampled on a clock and the claim is not
+//!
+//! `outbox_lag_seconds` and `outbox_dlq_depth` are aggregates over the pending
+//! and dead-lettered sets. Reading them once per poll tied their cost to the
+//! poll rate — and the poll rate is *highest* under a backlog, which is exactly
+//! when those sets are largest and when the database can least afford it. Worse,
+//! they were read inside the claim's transaction, so a slow aggregate lengthened
+//! the transaction holding the claimed rows' locks.
+//!
+//! They are metrics. Their cadence belongs to the scrape, not to the work.
+//!
+//! The cost, stated: a gauge can be up to one [`Config::metrics_interval`] stale.
+//! The alerts that read it (`docs/50` RB-01, RB-02) evaluate over 5 and 15
+//! minutes, so the default is two orders of magnitude inside their window.
 //!
 //! # Shutdown (D-041)
 //!
@@ -36,14 +54,14 @@
 //! process mid-delivery instead.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use casual_task_observability::labels::{LabelSet, keys};
 use casual_task_observability::metrics::{
     OUTBOX_DISPATCH_TOTAL, OUTBOX_DLQ_DEPTH, OUTBOX_LAG_SECONDS,
 };
 use casual_task_observability::recorder::Recorder;
-use casual_task_persistence::dispatch::{self, Claimed, Dispatcher};
+use casual_task_persistence::dispatch::{self, Claimed, DispatcherRole};
 use sqlx::PgPool;
 use tokio::sync::{Semaphore, watch};
 
@@ -132,6 +150,8 @@ pub struct Config {
     pub idle: Duration,
     /// How long shutdown waits for in-flight deliveries.
     pub drain: Duration,
+    /// Shortest gap between two readings of the health gauges.
+    pub metrics_interval: Duration,
 }
 
 impl Default for Config {
@@ -151,6 +171,13 @@ impl Default for Config {
             // orchestrator's default SIGKILL grace (Kubernetes: 30 s), because
             // being killed mid-drain is what the drain exists to avoid.
             drain: Duration::from_secs(20),
+            // Well inside RB-01's 5-minute and RB-02's 15-minute evaluation
+            // windows, so an alert is not delayed by the sampling; and far
+            // longer than a poll, which is the entire point — under a backlog
+            // the loop polls continuously, and tying an O(pending) aggregate to
+            // that rate is how the metric became the most expensive query in
+            // the dispatch path.
+            metrics_interval: Duration::from_secs(5),
         }
     }
 }
@@ -184,14 +211,40 @@ pub async fn run<C: Consumer + 'static>(
     let permits = Arc::new(Semaphore::new(config.concurrency));
     let mut in_flight = tokio::task::JoinSet::new();
 
+    // Verified once, here, rather than inside every transaction below. The
+    // question — can this role bypass RLS? — is answered by the DSN, and the DSN
+    // does not change while the loop runs. Asking it per transaction cost a
+    // round trip per claim AND a round trip per delivery outcome; see
+    // `DispatcherRole`. Failing here also fails the loop at startup, which is
+    // where a wrong role should be discovered.
+    let role = {
+        let mut conn = pool.acquire().await?;
+        Arc::new(DispatcherRole::verify(&mut conn).await?)
+    };
+    tracing::info!(
+        role = role.role(),
+        consumer = consumer.name(),
+        "dispatching"
+    );
+
+    // `None` means "never sampled", so the first poll always publishes: a worker
+    // that started during an incident must not wait out an interval before
+    // saying anything.
+    let mut last_sample: Option<Instant> = None;
+
     while !cancel.is_cancelled() {
-        // The lag reading is taken in the SAME transaction as the claim, before
-        // the claimed rows are marked. Read afterwards it would exclude the work
-        // just taken and report a healthier number than the truth — the
-        // direction of error nobody investigates.
-        let (claimed, lag, dlq) =
-            claim_batch(pool, consumer.name(), worker_id, config.batch).await?;
-        record_lag(&metrics, consumer.name(), lag, &dlq);
+        // Sampled BEFORE the claim, and in its own transaction. Before, because
+        // the lag reading should include the work this poll is about to take.
+        // Separate, because these are aggregates over the whole pending and
+        // dead-lettered sets, and running them inside the claim's transaction
+        // held the claimed rows' locks for as long as they took.
+        if last_sample.is_none_or(|at| at.elapsed() >= config.metrics_interval) {
+            let (lag, dlq) = sample_health(pool, &role, consumer.name()).await?;
+            record_lag(&metrics, consumer.name(), lag, &dlq);
+            last_sample = Some(Instant::now());
+        }
+
+        let claimed = claim_batch(pool, &role, consumer.name(), worker_id, config.batch).await?;
 
         if claimed.is_empty() {
             // Cancellable sleep: a worker asked to stop must not sit here for
@@ -216,6 +269,7 @@ pub async fn run<C: Consumer + 'static>(
             let pool = pool.clone();
             let consumer = Arc::clone(&consumer);
             let metrics = Arc::clone(&metrics);
+            let role = Arc::clone(&role);
             in_flight.spawn(async move {
                 let _permit = permit;
                 // Delivery happens INSIDE the task. Awaiting it before spawning
@@ -223,7 +277,7 @@ pub async fn run<C: Consumer + 'static>(
                 // make the semaphore decorative — concurrency of one, bounded
                 // by a permit nobody contends for.
                 let outcome = consumer.deliver(&event).await;
-                record(&pool, &event, outcome, &metrics).await
+                record(&pool, &role, &event, outcome, &metrics).await
             });
         }
 
@@ -248,20 +302,37 @@ pub async fn run<C: Consumer + 'static>(
 /// Claim in its own transaction, and **commit before returning**. The signature
 /// is why: nothing borrowed from the transaction escapes, so a caller cannot
 /// hold it across the delivery that follows.
-#[allow(clippy::type_complexity)]
+///
+/// Nothing else runs in this transaction. It holds `FOR UPDATE` locks on every
+/// row it claims, so every statement added here is time another worker spends
+/// skipping locked rows.
 async fn claim_batch(
     pool: &PgPool,
+    role: &DispatcherRole,
     consumer: &str,
     worker_id: &str,
     batch: i64,
-) -> Result<(Vec<Claimed>, Option<f64>, Vec<(String, i64)>), sqlx::Error> {
+) -> Result<Vec<Claimed>, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let mut dispatcher = Dispatcher::assume(&mut tx).await?;
-    let lag = dispatch::oldest_pending_seconds(&mut dispatcher, consumer).await?;
-    let dlq = dispatch::dlq_depth(&mut dispatcher).await?;
+    let mut dispatcher = role.dispatcher(&mut tx);
     let claimed = dispatch::claim(&mut dispatcher, consumer, worker_id, batch).await?;
     tx.commit().await?;
-    Ok((claimed, lag, dlq))
+    Ok(claimed)
+}
+
+/// Read the two health gauges, in a transaction that claims nothing and
+/// therefore locks nothing.
+async fn sample_health(
+    pool: &PgPool,
+    role: &DispatcherRole,
+    consumer: &str,
+) -> Result<(Option<f64>, Vec<(String, i64)>), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut dispatcher = role.dispatcher(&mut tx);
+    let lag = dispatch::oldest_pending_seconds(&mut dispatcher, consumer).await?;
+    let dlq = dispatch::dlq_depth(&mut dispatcher).await?;
+    tx.commit().await?;
+    Ok((lag, dlq))
 }
 
 /// Map a consumer name that came back from the database to the declared
@@ -285,6 +356,9 @@ fn declared_consumer(name: &str) -> &'static str {
 }
 
 /// Publish the two gauges `docs/46` calls the primary health signal.
+///
+/// Called once per [`Config::metrics_interval`], not once per poll — see the
+/// module header. Writing a gauge is free; *reading* the numbers is not.
 ///
 /// A gauge with no pending work is set to **0**, not left at its last value: a
 /// gauge that stops being written keeps reporting the last number it saw, so a
@@ -319,12 +393,15 @@ fn record_lag(metrics: &Recorder, consumer: &'static str, lag: Option<f64>, dlq:
 /// Record one outcome in its own short transaction.
 async fn record(
     pool: &PgPool,
+    role: &DispatcherRole,
     event: &Claimed,
     outcome: Result<(), String>,
     metrics: &Recorder,
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let mut dispatcher = Dispatcher::assume(&mut tx).await?;
+    // Not `Dispatcher::assume`: this runs once per delivery, and `assume` would
+    // re-ask `pg_roles` whether the role is privileged on every one of them.
+    let mut dispatcher = role.dispatcher(&mut tx);
     let mut result = "dispatched";
     match outcome {
         Ok(()) => dispatch::succeeded(&mut dispatcher, event.delivery_id).await?,
@@ -420,6 +497,33 @@ mod tests {
         // grace period and the process is SIGKILLed mid-drain instead.
         assert!(c.drain >= Duration::from_secs(10));
         assert!(c.drain < Duration::from_secs(30));
+    }
+
+    #[test]
+    fn the_gauges_are_sampled_far_less_often_than_the_loop_polls() {
+        // The defect this bound exists to prevent: `outbox_lag_seconds` is an
+        // aggregate over the pending set and `outbox_dlq_depth` over the
+        // dead-lettered one, and both were read once per poll. Under a backlog
+        // the loop polls with no sleep at all, so the two most expensive queries
+        // in the dispatch path ran at the highest rate exactly when the sets
+        // they scan were largest.
+        let c = Config::default();
+        assert!(
+            c.metrics_interval >= c.idle * 4,
+            "sampling every {:?} against an idle poll of {:?} is not a cadence, \
+             it is the poll rate with extra steps",
+            c.metrics_interval,
+            c.idle
+        );
+        // And the other direction: RB-01 pages on a 5-minute window and RB-02 on
+        // a 15-minute one. A sampling interval near those would delay the page
+        // it feeds.
+        assert!(
+            c.metrics_interval < Duration::from_secs(60),
+            "a gauge stale by {:?} is read by an alert that evaluates over five \
+             minutes",
+            c.metrics_interval
+        );
     }
 
     #[test]
