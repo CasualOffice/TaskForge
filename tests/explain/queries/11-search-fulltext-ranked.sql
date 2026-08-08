@@ -23,6 +23,27 @@
 -- no-scan rule, and the expects-index advisory below is what makes the drift
 -- visible until the question is settled (it touches ADR-014 and ADR-020, so it
 -- is an ADR decision, not an implementation detail).
+--
+-- UPDATE — MEASURED AT REFERENCE SCALE, AND IT BECOMES A SEQ SCAN.
+--
+-- The sentence above ("it is not a Seq Scan") is true of THIS corpus and false
+-- of the one the product targets. Measured on a loaded 2,000,000-task corpus
+-- (tools/casual-task-seed --scale reference), same query, same 6%-selective
+-- term, same instance:
+--
+--   as taskforge_app, RLS applied   ->  Parallel Seq Scan on task_search
+--   as the owner, RLS not applied   ->  Bitmap Index Scan on task_search_gin
+--
+-- RLS is the only difference between those two plans. So the degradation this
+-- comment describes is not a fixed cost: it worsens with tenant size, and
+-- somewhere between 109k and 2M rows it stops being "read the tenant through
+-- task_search_scope_ix" and becomes exactly the sequential scan on a
+-- tenant-scale table that docs/26 NFR-5 and ADR-011 forbid.
+--
+-- The consequence for this gate, stated plainly: a green run here does NOT mean
+-- the rule holds at reference scale. Plan choice depends on selectivity and on
+-- table size, and this suite runs two orders of magnitude below the corpus the
+-- rule is written about. Tracked as D-043.
 SELECT t.id, ts_rank_cd(s.document, plainto_tsquery('english', :'probe_term')) AS rank
   FROM task_search s
   JOIN task t ON t.id = s.task_id

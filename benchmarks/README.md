@@ -177,12 +177,24 @@ carrying into F-006 and F-008 rather than losing:
   `seed.sql`'s id scheme, so pointing the gate at a `casual-task-seed` corpus
   with `--data-loaded` addresses rows that do not exist and plans for an empty
   result. Planning the suite at reference scale needs the probes to be derived
-  from the corpus rather than hard-coded — worth doing, not yet done.
+  from the corpus rather than hard-coded — worth doing, and **D-043 is why it
+  matters more than it looked**: a query that is index-served at 109k rows is
+  not necessarily index-served at 2M, and one of them is not.
 - **`full_text_search` spent its time ranking, not matching.** The GIN index
   found 12,500 matches in under a millisecond; `ORDER BY ts_rank_cd DESC` over
   all of them took the remaining ~50 ms. That is the cost shape `docs/26`'s
   ADR-014 tripwire is watching (p95 > 300 ms at the reference corpus, after
   tuning), and it scales with match count rather than corpus size.
+
+  **Confirmed at reference scale, and the shape is worse than predicted.**
+  Ranking does dominate: for a 6%-selective term the GIN finds 125,595 matches
+  in ~6 ms and everything after that is heap fetch, `ts_rank_cd`, and a sort
+  that spills to disk at the default `work_mem`. But the larger finding is
+  D-043 — under RLS, as `taskforge_app`, the GIN is not used at all and the
+  query sequentially scans `task_search`. No timing from this session is
+  committed: the machine was concurrently loading a 10 GiB corpus, so the
+  numbers move by 3× between runs. The *plans* are not load-dependent, and they
+  are what D-043 rests on.
 
 A third number is worth reading as a warning rather than a result:
 `activity_page` reports `rowsReturned: 3`, because the smoke corpus writes

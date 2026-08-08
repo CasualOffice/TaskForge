@@ -75,6 +75,7 @@ The documentation phase. All complete unless noted.
 | D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Blocked** — Accept before C-011 |
 | D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
 | D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-001 |
+| D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Blocked** — Accept before C-013 |
 
 Four of those are new, opened by a Phase 0 audit of the concurrency and async
 design rather than by writing any code. They are recorded rather than resolved
@@ -108,6 +109,33 @@ implementation:
   labels "enabled temporarily", and the allow-list enforces *small* but not
   *temporarily*. There is no clock, so an admission lasts forever. Deciding the
   expiry is a design choice, not an implementation detail.
+- **D-043.** Measured, not predicted. `tests/explain/queries/11` already
+  documented that `tsvector @@ tsquery` resolves to `ts_match_vq`, which is not
+  `LEAKPROOF`, so PostgreSQL will not evaluate it before the row-security qual
+  and therefore cannot use `task_search_gin` as an index qual under RLS. It
+  concluded "it is not a Seq Scan, so this gate passes it." That conclusion is
+  corpus-size-dependent, and it is false at the corpus the product targets. On a
+  loaded 2,000,000-task corpus, same query, same 6%-selective term, same
+  instance:
+
+  | connected as | RLS | plan |
+  | --- | --- | --- |
+  | `taskforge_app` | applied | **`Parallel Seq Scan on task_search`** |
+  | owner | not applied | `Bitmap Index Scan on task_search_gin` |
+
+  RLS is the only difference. So the product's own search path performs the
+  sequential scan on a tenant-scale table that [26](26-SEARCH-INDEXING-AND-QUERY.md)
+  NFR-5 and ADR-011 forbid, and the `explain-no-seq-scan` gate cannot see it,
+  because it runs at ~109k rows where the same query still resolves to an index
+  scan. **A green gate does not mean the rule holds at reference scale.**
+
+  This touches ADR-011, ADR-014, and ADR-020 and is a decision, not a fix:
+  the options (a `LEAKPROOF` wrapper, a security-definer function, dropping RLS
+  on the projection table in favour of an explicit predicate, or the dedicated
+  search engine ADR-014 already names as its tripwire) trade tenant-isolation
+  guarantees against query plans, and that trade is exactly what an ADR is for.
+  Separately: raising the gate's corpus, or running it at reference scale
+  nightly, is what would have caught this.
 - **D-041.** No document describes cancellation or graceful shutdown: what
   happens to an in-flight request, a half-dispatched outbox row, or a held
   advisory lock when a pod is terminated. Retrofitting cancellation through a
