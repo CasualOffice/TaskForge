@@ -144,15 +144,46 @@ pub fn bind(
     session.set_var("task_id", &task_id)?;
     session.set_var("task_number", &task_number)?;
 
-    // The newest row of the list view, used as the cursor so the measured page
-    // is a real second page rather than the head of the index.
+    // A cursor from DEEP in the list view, not its first row.
+    //
+    // This used to take `LIMIT 1` — the maximum key — while claiming the
+    // measured page was "a real second page rather than the head of the index".
+    // The case filters `(updated_at, id) < (:cursor)`, so that cursor started
+    // the page at row 2: the head, and precisely what the comment said it was
+    // avoiding. A keyset page is interesting because it *descends* the index to
+    // an arbitrary offset in constant time, and none of that was being paid.
+    //
+    // `OFFSET` here is a fixture probe, not application SQL — it runs once,
+    // untimed, and the ban in docs/26 is about the paths the product ships.
+    //
+    // Clamped to what the project actually holds. A small corpus cannot offer a
+    // deep cursor, and failing the run over it would make `--scale tiny`
+    // unmeasurable; a clamp that nobody is told about would put us back where
+    // this started, so it is recorded as a note instead.
+    let project_tasks = count(
+        session,
+        "SELECT count(*) FROM task
+          WHERE project_id = :'project_id'::uuid AND deleted_at IS NULL",
+    )?;
+    let room = (project_tasks.max(0) as usize).saturating_sub(CURSOR_PAGE);
+    let cursor_depth = CURSOR_DEPTH.min(room);
+    if cursor_depth < CURSOR_DEPTH {
+        notes.push(format!(
+            "list_page_cursor: the busiest project holds {project_tasks} tasks, so the \
+             cursor sits at row {cursor_depth} rather than {CURSOR_DEPTH}. The case \
+             measures a shallower keyset descent than it is designed to, and its \
+             number is not comparable to a run over a corpus that reached full depth."
+        ));
+    }
     let cursor_row = row(
         session,
-        "SELECT t.updated_at, t.id
-           FROM task t
-          WHERE t.project_id = :'project_id'::uuid AND t.deleted_at IS NULL
-          ORDER BY t.updated_at DESC, t.id DESC
-          LIMIT 1",
+        &format!(
+            "SELECT t.updated_at, t.id
+               FROM task t
+              WHERE t.project_id = :'project_id'::uuid AND t.deleted_at IS NULL
+              ORDER BY t.updated_at DESC, t.id DESC
+              LIMIT 1 OFFSET {cursor_depth}"
+        ),
     )?
     .context("no cursor row found in the busiest project")?;
     let (cursor_updated_at, cursor_id) = two(&cursor_row, "cursor key")?;
@@ -200,6 +231,23 @@ pub fn bind(
         notes,
     })
 }
+
+/// How far into the list view the `list_page_cursor` cursor is taken.
+///
+/// Ten pages of 50 — deep enough that the descent is real work rather than the
+/// first leaf page. Not every scale can offer it: `tiny` puts a few hundred
+/// tasks in its largest project, so the probe clamps to what exists and says so
+/// in the report's notes.
+const CURSOR_DEPTH: usize = 500;
+
+/// Rows the list case asks for, and therefore how much room the cursor must
+/// leave below it.
+///
+/// Clamping to `project_tasks - 1` put the cursor on the LAST row, so the page
+/// after it was empty and the case measured a query that found nothing — which
+/// the report's own zero-row guard then flagged. The cursor has to sit at least
+/// one full page from the end to measure a page at all.
+const CURSOR_PAGE: usize = 51;
 
 /// The actor's accessible project set, as a PostgreSQL array literal.
 ///
