@@ -71,6 +71,11 @@ services:
       # /health/live must not touch the database: a liveness probe that fails
       # during a database blip restarts every healthy instance at once and turns
       # a partial outage into a total one (docs/46).
+      #
+      # THIS PROBE FAILS TODAY, ON PURPOSE. There is no HTTP server yet
+      # (tracker C-001), so the binary refuses the flag rather than exiting 0.
+      # It used to ignore every argument and therefore always pass, which is the
+      # worse failure: an unhealthy service reported as healthy forever.
       test: ["CMD", "/usr/local/bin/taskforge-api", "--health-check"]
       interval: 30s
       timeout: 5s

@@ -15,6 +15,24 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // `deploy/docker-compose.yml` already probes liveness with
+    // `taskforge-api --health-check`. Every argument was silently ignored, so
+    // that probe passed by doing nothing at all — and a liveness probe that
+    // cannot fail is worse than no probe, because it reports healthy straight
+    // through an outage and the orchestrator never restarts anything.
+    //
+    // `/health/live` arrives with the HTTP server (C-001). Until then this
+    // refuses rather than lies. Checked before telemetry, because a health
+    // probe must not depend on the logger.
+    if std::env::args().skip(1).any(|arg| arg == "--health-check") {
+        eprintln!(
+            "--health-check is not implemented: this is a Phase 0 scaffold with no HTTP \
+             server, so there is nothing to report on (docs/46 §Health endpoints, \
+             tracker C-001). Refusing to report healthy."
+        );
+        return ExitCode::FAILURE;
+    }
+
     // First statement in `main`, before anything that might log. An observability
     // crate that no binary installs is a library nobody has run: it means
     // `TF_LOG_FORMAT` is not actually honoured, a bad value is not actually
