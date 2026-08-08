@@ -6,6 +6,8 @@
 //! controls. None of that is visible from inside a handler.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
@@ -32,6 +34,51 @@ fn unreachable_database() -> (AppState, axum::Router) {
     (state.clone(), router(state))
 }
 
+/// A router whose pool points at a socket that accepts a connection and then
+/// says nothing, plus the count of connections that socket accepted.
+///
+/// [`unreachable_database`] cannot tell "liveness ignored the database" apart
+/// from "liveness checked it and swallowed the failure": a port with nothing
+/// behind it refuses instantly, so both answer 200 and both answer fast. A
+/// socket that accepts and stalls separates them — any touch of the pool leaves
+/// a connection counted here and blocks until the acquire timeout.
+fn stalled_database(acquire_timeout: Duration) -> (axum::Router, Arc<AtomicUsize>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free local port");
+    let port = listener.local_addr().expect("bound").port();
+    let accepted = Arc::new(AtomicUsize::new(0));
+
+    let counted = Arc::clone(&accepted);
+    std::thread::spawn(move || {
+        // The accepted streams are held, never read and never written: a socket
+        // that were closed again would let the pool fail fast, which is the
+        // behaviour this helper exists to prevent.
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    held.push(stream);
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(acquire_timeout)
+        .connect_lazy(&format!(
+            "postgres://nobody:nobody@127.0.0.1:{port}/nothing"
+        ))
+        .expect("a lazy pool never connects at construction");
+    let state = AppState {
+        pool,
+        metrics: Arc::new(Recorder::new()),
+        secret_key: "test-key-long-enough-for-the-config-check".into(),
+    };
+    (router(state), accepted)
+}
+
 async fn body_string(response: axum::response::Response) -> String {
     let bytes = to_bytes(response.into_body(), 1024 * 1024)
         .await
@@ -44,7 +91,13 @@ async fn liveness_does_not_touch_the_database() {
     // The whole point. If liveness checked the database, a database outage
     // would restart every API instance — removing the only thing that could
     // still serve anything and adding a reconnect storm to a struggling server.
-    let (_, app) = unreachable_database();
+    //
+    // A 200 alone does not say that: a handler that pinged the pool, caught the
+    // error and returned 200 anyway would produce the same status. So the
+    // database here stalls rather than refuses, and the assertions are that no
+    // connection was opened and that the answer did not wait for one.
+    let (app, connections) = stalled_database(Duration::from_secs(5));
+    let started = Instant::now();
     let response = app
         .oneshot(
             Request::builder()
@@ -54,11 +107,21 @@ async fn liveness_does_not_touch_the_database() {
         )
         .await
         .expect("response");
+    let elapsed = started.elapsed();
 
     assert_eq!(
         response.status(),
         StatusCode::OK,
         "liveness failed with an unreachable database"
+    );
+    assert_eq!(
+        connections.load(Ordering::SeqCst),
+        0,
+        "liveness opened a database connection"
+    );
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "liveness answered in {elapsed:?}, so it waited on the database and swallowed the failure"
     );
 }
 
@@ -150,13 +213,16 @@ async fn an_inbound_request_id_is_echoed_so_a_trace_spans_a_proxy() {
 #[tokio::test]
 async fn an_absurd_inbound_request_id_is_replaced_rather_than_echoed() {
     // The header is attacker-controlled and ends up in logs. An unbounded one
-    // is a log-flooding primitive.
+    // is a log-flooding primitive — but dropping it is not the fix: docs/05
+    // promises "a request_id the user can quote to support" on EVERY response,
+    // so the absurd value must be replaced by a minted one.
     let (_, app) = unreachable_database();
+    let absurd = "x".repeat(4096);
     let response = app
         .oneshot(
             Request::builder()
                 .uri("/health/live")
-                .header(REQUEST_ID_HEADER, "x".repeat(4096))
+                .header(REQUEST_ID_HEADER, absurd.clone())
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -167,8 +233,17 @@ async fn an_absurd_inbound_request_id_is_replaced_rather_than_echoed() {
         .headers()
         .get(REQUEST_ID_HEADER)
         .and_then(|v| v.to_str().ok())
-        .unwrap_or_default();
+        .expect("no request id on the response: the absurd header was dropped, not replaced")
+        .to_owned();
+    assert_ne!(echoed, absurd, "the absurd id was echoed");
     assert!(echoed.len() <= 128, "echoed {} bytes", echoed.len());
+    // A minted id, not a truncation of what the caller sent: 128 of the
+    // attacker's own bytes would satisfy every assertion above while still
+    // being a value the attacker chose and support cannot correlate.
+    assert!(
+        uuid::Uuid::parse_str(&echoed).is_ok(),
+        "the replacement id is not a minted uuid: {echoed}"
+    );
 }
 
 #[tokio::test]

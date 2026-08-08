@@ -247,11 +247,57 @@ mod tests {
 
     #[test]
     fn a_wrong_code_is_refused() {
+        // Every candidate asserted on its own. Joined with `||`, as this was,
+        // the whole assertion held as long as ONE of them was refused — so an
+        // implementation that accepted a fixed code passed.
         let totp = Totp::generate().expect("entropy");
         let now = at(1_760_000_000);
-        assert!(totp.verify("000000", now).is_none() || totp.verify("111111", now).is_none());
-        assert!(totp.verify("", now).is_none());
-        assert!(totp.verify("not a code", now).is_none());
+        let step = now.unix_timestamp() / STEP_SECONDS;
+        // The genuine codes, so a candidate that happens to be one of them is
+        // not asserted to be refused. Computed from `code_at`, which is the
+        // generator, not the verifier under test.
+        let genuine: Vec<String> = (step - SKEW_STEPS..=step + SKEW_STEPS)
+            .map(|s| totp.code_at(s))
+            .collect();
+
+        for candidate in ["000000", "111111", "123456", "999999", "0000000", "00000"] {
+            if genuine.iter().any(|code| code == candidate) {
+                continue;
+            }
+            assert!(
+                totp.verify(candidate, now).is_none(),
+                "{candidate} was accepted"
+            );
+        }
+        assert!(totp.verify("", now).is_none(), "an empty code was accepted");
+        assert!(
+            totp.verify("not a code", now).is_none(),
+            "a non-numeric code was accepted"
+        );
+    }
+
+    #[test]
+    fn no_fixed_code_unlocks_unrelated_factors() {
+        // The failure this catches is a backdoor — or a comparison against a
+        // constant left in by a refactor: one code that verifies against
+        // secrets it has no arithmetic relationship to. A single factor cannot
+        // show it, because any one candidate is genuinely correct for some
+        // secret about three times in a million.
+        let now = at(1_760_000_000);
+        let step = now.unix_timestamp() / STEP_SECONDS;
+
+        for _ in 0..64 {
+            let totp = Totp::generate().expect("entropy");
+            for candidate in ["000000", "111111", "123456"] {
+                let genuine =
+                    (step - SKEW_STEPS..=step + SKEW_STEPS).any(|s| totp.code_at(s) == candidate);
+                assert_eq!(
+                    totp.verify(candidate, now).is_some(),
+                    genuine,
+                    "{candidate} verified against a secret whose codes it is not one of"
+                );
+            }
+        }
     }
 
     #[test]

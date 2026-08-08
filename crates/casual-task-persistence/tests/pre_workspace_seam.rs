@@ -55,6 +55,20 @@ async fn seed_token(
     Ok(minted.presented)
 }
 
+/// Whether a token has been marked used, read as the owner.
+///
+/// Asserted as a boolean in SQL: sqlx's `time` feature is not enabled, and
+/// enabling a feature to decode a value only ever checked for presence would be
+/// the tail wagging the dog.
+async fn is_marked_used(pool: &sqlx::PgPool, id: Uuid) -> Result<bool> {
+    Ok(
+        sqlx::query_scalar("SELECT last_used_at IS NOT NULL FROM api_token WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await?,
+    )
+}
+
 /// A pool connected as the application role — the one RLS actually applies to.
 async fn app_pool(db: &schema_harness::TestDatabase) -> Result<sqlx::PgPool> {
     sqlx::query("ALTER ROLE taskforge_app WITH LOGIN PASSWORD 'apppw'")
@@ -154,15 +168,35 @@ async fn an_unknown_selector_is_indistinguishable_from_a_revoked_one() -> Result
     // can hold: the seam must not tell a caller whether a credential exists.
     let db = schema_harness::TestDatabase::start().await?;
     let revoked = seed_token(&db.pool, WorkspaceId::new(), "alpha", Some("1 hour"), true).await?;
+    let live = seed_token(&db.pool, WorkspaceId::new(), "beta", Some("1 hour"), false).await?;
     let app = app_pool(&db).await?;
     let (revoked_selector, _) = credential::split(&revoked).expect("well formed");
+    let (live_selector, _) = credential::split(&live).expect("well formed");
     let unknown = credential::mint()?;
     let mut conn = app.acquire().await?;
 
+    // The positive control, and the reason this test can fail at all. Comparing
+    // the revoked answer against the unknown one is satisfied by a seam that
+    // returns `None` for everything — including a credential that should
+    // authenticate. Establishing that this connection CAN see a live token is
+    // what turns the equality below into a statement about revocation rather
+    // than a tautology.
+    assert!(
+        auth::lookup_token(&mut conn, live_selector)
+            .await?
+            .is_some(),
+        "the seam found nothing for a live token, so the comparison below proves nothing"
+    );
+
+    let for_revoked = auth::lookup_token(&mut conn, revoked_selector).await?;
+    let for_unknown = auth::lookup_token(&mut conn, &unknown.selector).await?;
     assert_eq!(
-        auth::lookup_token(&mut conn, revoked_selector).await?,
-        auth::lookup_token(&mut conn, &unknown.selector).await?,
+        for_revoked, for_unknown,
         "a revoked token and an unknown one give different answers"
+    );
+    assert_eq!(
+        for_revoked, None,
+        "the shared answer is not the refusal — a revoked token authenticated"
     );
     Ok(())
 }
@@ -202,8 +236,9 @@ async fn recording_use_goes_through_the_ordinary_tenant_scoped_path() -> Result<
     // a token is being marked used, the workspace IS known — it came from the
     // lookup — so the write must go through RLS like everything else.
     let db = schema_harness::TestDatabase::start().await?;
-    let workspace = WorkspaceId::new();
-    let presented = seed_token(&db.pool, workspace, "alpha", Some("1 hour"), false).await?;
+    let (owner, intruder) = (WorkspaceId::new(), WorkspaceId::new());
+    let presented = seed_token(&db.pool, owner, "alpha", Some("1 hour"), false).await?;
+    seed_token(&db.pool, intruder, "beta", Some("1 hour"), false).await?;
     let app = app_pool(&db).await?;
     let (selector, _) = credential::split(&presented).expect("well formed");
 
@@ -213,19 +248,27 @@ async fn recording_use_goes_through_the_ordinary_tenant_scoped_path() -> Result<
         .expect("live token");
     drop(conn);
 
+    // The same write, under another tenant's scope, first. Without this the
+    // test proves only that the UPDATE succeeded — which it would do just as
+    // happily if `touch_token` took a bare connection and reached across
+    // tenants, since the seam's SECURITY DEFINER functions already read every
+    // workspace's rows. What must hold is that the scope RESTRICTS the write.
     let mut tx = app.begin().await?;
-    let mut scoped = Scoped::apply(&mut tx, &WorkspaceScope::for_job(workspace)).await?;
+    let mut scoped = Scoped::apply(&mut tx, &WorkspaceScope::for_job(intruder)).await?;
     auth::touch_token(&mut scoped, found.id).await?;
     tx.commit().await?;
+    assert!(
+        !is_marked_used(&db.pool, found.id).await?,
+        "a write scoped to another workspace reached this tenant's token row"
+    );
 
-    // Asserted as a boolean in SQL: sqlx's `time` feature is not enabled, and
-    // enabling a feature to decode a value this test only checks for presence
-    // would be the tail wagging the dog.
-    let used: bool =
-        sqlx::query_scalar("SELECT last_used_at IS NOT NULL FROM api_token WHERE id = $1")
-            .bind(found.id)
-            .fetch_one(&db.pool)
-            .await?;
-    assert!(used, "the token was never marked used");
+    let mut tx = app.begin().await?;
+    let mut scoped = Scoped::apply(&mut tx, &WorkspaceScope::for_job(owner)).await?;
+    auth::touch_token(&mut scoped, found.id).await?;
+    tx.commit().await?;
+    assert!(
+        is_marked_used(&db.pool, found.id).await?,
+        "the token was never marked used"
+    );
     Ok(())
 }
