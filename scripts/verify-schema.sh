@@ -22,12 +22,16 @@ step()  { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 
 if [[ -z "$OWNER_DSN" ]]; then
   step "Starting PostgreSQL 16"
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  # -v matters: postgres:16-alpine declares VOLUME /var/lib/postgresql/data, so
+  # every run creates an anonymous volume. Removing the container without it
+  # orphans ~600 MB per run, which accumulates silently on a developer machine
+  # until the disk fills. (It did.)
+  docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
   docker run -d --name "$CONTAINER" \
     -e POSTGRES_USER=tf -e POSTGRES_PASSWORD=tf -e POSTGRES_DB=tf \
     -p 55432:5432 postgres:16-alpine >/dev/null
   OWNED_CONTAINER=1
-  trap 'docker rm -f "$CONTAINER" >/dev/null 2>&1 || true' EXIT
+  trap 'docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true' EXIT
   until docker exec "$CONTAINER" pg_isready -U tf -q 2>/dev/null; do sleep 1; done
   OWNER_DSN="postgres://tf:tf@127.0.0.1:55432/tf"
 fi
