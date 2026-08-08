@@ -67,7 +67,7 @@ The documentation phase. All complete unless noted.
 | D-035 | **Reporting, export & dashboards** | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Designed |
 | D-036 | Runbooks | [50](50-RUNBOOKS.md) | Designed |
 | D-037 | Deployment guide | [52](52-DEPLOYMENT-GUIDE.md) | Designed |
-| D-032 | **Auth mechanism: credential lookup, session storage, plugin principal** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
+| D-032 | **Auth mechanism: credential lookup, session storage, plugin principal** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Proposed** — ADR-032 drafted; Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
 | D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Blocked** — Accept before C-011 |
@@ -181,6 +181,13 @@ implementation:
   only table without `workspace_id` while `enforce_sso`, MFA enforcement and
   `allowed_domains` are per-workspace — so which workspace's policy governs a
   login, before any workspace is known, is undecided.
+
+  **Now drafted as ADR-032, `Proposed`.** The proposed resolutions are in
+  [40](40-IDENTITY-AUTH-AND-SESSION.md) §Mechanism, each with its cost stated
+  and the one genuine judgement call marked as such. Two of them change the
+  `Gated` schema — the `principal_type` enum, and a new auth-storage migration —
+  which is the argument for settling this while the tables are still empty.
+  Nothing is implemented; C-001 stays `Blocked`.
 - **D-044.** [08](08-ADR-REGISTER.md) §Pending lists "MSRV and toolchain pin" —
   once the workspace is scaffolded". The workspace *is* scaffolded, so the ADR
   is due. Until it exists, `rust-version = "1.90.0"` in `Cargo.toml` and the
