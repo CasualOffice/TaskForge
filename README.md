@@ -32,7 +32,12 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > row-level security at 2 M tasks (**D-043**). And the Phase 0 threat-model
 > review was conducted by an agent, says so, and asks to be countersigned.
 >
-> **Phase 1 has started.** The permission resolver is the first piece.
+> **Phase 1 is under way.** Landed so far, all with tests and none yet gated:
+> the permission resolver and its escalation ceilings, the workflow state
+> machine, the filter AST and its closed field set, and the scoped-connection
+> seam that puts every repository behind row-level security. Four of the five
+> are pure logic with no database — which is why they run in milliseconds and
+> why the fifth is tested against a real PostgreSQL 16.
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 ## The problem
@@ -114,20 +119,20 @@ division: [docs/19-WORKSPACE-SCAFFOLD-DESIGN.md](docs/19-WORKSPACE-SCAFFOLD-DESI
 | Crate | Responsibility |
 | --- | --- |
 | `casual-task-model` | Bedrock: ID newtypes, the `WorkspaceScope` capability, closed enums, error codes, cursors. Depends on nothing. |
-| `casual-task-authz` | The permission resolver, constraints, ceilings, the `authz_epoch` cache, and `explain()` |
+| `casual-task-authz` | **Implemented:** the resolver, the closed constraint set, the escalation ceilings, and `explain()`. Not yet: the `authz_epoch` cache |
 | `casual-task-identity` | Users, workspace membership, teams, sessions, service accounts, tokens |
 | `casual-task-project` | Projects, membership, environments, milestones, tags |
-| `casual-task-workflow` | Workflows, statuses, transitions, state mapping, transition validation |
+| `casual-task-workflow` | **Implemented:** statuses, transitions, and the fixed validation order. Not yet: status editing and migration |
 | `casual-task-task` | Tasks, assignees, dependencies, subtasks, board ranks |
 | `casual-task-activity` | Activity + audit record construction, the outbox event shape |
 | `casual-task-attachment` | Attachment lifecycle, the scan/commit handshake |
 | `casual-task-notification` | Notification construction and preference evaluation |
 | `casual-task-app` | Command/query handlers; transaction boundaries; the only layer that composes domain crates |
-| `casual-task-persistence` | SQLx repositories — **all** SQL in the system |
-| `casual-task-search` | Search projection and query construction |
+| `casual-task-persistence` | **all** SQL in the system. Implemented: the scoped-connection seam. Not yet: the repositories |
+| `casual-task-search` | **Implemented:** the filter AST and its closed field set. Not yet: the projection and the compiler |
 | `casual-task-infra` | Redis, object storage, mail — each behind a trait with a local fallback |
 | `casual-task-plugin-contract` | Extension points, manifest types, scopes, signing. Versioned independently. |
-| `casual-task-observability` | Tracing, metrics, correlation IDs |
+| `casual-task-observability` | **Implemented:** tracing, the metric registry, cardinality-bounded labels, correlation IDs. Not yet: an exporter |
 | `casual-task-api` | The API binary: Axum routers, tower middleware, DTOs, OpenAPI, SSE |
 | `casual-task-worker` | The worker binary: dispatch, projection, notify, webhook, scan, automation, retention |
 

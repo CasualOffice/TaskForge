@@ -82,6 +82,7 @@ The documentation phase. All complete unless noted.
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Accepted** — gauge: age of oldest actionable pending event |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Blocked** — Accept before C-002 |
+| D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -314,7 +315,7 @@ the code that proves it.
 | C-002 | Workspace, membership, teams | Accepted |
 | C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | `Building` |
-| C-005 | Cross-tenant property suite | Accepted |
+| C-005 | Cross-tenant property suite | `Building` |
 | C-006 | Projects, membership, visibility | Accepted |
 | C-007 | Default workflow + transitions | `Building` |
 | C-008 | Task CRUD, assignees, tags | Accepted |
@@ -329,6 +330,36 @@ the code that proves it.
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+
+- **D-050** was opened by a failing gate rather than by reading anything.
+  Adding `sqlx` with `tls-rustls` pulled in `webpki-roots` — Mozilla's CA bundle,
+  licensed **CDLA-Permissive-2.0**, which `deny.toml` does not allow — and
+  `cargo deny check licenses` went red. Widening the allow-list is a licensing
+  policy decision, not a build fix, so the feature is off for now: nothing
+  connects to a remote database yet, and the tests talk to a local container.
+  It goes back on when the API needs it, with the licence decided deliberately
+  at that point rather than smuggled in beside a test harness.
+
+**C-005 is `Building`, and the persistence seam is in.**
+`casual-task-persistence::Scoped` is the only door to tenant data: it applies a
+`WorkspaceScope` to a transaction as the GUC migration 0010's policy reads, and
+a repository cannot hold one without that having happened. The setting is
+transaction-local — a session-level one would outlive the request and the next
+pooled checkout would inherit another tenant's scope, which is a leak that only
+appears under load.
+
+Three tests assert it against a real PostgreSQL 16 as the **non-superuser**
+role, because RLS is inert for a superuser and the same assertions run as the
+owner would prove nothing: a scoped transaction sees exactly its own tenant, an
+unscoped one sees **nothing rather than everything**, and the scope does not
+survive a commit on a single-connection pool.
+
+A fourth runs without Docker and is the one most likely to earn its keep: it
+asserts that migration 0010 builds its policy with the exact setting name the
+code sets. Drift there is silent — every scoped read returns zero rows and
+nothing errors. Writing it loosely would have missed the case it exists for, so
+it matches the doubled-quoted form rather than a substring; verified by
+truncating the constant to `taskforge.workspace` and watching it fail.
 
 **C-012 is `Building`.** The AST and the closed field set are implemented in
 `casual-task-search`: two node kinds and no more, nineteen fields as enum

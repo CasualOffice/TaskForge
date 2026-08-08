@@ -82,8 +82,10 @@ jobs:
       # every migration, and can reach the invariants from Rust. It is #[ignore]
       # by default so `cargo test` stays runnable without a Docker daemon, which
       # means CI is the only place it runs — so CI has to run it, or it rots.
-      - name: The testcontainers harness still works (F-005)
-        run: cargo test -p casual-task-persistence --test schema_harness -- --ignored
+      - name: The testcontainers harness and the tenant-isolation suite (F-005, C-005)
+        # Every ignored test in the crate, not one named file: a new suite added
+        # beside these would otherwise be written, pass locally, and never run.
+        run: cargo test -p casual-task-persistence -- --ignored
 
   # docs/26 NFR-5 / ADR-011: no user-reachable query performs a sequential scan
   # on a tenant-scale table. Every query in tests/explain/queries/ is planned as

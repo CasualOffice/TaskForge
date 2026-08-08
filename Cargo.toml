@@ -88,7 +88,12 @@ anyhow     = "1"
 rand       = { version = "0.9", features = ["small_rng"] }
 clap       = { version = "4", features = ["derive"] }
 tokio      = { version = "1", features = ["rt-multi-thread", "macros"] }
-sqlx       = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls"] }
+# No TLS feature yet, deliberately. `tls-rustls` pulls in webpki-roots, which
+# is CDLA-Permissive-2.0 — a licence `deny.toml` does not allow, and widening
+# that list is a policy decision rather than a build fix (D-050). Nothing
+# connects to a remote database yet: the tests talk to a local container. The
+# feature goes back on when the API needs it, with the licence decided then.
+sqlx       = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "uuid"] }
 testcontainers = "0.24"
 testcontainers-modules = { version = "0.12", features = ["postgres"] }
 tracing    = "0.1"
