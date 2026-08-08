@@ -164,6 +164,42 @@ pub async fn insert_api_token(
     Ok(())
 }
 
+/// Authentication events recorded for an email address, newest first.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn auth_events(pool: &sqlx::PgPool, email: &str) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT event_type FROM auth_event WHERE email = $1::citext ORDER BY occurred_at DESC",
+    )
+    .bind(email)
+    .fetch_all(pool)
+    .await
+}
+
+/// Age a session so an idle or absolute lifetime bound applies to it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn age_session(
+    pool: &sqlx::PgPool,
+    last_seen: &str,
+    created: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE session
+            SET last_seen_at = now() - $1::interval,
+                created_at   = now() - $2::interval",
+    )
+    .bind(last_seen)
+    .bind(created)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Mark a user tombstoned (deactivated).
 ///
 /// # Errors
