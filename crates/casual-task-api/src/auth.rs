@@ -37,8 +37,13 @@ use crate::server::AppState;
 /// The session cookie (`docs/40` §Browser sessions).
 pub const SESSION_COOKIE: &str = "tf_session";
 
-/// How long a session lives without being refreshed.
-pub const SESSION_TTL: Duration = Duration::days(14);
+/// The absolute session lifetime written to `expires_at` (`docs/40`: 30 days).
+///
+/// The 14-day **idle** bound is enforced in
+/// [`casual_task_persistence::identity::live_session`], not here: one column
+/// cannot express both, and putting them in different places would let a caller
+/// apply one and forget the other.
+pub const SESSION_TTL: Duration = Duration::days(30);
 
 /// A hash to verify against when the account does not exist.
 ///
@@ -130,6 +135,29 @@ pub async fn login(
         ApiError::internal(&request_id)
     })?;
 
+    // docs/40 §What is audited: "Failed logins are audited with IP and user
+    // agent. A burst of them is the clearest signal of an attack in progress."
+    // Recorded for unknown addresses too — an attacker guessing addresses
+    // produces exactly those rows, and only those rows show the pattern.
+    let ip = client_ip(&headers);
+    let agent = header_str(&headers, header::USER_AGENT.as_str());
+    let (event, actor) = match outcome {
+        LoginOutcome::Authenticated { user_id } => ("login.succeeded", Some(user_id)),
+        LoginOutcome::Refused => ("login.failed", found.as_ref().map(|c| c.user_id)),
+    };
+    if let Err(error) = identity::record_auth_event(
+        &mut conn,
+        actor,
+        Some(&body.email),
+        event,
+        ip.as_deref(),
+        agent,
+    )
+    .await
+    {
+        tracing::error!(%error, event, "the authentication trail was not written");
+    }
+
     let LoginOutcome::Authenticated { user_id } = outcome else {
         // The single refusal. docs/40: constant shape, whatever the reason.
         return Ok(ApiError::unauthenticated(&request_id).into_response());
@@ -151,8 +179,8 @@ pub async fn login(
         &minted.verifier_hash,
         "password",
         OffsetDateTime::now_utc() + SESSION_TTL,
-        client_ip(&headers).as_deref(),
-        header_str(&headers, header::USER_AGENT.as_str()),
+        ip.as_deref(),
+        agent,
     )
     .await
     .map_err(|error| {
@@ -297,6 +325,18 @@ pub async fn logout(
                     tracing::error!(%error, "revoking the session failed");
                     ApiError::internal(&request_id)
                 })?;
+            if let Err(error) = identity::record_auth_event(
+                &mut conn,
+                Some(session.user_id),
+                None,
+                "logout",
+                client_ip(&headers).as_deref(),
+                header_str(&headers, header::USER_AGENT.as_str()),
+            )
+            .await
+            {
+                tracing::error!(%error, "the authentication trail was not written");
+            }
         }
     }
 

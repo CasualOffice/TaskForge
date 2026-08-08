@@ -19,6 +19,13 @@ pub struct Credential {
     pub locked_until: Option<OffsetDateTime>,
 }
 
+/// How long a session may go unused. `docs/40`: 14 days idle.
+pub const IDLE_LIFETIME: &str = "14 days";
+
+/// How long a session may live at all, however active. `docs/40`: 30 days
+/// absolute. This is the bound that ends a session someone left open.
+pub const ABSOLUTE_LIFETIME: &str = "30 days";
+
 /// A session as stored.
 #[derive(Debug, Clone)]
 pub struct SessionRecord {
@@ -148,6 +155,17 @@ pub async fn create_session(
 /// (ADR-032 withdrew the read-through cache because a cache reintroduces the
 /// staleness window that argument rejects).
 ///
+/// **Idle and absolute lifetimes are both enforced** (`docs/40`: 14 d idle /
+/// 30 d absolute). A single `expires_at` cannot express both: a session used
+/// once a day would live forever under an idle-only rule, and one left open in
+/// a browser tab stays valid for its whole absolute life under an
+/// expiry-only rule. Both bounds are in the query, so no caller can apply one
+/// and forget the other.
+///
+/// A tombstoned account's sessions are dead immediately, for the same reason
+/// revocation is: deactivating a person who is currently signed in has to end
+/// the session they are holding, not the next one they create.
+///
 /// A session created before the account's password changed also returns `None`:
 /// `docs/40` §Local authentication requires a password change to invalidate
 /// existing sessions, and doing it here means every entry point gets it rather
@@ -172,12 +190,18 @@ pub async fn live_session(
                     s.mfa_satisfied_at, s.expires_at
                FROM session s
                LEFT JOIN user_credential c ON c.user_id = s.user_id
+               JOIN user_account u ON u.id = s.user_id
               WHERE s.selector = $1
                 AND s.revoked_at IS NULL
                 AND s.expires_at > now()
+                AND u.is_tombstone = false
+                AND s.last_seen_at > now() - $2::interval
+                AND s.created_at   > now() - $3::interval
                 AND (c.changed_at IS NULL OR s.created_at >= c.changed_at)",
     )
     .bind(selector)
+    .bind(IDLE_LIFETIME)
+    .bind(ABSOLUTE_LIFETIME)
     .fetch_optional(conn)
     .await?;
 
@@ -256,6 +280,38 @@ pub async fn touch_session(conn: &mut sqlx::PgConnection, id: Uuid) -> Result<()
     )
     .bind(id)
     .bind(LAST_SEEN_RESOLUTION)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Record an authentication event (`docs/40` §What is audited).
+///
+/// Best-effort at the call site is not acceptable here — a failed login that
+/// was not recorded is the one an incident responder needs — so this returns a
+/// `Result` and callers log loudly rather than discarding it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn record_auth_event(
+    conn: &mut sqlx::PgConnection,
+    user_id: Option<Uuid>,
+    email: Option<&str>,
+    event_type: &str,
+    ip: Option<&str>,
+    user_agent: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO auth_event (id, user_id, email, event_type, ip_address, user_agent)
+         VALUES ($1,$2,$3::citext,$4,$5::inet,$6)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(user_id)
+    .bind(email)
+    .bind(event_type)
+    .bind(ip)
+    .bind(user_agent)
     .execute(conn)
     .await?;
     Ok(())

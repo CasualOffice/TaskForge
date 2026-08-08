@@ -31,7 +31,7 @@ BEGIN
        AND c.relname NOT IN ('workspace','user_account','permission',
                              'team_membership','role_permission',
                              'user_credential','session','mfa_factor',
-                             'recovery_code','password_reset_token')
+                             'recovery_code','password_reset_token','auth_event')
        AND NOT EXISTS (SELECT 1 FROM pg_attribute a
                         WHERE a.attrelid = c.oid AND a.attname = 'workspace_id'
                           AND a.attnum > 0 AND NOT a.attisdropped);
