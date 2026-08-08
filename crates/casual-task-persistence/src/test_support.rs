@@ -276,6 +276,115 @@ pub async fn add_workspace_member(
     Ok(())
 }
 
+/// What the three streams recorded for one workspace (`docs/25`, ADR-006).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct History {
+    /// `activity_event.event_type`, oldest first.
+    pub activity: Vec<String>,
+    /// `audit_event.event_type`, oldest first.
+    pub audit: Vec<String>,
+    /// `outbox_event.event_type`, oldest first.
+    pub outbox: Vec<String>,
+    /// Rows in `outbox_delivery` for those events.
+    pub deliveries: i64,
+}
+
+/// The history a workspace accumulated.
+///
+/// The point of asserting on all four at once is ADR-006's guarantee: the
+/// domain change, the activity row, the audit row and the outbox event commit
+/// together. A test that checked only the audit row would pass while the outbox
+/// silently wrote nothing, and the missing events would surface months later as
+/// a consumer that never fired.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn history(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<History, sqlx::Error> {
+    let activity: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM activity_event WHERE workspace_id = $1 ORDER BY id",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let audit: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM audit_event WHERE workspace_id = $1 ORDER BY id",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let outbox: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM outbox_event WHERE workspace_id = $1 ORDER BY id",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let deliveries: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM outbox_delivery WHERE workspace_id = $1")
+            .bind(workspace_id)
+            .fetch_one(pool)
+            .await?;
+
+    Ok(History {
+        activity,
+        audit,
+        outbox,
+        deliveries,
+    })
+}
+
+/// A workspace's current `authz_epoch` (`docs/04` §Caching, ADR-012).
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn authz_epoch(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT authz_epoch FROM workspace WHERE id = $1")
+        .bind(workspace_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Membership rows read **without** the tenant setting, exactly as a repository
+/// that forgot to scope would read them.
+///
+/// Exists for the row-level-security assertion in `tests/workspace_seam.rs`: run
+/// as `taskforge_app` this must return nothing, which is what makes the
+/// `SECURITY DEFINER` seam in migration 0019 necessary rather than decorative.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn unscoped_membership_count(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM workspace_membership WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Insert a bare user account, with no credential.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_user(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+    email: &str,
+    display_name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO user_account (id, email, display_name) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(email)
+        .bind(display_name)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing

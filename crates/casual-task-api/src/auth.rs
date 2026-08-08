@@ -387,7 +387,7 @@ fn header_str<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
 /// - **Trust it as an identity.** It is a hint for the audit trail only. It is
 ///   never used for authorisation, and the first hop is taken because that is
 ///   the convention, not because it is verified.
-fn client_ip(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn client_ip(headers: &HeaderMap) -> Option<String> {
     let raw = header_str(headers, "x-forwarded-for")?;
     let first = raw.split(',').next()?.trim();
     first

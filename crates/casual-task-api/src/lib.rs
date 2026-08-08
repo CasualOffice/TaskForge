@@ -21,8 +21,10 @@ pub mod auth;
 pub mod config;
 pub mod csrf;
 pub mod error;
+pub mod json;
 pub mod middleware;
 pub mod server;
+pub mod workspaces;
 
 pub use config::{Config, ConfigError};
 pub use error::ApiError;

@@ -3,7 +3,7 @@
 Live state of all work. Every non-trivial change gets a row before it is built
 ([11](11-DESIGN-FIRST-PROCESS.md)), and the row moves as it progresses.
 
-**Last updated: 2026-08-08.**
+**Last updated: 2026-08-09.**
 
 ## Status vocabulary (controlled)
 
@@ -86,6 +86,8 @@ The documentation phase. All complete unless noted.
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
+| D-054 | Which permission governs workspace membership and team management | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002; Accept before C-002 is `Gated` |
+| D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Open** — surfaced by C-002 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -333,7 +335,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | ID | Item | Status |
 | --- | --- | --- |
 | C-001 | Identity, sessions, MFA, invitations | `Building` |
-| C-002 | Workspace, membership, teams | Accepted |
+| C-002 | Workspace, membership, teams | `Built` |
 | C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | `Building` |
 | C-005 | Cross-tenant property suite | `Building` |
@@ -710,6 +712,84 @@ session cookies, CSRF, the enrolment and invitation endpoints — which needs th
 API server that does not exist yet, and the remaining acceptance gates in
 [40](40-IDENTITY-AUTH-AND-SESSION.md) that are end-to-end by nature (enumeration
 timing envelope, CSRF, break-glass). SSO is **Phase 2**, not here.
+
+**C-002 is `Built`.** Eleven routes — create, list, read and rename a workspace;
+list, add and remove its members; list and create its teams; add and remove team
+members — plus the migration that makes two of them expressible. This is the row
+that unblocks the product: before it, a signed-in user had no workspace, and
+every other endpoint in Phase 1 is inside one.
+
+**The membership check was returning `false` for everyone in production.**
+`workspace_membership` carries `workspace_id`, so migration 0010 gave it a
+policy; the check that mints an `AuthContext` runs before any workspace is set,
+because that check is what decides the value. Read directly as `taskforge_app`,
+the policy hid every row. Every test passed, because a test harness connects as
+the database owner and RLS is inert for a superuser. Migration 0019 gives it the
+ADR-032 treatment the credential lookup already had — `SECURITY DEFINER`, pinned
+`search_path`, `EXECUTE` to `taskforge_app` alone, definition asserted by the
+F-015 gate — and `tests/workspace_seam.rs` reproduces the original failure as
+the application role so it cannot come back quietly.
+
+**`workspace` and `team` had no `version` column**, so the two aggregates C-002
+makes mutable were the two that could not express
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)'s "every mutable aggregate carries
+`version`" or [05](05-API-SPEC.md)'s `If-Match`. Added in the same migration
+rather than when a rename first needs it, because the direction is one-way:
+shipping `PATCH /workspaces/{id}` unconditional and requiring `If-Match` later
+is a breaking API change. A schema assertion now lists the seven aggregates that
+must carry it.
+
+**Tenant predicates are written out, not left to the policy.**
+[32](32-TENANCY-AND-ISOLATION.md) requires two independent mechanisms that must
+both fail before data crosses a boundary. The first version of the team read
+carried only `WHERE id = $1` and leaned on RLS — and the cross-tenant test
+caught it by returning `201` where it expected `404`, precisely because the
+harness runs as the owner. Every scoped statement now names `workspace_id`, and
+the two `team_membership` writes select through `team` so a team id from another
+tenant affects zero rows however it was obtained.
+
+**What C-002 does NOT do, stated plainly: membership is the only authority it
+enforces.** Any member of a workspace can rename it, add and remove members, and
+create teams. [04](04-RBAC-AND-AUTHORIZATION.md) gives Member "no config", so
+that is not the end state — but `role_assignment` is the only source of
+authority (migration 0003), no built-in role template has been authored, and the
+golden matrix that fixes each template's permission set is the C-004 work listed
+above as still missing. Inventing a mapping here would settle it in an
+implementation, which AGENTS.md forbids. **D-054** is the open question, and it
+has two halves: which permission governs membership and team management — the
+closed registry has `workspace.manage` and no `workspace.member.manage` — and
+whether workspace creation should seed the built-in role templates and grant the
+creator Owner.
+
+Two rules that *are* enforced, because both are decidable without a grant. A
+workspace cannot lose its last member: nothing can see a memberless workspace,
+so nothing can add a member back to it, and the check is made under the
+workspace row's write lock so two concurrent removals cannot each believe they
+are not the last. And a user added to a team must already be a member of the
+workspace — `team_membership` has no policy of its own, so that check is its
+tenant boundary.
+
+**Still to come before C-002 is `Gated`:** D-054, and two gates that exist as
+tests here but not yet as CI-enforced suites — the cross-tenant property test
+[32](32-TENANCY-AND-ISOLATION.md) says must be *generated from the route table*
+(C-005), and the 404-not-403 sweep across every endpoint (C-004). This PR's
+version of both is hand-written and covers this route family only.
+
+**Deferred, with the reason.** `Idempotency-Key` is not implemented on the three
+`POST` creates, though [05](05-API-SPEC.md) §Idempotency requires it: the
+`idempotency_key` table exists (migration 0008) and nothing reads or writes it,
+and building that layer is a unit of work in its own right with no tracker row.
+It is a gap in the contract, not an oversight, and it applies to every `POST`
+create Phase 1 will add.
+
+**D-055 is open and is a defect, not a design question.** Four codes this API
+already emits — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` — are
+not in [20](20-ERROR-CODE-REGISTRY.md), which has no `REQ` or `SRV` area at all,
+so the `docs` URL in those error bodies points at nothing. C-002 adds a unit test
+that reads the registry and fails on any code missing from it, with those four
+named as explicit exceptions rather than silently skipped. Renaming a shipped
+code is a public-contract change ([20](20-ERROR-CODE-REGISTRY.md) §Rules: codes
+are append-only), so it belongs in its own change.
 
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.

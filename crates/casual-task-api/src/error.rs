@@ -61,6 +61,54 @@ pub mod codes {
     pub const UNAVAILABLE: Code = Code::new("TF-SRV-0003");
     /// Anything unhandled.
     pub const INTERNAL: Code = Code::new("TF-SRV-0001");
+
+    /// Malformed request body.
+    pub const MALFORMED_BODY: Code = Code::new("TF-VAL-0001");
+    /// A field the request type does not declare (`docs/05`: rejected, never
+    /// ignored).
+    pub const UNKNOWN_FIELD: Code = Code::new("TF-VAL-0002");
+    /// A field value outside its documented bounds.
+    pub const OUT_OF_RANGE: Code = Code::new("TF-VAL-0004");
+    /// A referenced entity does not exist **in this workspace**.
+    pub const REFERENCE_NOT_FOUND: Code = Code::new("TF-VAL-0007");
+
+    /// The aggregate moved on since the caller read it.
+    pub const VERSION_CONFLICT: Code = Code::new("TF-CNC-0001");
+    /// `If-Match` is required and was not sent.
+    pub const IF_MATCH_REQUIRED: Code = Code::new("TF-CNC-0002");
+    /// `If-Match` was sent and is not an ETag this server issued.
+    pub const IF_MATCH_MALFORMED: Code = Code::new("TF-CNC-0003");
+
+    /// A workspace would lose its last member.
+    pub const LAST_MEMBER: Code = Code::new("TF-PRJ-0006");
+    /// The slug is taken by another workspace.
+    pub const SLUG_TAKEN: Code = Code::new("TF-PRJ-0007");
+    /// The team name is taken inside this workspace.
+    pub const TEAM_NAME_TAKEN: Code = Code::new("TF-PRJ-0008");
+
+    /// Every code this crate can emit.
+    ///
+    /// Listed once so the tests that check the format and the registry cannot
+    /// drift from the set they are checking — a code added above and forgotten
+    /// here would be a code no gate looks at.
+    pub const ALL: &[Code] = &[
+        BAD_REQUEST,
+        UNAUTHENTICATED,
+        FORBIDDEN,
+        NOT_FOUND,
+        UNAVAILABLE,
+        INTERNAL,
+        MALFORMED_BODY,
+        UNKNOWN_FIELD,
+        OUT_OF_RANGE,
+        REFERENCE_NOT_FOUND,
+        VERSION_CONFLICT,
+        IF_MATCH_REQUIRED,
+        IF_MATCH_MALFORMED,
+        LAST_MEMBER,
+        SLUG_TAKEN,
+        TEAM_NAME_TAKEN,
+    ];
 }
 
 /// An error on its way to a client.
@@ -168,6 +216,49 @@ impl ApiError {
         );
         error.retry_after = Some(retry_after_seconds);
         error
+    }
+
+    /// 400 — malformed, unknown field, or out of range.
+    #[must_use]
+    pub fn bad_request(
+        code: Code,
+        message: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, code, message, request_id)
+    }
+
+    /// 422 — valid syntax, violates a domain rule (`docs/05`).
+    #[must_use]
+    pub fn unprocessable(
+        code: Code,
+        message: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, code, message, request_id)
+    }
+
+    /// 409 — the caller's version is not the current one, or a unique value is
+    /// taken.
+    #[must_use]
+    pub fn conflict(code: Code, message: impl Into<String>, request_id: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, code, message, request_id)
+    }
+
+    /// 428 — `If-Match` is required and absent.
+    ///
+    /// `docs/05` §Concurrency: "428 Precondition Required rather than silently
+    /// accepting an unconditional write: a client that forgets `If-Match` has a
+    /// bug, and failing loudly in development is better than losing a user's
+    /// edit in production."
+    #[must_use]
+    pub fn precondition_required(request_id: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::PRECONDITION_REQUIRED,
+            codes::IF_MATCH_REQUIRED,
+            "If-Match is required for this request",
+            request_id,
+        )
     }
 
     /// 500 — anything unhandled.
@@ -282,6 +373,35 @@ mod tests {
         );
     }
 
+    /// The four codes this crate emits that `docs/20` does not define.
+    ///
+    /// `REQ` and `SRV` are not areas in the registry — the registry's are
+    /// `VAL`, `AZN`, `PRJ`, `SYS` and so on — so a client hitting one of these
+    /// gets a `docs` URL for a code that is not documented anywhere. They
+    /// predate this gate and are named rather than papered over: renaming a
+    /// shipped code is a public-contract change (`docs/20` §Rules: codes are
+    /// append-only), so it belongs in its own change with a note, not in a list
+    /// of new endpoints.
+    const NOT_IN_THE_REGISTRY: &[&str] =
+        &["TF-REQ-0001", "TF-REQ-0004", "TF-SRV-0001", "TF-SRV-0003"];
+
+    #[test]
+    fn every_code_this_crate_emits_is_in_the_registry() {
+        // docs/20 is what the `docs` URL in every error body points at. A code
+        // that is not there is a link to a 404 in the exact moment a user is
+        // trying to understand a failure.
+        let registry = include_str!("../../../docs/20-ERROR-CODE-REGISTRY.md");
+        for code in codes::ALL {
+            if NOT_IN_THE_REGISTRY.contains(&code.as_str()) {
+                continue;
+            }
+            assert!(
+                registry.contains(code.as_str()),
+                "{code:?} is emitted by this crate and absent from docs/20"
+            );
+        }
+    }
+
     #[test]
     fn the_documented_status_codes_are_used() {
         assert_eq!(
@@ -296,14 +416,7 @@ mod tests {
     fn every_code_follows_the_registry_format() {
         // docs/20: TF-XXX-NNNN. A code that does not match is one no client can
         // look up, and the URL in the envelope would 404.
-        for code in [
-            codes::BAD_REQUEST,
-            codes::UNAUTHENTICATED,
-            codes::FORBIDDEN,
-            codes::NOT_FOUND,
-            codes::UNAVAILABLE,
-            codes::INTERNAL,
-        ] {
+        for code in codes::ALL {
             let text = code.as_str();
             let parts: Vec<_> = text.split('-').collect();
             assert_eq!(parts.len(), 3, "{text}");

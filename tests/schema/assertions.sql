@@ -229,3 +229,85 @@ BEGIN
         RAISE EXCEPTION 'unexpected EXECUTE on the pre-workspace seam: %', granted;
     END IF;
 END $$;
+
+-- --------------------------------------------------------------------------
+-- 9. The membership seam is held to the same contract (migration 0019, C-002).
+--
+--    `workspace_membership` carries workspace_id and therefore a policy, while
+--    the two reads that ESTABLISH a scope run before any workspace is known.
+--    Same shape as the credential seam above, same three non-optional
+--    properties — and checked here for the same reason: every other gate looks
+--    at tables, so a redefinition of these functions would pass all of them.
+-- --------------------------------------------------------------------------
+DO $$
+DECLARE
+    fn text;
+    definition text;
+    config text[];
+BEGIN
+    FOREACH fn IN ARRAY ARRAY['is_workspace_member', 'workspace_ids_for_user'] LOOP
+        SELECT pg_get_functiondef(p.oid), p.proconfig INTO definition, config
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'public' AND p.proname = fn;
+
+        IF definition IS NULL THEN
+            RAISE EXCEPTION '% is missing; nobody can enter a workspace', fn;
+        END IF;
+
+        IF definition !~ 'SECURITY DEFINER' THEN
+            RAISE EXCEPTION '% is no longer SECURITY DEFINER; the membership check answers false for everyone', fn;
+        END IF;
+
+        -- Filtered by the person, always. A seam that took only a workspace id
+        -- would enumerate that workspace's members from outside it.
+        IF definition !~ 'p_user' THEN
+            RAISE EXCEPTION '% no longer filters by user; it can be pointed at somebody else', fn;
+        END IF;
+
+        -- A soft-deleted workspace is unreachable, not merely hidden
+        -- (docs/32 §Deletion).
+        IF definition !~ 'deleted_at' THEN
+            RAISE EXCEPTION '% admits a soft-deleted workspace', fn;
+        END IF;
+
+        IF config IS NULL OR NOT (config @> ARRAY['search_path=public, pg_temp']) THEN
+            RAISE EXCEPTION '% has no pinned search_path (proconfig = %); a caller could shadow workspace_membership', fn, config;
+        END IF;
+    END LOOP;
+END $$;
+
+DO $$
+DECLARE granted text;
+BEGIN
+    SELECT string_agg(DISTINCT grantee, ',') INTO granted
+      FROM information_schema.role_routine_grants
+     WHERE routine_name IN ('is_workspace_member', 'workspace_ids_for_user')
+       AND grantee NOT IN ('taskforge_owner', current_user, 'tf', 'postgres');
+    IF granted IS NOT NULL AND granted <> 'taskforge_app' THEN
+        RAISE EXCEPTION 'unexpected EXECUTE on the membership seam: %', granted;
+    END IF;
+END $$;
+
+-- --------------------------------------------------------------------------
+-- 10. Every mutable aggregate carries `version` (docs/24 §Optimistic
+--     concurrency, docs/05 principle 5).
+--
+--     `workspace` and `team` were the two that did not, which meant the two
+--     aggregates C-002 makes mutable were the two that could not express
+--     `If-Match`. Listed rather than discovered, because "mutable aggregate" is
+--     a design judgement and not something the catalogue knows.
+-- --------------------------------------------------------------------------
+DO $$
+DECLARE missing text[];
+BEGIN
+    SELECT array_agg(t ORDER BY t) INTO missing
+      FROM unnest(ARRAY['workspace','team','project','task','comment','role',
+                        'saved_view']) t
+     WHERE NOT EXISTS (SELECT 1 FROM pg_attribute a
+                        WHERE a.attrelid = t::regclass
+                          AND a.attname = 'version'
+                          AND a.attnum > 0 AND NOT a.attisdropped);
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'mutable aggregates without a version column: %', missing;
+    END IF;
+END $$;
