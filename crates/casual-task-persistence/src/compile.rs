@@ -209,8 +209,13 @@ pub fn compile(
     // a COUNT over the whole result set.
     let limit = page.limit.saturating_add(1);
 
+    // The projection is the repository's, not `t.*`: `type`, `priority` and
+    // `state` are PostgreSQL enums, and a `SELECT *` hands them back as enums
+    // that no `String` decoder accepts. One projection, defined once, used by
+    // the compiler and by `crate::task::read_visible` alike.
+    let columns = crate::task::COLUMNS;
     let sql = format!(
-        "SELECT t.* FROM task t \
+        "SELECT {columns} FROM task t \
          WHERE t.workspace_id = $1 \
            AND t.project_id = ANY($2) \
            AND t.deleted_at IS NULL \
@@ -238,12 +243,40 @@ fn keyset_predicate(page: &Page, params: &mut Vec<Param>) -> String {
         Direction::Asc => ">",
         Direction::Desc => "<",
     };
-    let key = bind(
-        params,
-        Param::Text(cursor.keys.first().cloned().unwrap_or_default()),
+    // A cursor is transported as text — it has to be, it is base64url JSON —
+    // and every column it resumes against is typed. Without the cast the row
+    // comparison is `timestamptz < text`, which is not an operator PostgreSQL
+    // has: the whole keyset path fails at execution time, and no test that
+    // only inspects the compiler's output can see it. The cast goes on the
+    // PARAMETER, for the reason `cast_for` gives — casting the column instead
+    // would defeat the index and turn every second page into a scan.
+    let key = format!(
+        "{}::{}",
+        bind(
+            params,
+            Param::Text(cursor.keys.first().cloned().unwrap_or_default()),
+        ),
+        cursor_type(page.sort.field)
     );
-    let id = bind(params, Param::Text(cursor.id.to_string()));
+    let id = format!("{}::uuid", bind(params, Param::Text(cursor.id.to_string())));
     format!(" AND ({col}, t.id) {cmp} ({key}, {id})")
+}
+
+/// The PostgreSQL type a cursor's sort key must be cast to.
+///
+/// Exhaustive, so a new sortable field cannot be added without deciding how its
+/// cursor resumes — which is the failure this function exists to prevent.
+fn cursor_type(field: SortField) -> &'static str {
+    match field {
+        SortField::CreatedAt | SortField::UpdatedAt | SortField::DueAt => "timestamptz",
+        SortField::Priority => "task_priority",
+        SortField::StatusPosition => "integer",
+        // `key` sorts by `task.number`, and `position` is already text.
+        SortField::Key => "bigint",
+        SortField::Position => "text",
+        // `rank` is `ts_rank`'s output. Only meaningful with a `q` clause.
+        SortField::Rank => "real",
+    }
 }
 
 /// Push a parameter and return its `$N` placeholder.
@@ -598,10 +631,45 @@ mod tests {
         // tiebreaker mandatory: without it, ties in updated_at make the cursor
         // non-deterministic and a page can repeat or skip a row.
         assert!(
-            c.sql.contains("(t.updated_at, t.id) < ($3, $4)"),
+            c.sql
+                .contains("(t.updated_at, t.id) < ($3::timestamptz, $4::uuid)"),
             "{}",
             c.sql
         );
+    }
+
+    #[test]
+    fn every_cursor_key_is_cast_to_the_type_of_the_column_it_resumes_against() {
+        // A cursor travels as text. Comparing text to a timestamptz column is
+        // not an operator PostgreSQL has, so without these casts the second
+        // page of every list fails at execution time — a failure no assertion
+        // over the compiler's output can see.
+        let cursor = Cursor::new(vec!["x".into()], uuid::Uuid::now_v7());
+        for (field, ty) in [
+            (SortField::CreatedAt, "timestamptz"),
+            (SortField::UpdatedAt, "timestamptz"),
+            (SortField::DueAt, "timestamptz"),
+            (SortField::Priority, "task_priority"),
+            (SortField::StatusPosition, "integer"),
+            (SortField::Key, "bigint"),
+            (SortField::Position, "text"),
+            (SortField::Rank, "real"),
+        ] {
+            let page = Page {
+                sort: Sort {
+                    field,
+                    direction: Direction::Desc,
+                },
+                after: Some(cursor.clone()),
+                limit: 10,
+            };
+            let c = paged(&Node::And(Vec::new()), &page);
+            assert!(
+                c.sql.contains(&format!("::{ty}, $4::uuid)")),
+                "{field:?} resumes without a {ty} cast: {}",
+                c.sql
+            );
+        }
     }
 
     #[test]

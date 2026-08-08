@@ -3,7 +3,7 @@
 Live state of all work. Every non-trivial change gets a row before it is built
 ([11](11-DESIGN-FIRST-PROCESS.md)), and the row moves as it progresses.
 
-**Last updated: 2026-08-08.**
+**Last updated: 2026-08-09.**
 
 ## Status vocabulary (controlled)
 
@@ -85,6 +85,8 @@ The documentation phase. All complete unless noted.
 | D-053 | A closed event-type registry, as the permission set has | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Open** — surfaced by F-009 |
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
+| D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-006. Accept before C-002 closes |
+| D-055 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
@@ -337,9 +339,9 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | `Building` |
 | C-005 | Cross-tenant property suite | `Building` |
-| C-006 | Projects, membership, visibility | Accepted |
+| C-006 | Projects, membership, visibility | `Gated` |
 | C-007 | Default workflow + transitions | `Building` |
-| C-008 | Task CRUD, assignees, tags | Accepted |
+| C-008 | Task CRUD, assignees, tags | `Building` |
 | C-009 | Comments | Accepted |
 | C-010 | Attachment pipeline | Accepted |
 | C-011 | Activity + audit + **outbox** | `Building` |
@@ -981,6 +983,94 @@ schema changes into C-001's first migration: `api_token.token_hash` becomes
 `token_selector` + `verifier_hash`, and the auth-storage tables are added with a
 written exemption in migration 0010's block. `principal_type` is deliberately
 **unchanged**.
+
+**C-006 is `Gated`, and the read/create half of C-008 is in.** Before this, the
+product could log in and log out. It can now create a project, create a task in
+it, and read either back:
+
+```
+GET   /api/v1/projects              list       (cursor)
+POST  /api/v1/projects              create     (Idempotency-Key required)
+GET   /api/v1/projects/{id}         read       (returns an ETag)
+PATCH /api/v1/projects/{id}         update     (If-Match required)
+POST  /api/v1/projects/{id}/tasks   create     (Idempotency-Key required)
+GET   /api/v1/tasks                 list       (cursor)
+GET   /api/v1/tasks/{id}            read       (returns an ETag)
+```
+
+The gate is `cargo test --workspace -- --ignored` in CI: fourteen tests against
+a real PostgreSQL 16, each of which fails without the code it covers. Plus the
+two new indexes in the `schema` job's required list, and three new `EXPLAIN`
+probes in `explain-no-seq-scan` (23 queries, no sequential scan).
+
+**Authority comes from `role_assignment` and nothing else.** Migration 0003 says
+so — "not by a boolean column, not by an `is_admin` flag, and not by project
+membership" — and the handlers ask the C-003 resolver rather than checking
+membership. The consequence is stated plainly rather than worked around: **a
+workspace with no `role_assignment` row can create nothing.** Visibility still
+confers read ([04](04-RBAC-AND-AUTHORIZATION.md): "visibility alone confers
+`project.read` and `task.read`"), so a member with no grants sees the workspace
+and cannot change it. That is the design behaving correctly and it is also a
+product that cannot be used end to end until something seeds the first grant.
+Recorded as **D-054** rather than resolved here: nothing in the design record
+says how a workspace acquires its first owner, and inventing an answer in a
+project handler is exactly what AGENTS.md forbids. It belongs with C-002.
+
+**One judgement call, named.** A project create writes a `project_membership`
+row for its creator. `project_membership` conveys belonging and never capability
+(migration 0003), so this grants nothing — but without it, creating a `PRIVATE`
+project produces something its author cannot read back, and "create then 404"
+is a bug rather than a policy.
+
+**Three things the design record was silent or wrong about, found by building
+this:**
+
+- **The cursor had no cast.** `casual-task-persistence::compile` emitted
+  `(t.updated_at, t.id) < ($3, $4)` with both bound as text. `timestamptz < text`
+  is not an operator PostgreSQL has, so **every second page of every list would
+  have failed at execution time** — and no test could see it, because the whole
+  C-012 suite asserts the compiler's *output*. The same class of bug as the one
+  the read-path exercise found above, in the one place that exercise did not
+  reach. Fixed by casting the parameter (never the column, which would defeat
+  `task_list_ix`), with an exhaustive `cursor_type` so a new sortable field
+  cannot be added without deciding how its cursor resumes.
+- **`SELECT t.*` cannot be decoded.** The compiler's projection returned `type`,
+  `priority` and `state` as PostgreSQL enums, which no `String` decoder accepts.
+  The compiler now selects the repository's explicit column list, cast to
+  `text` — one projection, defined once, used by the compiler and the single
+  read alike.
+- **`docs/24`'s 409 body cannot be produced.** §The conflict response specifies
+  `conflicting_fields` and `your_safe_fields`, which need the pre-image the
+  caller was editing. No request carries one and no table stores one. The
+  response carries `your_version`, `current_version`, `changed_by`, `changed_at`
+  and the full current representation; the two field lists are **absent**, not
+  approximated, because a wrong "these fields are safe to retry" is acted on
+  automatically by the client. **D-055**.
+
+**Also in, because C-006 could not exist without them:** the default workflow
+from [23](23-WORKFLOW-AND-STATE-MACHINE.md) §The default workflow, provisioned
+by the first project create in a workspace and guarded by a partial unique index
+(migration 0019) — the C-007 half that is data rather than behaviour; the
+idempotency protocol from [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) §Idempotency
+for creates, claim and all, against the `idempotency_key` table that has existed
+since migration 0008; and lexicographic board ranks (ADR-013), append-only, with
+the minimum character reserved so a midpoint always exists for the drag path
+that arrives with C-018.
+
+**Not in C-008 yet:** update, delete, transitions, assignees, tags,
+dependencies, and the filter grammar on `GET /tasks` beyond `project_id`.
+`GET /tasks` compiles through the C-012 compiler, so adding the grammar is
+supplying a richer AST rather than a second query path.
+
+**One pre-existing divergence, reported rather than fixed.** `ApiError`'s
+original codes — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` —
+use areas that [20](20-ERROR-CODE-REGISTRY.md) does not define, and
+`ApiError::forbidden` uses `TF-AUT-0002`, which the registry assigns to "session
+expired". Every code added by C-006 and C-008 is copied from the registry, so
+the two sets now disagree in one direction only. Fixing the originals changes
+responses C-001 already ships and is a separate change; there is also no gate
+asserting that an emitted code exists in the registry, which is why it was
+possible.
 
 ## Phases 2–4
 

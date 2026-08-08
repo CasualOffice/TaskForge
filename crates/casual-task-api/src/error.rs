@@ -61,6 +61,64 @@ pub mod codes {
     pub const UNAVAILABLE: Code = Code::new("TF-SRV-0003");
     /// Anything unhandled.
     pub const INTERNAL: Code = Code::new("TF-SRV-0001");
+
+    // ---------------------------------------------------------------------
+    // C-006 / C-008. Every code below is copied from `docs/20`, area and
+    // number, rather than invented — a code that is not in that registry is a
+    // code no client can look up and the `docs` URL in the envelope 404s.
+    // ---------------------------------------------------------------------
+
+    /// Malformed request body.
+    pub const MALFORMED_BODY: Code = Code::new("TF-VAL-0001");
+    /// Unknown field in request. `docs/05`: "silently ignoring a typo'd field
+    /// is how clients ship bugs that look like server bugs".
+    pub const UNKNOWN_FIELD: Code = Code::new("TF-VAL-0002");
+    /// Required field missing.
+    pub const MISSING_FIELD: Code = Code::new("TF-VAL-0003");
+    /// Field value out of range.
+    pub const OUT_OF_RANGE: Code = Code::new("TF-VAL-0004");
+    /// Invalid enum value.
+    pub const INVALID_ENUM: Code = Code::new("TF-VAL-0005");
+    /// Referenced entity not found.
+    pub const REFERENCE_NOT_FOUND: Code = Code::new("TF-VAL-0007");
+
+    /// Permission denied — no grant carried it.
+    pub const NO_GRANT: Code = Code::new("TF-AZN-0001");
+    /// Permission denied — a grant carried it, but not for this object.
+    pub const CONSTRAINT_UNSATISFIED: Code = Code::new("TF-AZN-0002");
+
+    /// Invalid or expired cursor.
+    pub const BAD_CURSOR: Code = Code::new("TF-QRY-0006");
+    /// Page size over limit.
+    pub const PAGE_TOO_LARGE: Code = Code::new("TF-QRY-0007");
+
+    /// Project not found or not visible — never disambiguated.
+    pub const PROJECT_NOT_FOUND: Code = Code::new("TF-PRJ-0001");
+    /// Project key already in use.
+    pub const PROJECT_KEY_TAKEN: Code = Code::new("TF-PRJ-0002");
+    /// Project key is immutable (ADR-007).
+    pub const PROJECT_KEY_IMMUTABLE: Code = Code::new("TF-PRJ-0003");
+    /// Project key format invalid.
+    pub const PROJECT_KEY_FORMAT: Code = Code::new("TF-PRJ-0004");
+
+    /// Task not found or not visible — never disambiguated.
+    pub const TASK_NOT_FOUND: Code = Code::new("TF-TSK-0001");
+    /// Parent task must be in the same project (ADR-018).
+    pub const PARENT_OUT_OF_PROJECT: Code = Code::new("TF-TSK-0006");
+
+    /// Version conflict.
+    pub const VERSION_CONFLICT: Code = Code::new("TF-CNC-0001");
+    /// `If-Match` required.
+    pub const IF_MATCH_REQUIRED: Code = Code::new("TF-CNC-0002");
+    /// Malformed `If-Match`.
+    pub const IF_MATCH_MALFORMED: Code = Code::new("TF-CNC-0003");
+
+    /// A request with this idempotency key is already in progress.
+    pub const IDEMPOTENCY_IN_PROGRESS: Code = Code::new("TF-IDM-0001");
+    /// Idempotency key reused with a different body.
+    pub const IDEMPOTENCY_BODY_CHANGED: Code = Code::new("TF-IDM-0002");
+    /// Idempotency key required.
+    pub const IDEMPOTENCY_REQUIRED: Code = Code::new("TF-IDM-0003");
 }
 
 /// An error on its way to a client.
@@ -181,6 +239,74 @@ impl ApiError {
             StatusCode::INTERNAL_SERVER_ERROR,
             codes::INTERNAL,
             "Something went wrong",
+            request_id,
+        )
+    }
+
+    /// 400 with a registry code — malformed body, unknown field, bad cursor.
+    #[must_use]
+    pub fn bad_request(
+        code: Code,
+        message: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, code, message, request_id)
+    }
+
+    /// 404 with the resource's own registry code.
+    ///
+    /// The **code** differs per resource; the shape does not, and neither does
+    /// the answer for "absent" and "invisible" — `docs/04` requires those two
+    /// to be indistinguishable, and they are, because one handler returns this
+    /// for both.
+    #[must_use]
+    pub fn missing(code: Code, request_id: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, code, "Not found", request_id)
+    }
+
+    /// 403 for an authorization denial on a resource the actor **can** see.
+    ///
+    /// `docs/20`: `TF-AZN-0001` and `-0002` are distinct on purpose — "you were
+    /// never given this" and "you have it, but not for this object" lead a user
+    /// to different actions.
+    #[must_use]
+    pub fn denied(code: Code, request_id: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            code,
+            "You do not have permission to do that",
+            request_id,
+        )
+    }
+
+    /// 422 — valid syntax, violates a domain rule.
+    #[must_use]
+    pub fn unprocessable(
+        code: Code,
+        message: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, code, message, request_id)
+    }
+
+    /// 409 — a conflict with the resource's current state.
+    #[must_use]
+    pub fn conflict(code: Code, message: impl Into<String>, request_id: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, code, message, request_id)
+    }
+
+    /// 428 — `If-Match` is required.
+    ///
+    /// `docs/05`: "a client that forgets `If-Match` has a bug, and failing
+    /// loudly in development is better than losing a user's edit in
+    /// production." There is deliberately no way to perform an unconditional
+    /// update, so this is not a mode anything can opt out of.
+    #[must_use]
+    pub fn precondition_required(request_id: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::PRECONDITION_REQUIRED,
+            codes::IF_MATCH_REQUIRED,
+            "If-Match is required for this request",
             request_id,
         )
     }

@@ -180,6 +180,8 @@ drop rather than a `DELETE` of millions of rows.
 | Index | Definition | Serves |
 | --- | --- | --- |
 | `project_ws_ix` | `(workspace_id, archived_at)` | project list |
+| `project_list_ix` | `(workspace_id, created_at DESC, id DESC)` `WHERE deleted_at IS NULL` | the project list's **cursor** — `project_ws_ix` supplies the tenant filter but no order, so every page would sort without this. Same shape as `task_list_ix`, one level up (migration 0019, C-006) |
+| `workflow_default_uq` | `UNIQUE (workspace_id)` `WHERE is_default` | one default workflow per workspace. The first project create in a workspace provisions it ([23](23-WORKFLOW-AND-STATE-MACHINE.md) §The default workflow), and two concurrent first creates would otherwise each insert one with no error anywhere (migration 0019, C-006) |
 | `project_key_uq` | `UNIQUE (workspace_id, key)` | key allocation |
 | `tag_scope_uq` | `UNIQUE (workspace_id, project_id, name)` | tag uniqueness + typeahead |
 | `comment_task_ix` | `(task_id, created_at)` | comment thread |
