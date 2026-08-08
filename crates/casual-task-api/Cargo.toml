@@ -26,6 +26,9 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 time = { workspace = true }
 thiserror = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
@@ -34,6 +37,12 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 tower = { workspace = true, features = ["util"] }
 casual-task-observability = { workspace = true }
+casual-task-identity = { workspace = true }
+casual-task-persistence = { workspace = true, features = ["test-support"] }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

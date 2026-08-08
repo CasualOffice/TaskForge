@@ -27,6 +27,7 @@ fn unreachable_database() -> (AppState, axum::Router) {
     let state = AppState {
         pool,
         metrics: Arc::new(Recorder::new()),
+        secret_key: "test-key-long-enough-for-the-config-check".into(),
     };
     (state.clone(), router(state))
 }

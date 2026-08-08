@@ -137,6 +137,7 @@ async fn run() -> ExitCode {
     let state = AppState {
         pool,
         metrics: Arc::new(Recorder::new()),
+        secret_key: config.secret_key.clone().into(),
     };
     match casual_task_api::serve(listener, state).await {
         Ok(()) => ExitCode::SUCCESS,
