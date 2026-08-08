@@ -21,8 +21,15 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > lints, the full database schema with row-level security proven against a real
 > PostgreSQL 16, a deployable container image with a verified deployment path,
 > a deterministic 2,000,000-task reference corpus, an `EXPLAIN` gate proving all
-> 20 read paths are index-served with no sequential scan, and the ADR-024 bundle
+> 20 read paths are index-served on every pull request, and the ADR-024 bundle
 > budget measured at 113.2 KiB of 200.
+>
+> That `EXPLAIN` gate runs against a reduced corpus, and **a green run does not
+> mean the rule holds at reference scale** — measured, not assumed: full-text
+> search degrades to a sequential scan under row-level security at 2 M tasks
+> (**D-043**). A number of design decisions are open, and are tracked as `D-###`
+> rows rather than resolved quietly in code — several of them opened by auditing
+> Phase 0's own work.
 >
 > **No product functionality exists yet** — the binaries are scaffolds, by
 > design. Phase 0 builds none; it exists to make every later phase verifiable.
@@ -124,6 +131,19 @@ division: [docs/19-WORKSPACE-SCAFFOLD-DESIGN.md](docs/19-WORKSPACE-SCAFFOLD-DESI
 | `casual-task-api` | The API binary: Axum routers, tower middleware, DTOs, OpenAPI, SSE |
 | `casual-task-worker` | The worker binary: dispatch, projection, notify, webhook, scan, automation, retention |
 
+Alongside them, `tools/` holds the machinery that makes the claims above
+checkable. None of it ships in the image:
+
+| Tool | What it is for |
+| --- | --- |
+| `casual-task-lint` | The architecture lints: illegal dependency, SQL outside persistence, HTTP outside the API, `OFFSET`, unbounded channels, an `AuthContext` minted off the edge |
+| `casual-task-seed` | The deterministic reference corpus — 2,000,000 tasks and 39 M rows, byte-identical between runs, streamed at a ~26 MiB peak RSS |
+| `casual-task-loadtest` | Measures 10 read paths against a seeded corpus and refuses to compare two runs that are not comparable |
+
+`webapp/` is not the product frontend. It is the bundle-floor harness behind
+ADR-024's budget — enough of the real dependency set to measure it honestly,
+and nothing else ([webapp/BUNDLE-FLOOR.md](webapp/BUNDLE-FLOOR.md)).
+
 ## Prior art we study
 
 Openly, and on the record ([docs/12](docs/12-COMPETITIVE-ANALYSIS.md)):
@@ -145,11 +165,29 @@ Openly, and on the record ([docs/12](docs/12-COMPETITIVE-ANALYSIS.md)):
 ### Develop
 
 ```sh
-docker compose up -d              # PostgreSQL for local development
-cargo test --workspace            # test suite
-cargo run -p casual-task-lint     # architecture lints (docs/15)
-./scripts/verify-schema.sh        # apply migrations + assert the invariants
-./scripts/check.sh                # everything CI runs
+docker compose up -d               # PostgreSQL for local development
+cargo test --workspace             # test suite
+cargo run -p casual-task-lint      # architecture lints (docs/15)
+./scripts/verify-schema.sh         # migrations + tenant isolation + append-only
+./scripts/verify-queries.sh        # no sequential scan on a tenant-scale table
+./scripts/check.sh                 # the CI gate set; names anything it skipped
+```
+
+`check.sh` deliberately does **not** claim to be everything CI runs. Gates that
+need Docker, `pnpm`, or `cargo-deny` are skipped loudly and listed at the end,
+because a green local run with silent skips is a worse lie than an honest one.
+
+Working with a corpus:
+
+```sh
+cargo run --release -p casual-task-seed -- --scale small --out target/corpus
+#   tiny 5 MiB · small 263 MiB · reference 10.2 GiB — check disk before reference
+cd target/corpus && ./load.sh "$DATABASE_URL"
+
+cargo run --release -p casual-task-loadtest -- cases     # what is and is not measured
+cargo run --release -p casual-task-loadtest -- run --help
+
+pnpm --dir webapp install --frozen-lockfile && pnpm --dir webapp measure
 ```
 
 ### Deploy
