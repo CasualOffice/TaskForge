@@ -21,8 +21,10 @@ pub mod auth;
 pub mod config;
 pub mod csrf;
 pub mod error;
+pub mod middleware;
 pub mod server;
 
 pub use config::{Config, ConfigError};
 pub use error::ApiError;
+pub use middleware::{Authenticated, WorkspaceMember};
 pub use server::{AppState, router, serve};

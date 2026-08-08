@@ -68,6 +68,18 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/auth/logout",
             axum::routing::post(crate::auth::logout),
         )
+        .route("/api/v1/auth/session", get(crate::middleware::whoami))
+        // CSRF sits over every route, so a route added later cannot be added
+        // beside it. docs/05: "every unsafe method without a valid token is
+        // rejected" — every, not most.
+        //
+        // Under `observe`, so that a CSRF rejection still gets a request id and
+        // still counts in the metrics. A refusal nobody can measure is a
+        // refusal nobody notices.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::csrf_guard,
+        ))
         .layer(axum::middleware::from_fn_with_state(state.clone(), observe))
         .with_state(state)
 }
@@ -232,6 +244,7 @@ pub const ROUTES: &[&str] = &[
     "/metrics",
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
+    "/api/v1/auth/session",
     "unmatched",
 ];
 
@@ -296,6 +309,7 @@ mod tests {
             "/metrics",
             "/api/v1/auth/login",
             "/api/v1/auth/logout",
+            "/api/v1/auth/session",
         ] {
             assert!(
                 declared_route(route).is_some(),
