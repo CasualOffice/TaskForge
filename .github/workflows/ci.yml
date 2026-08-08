@@ -76,6 +76,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/verify-schema.sh
+      # The Rust side of the same ground (F-005). verify-schema.sh above is the
+      # gate and stays the gate; this proves the testcontainers harness Phase 1
+      # will build its repository tests on still starts a PostgreSQL 16, applies
+      # every migration, and can reach the invariants from Rust. It is #[ignore]
+      # by default so `cargo test` stays runnable without a Docker daemon, which
+      # means CI is the only place it runs — so CI has to run it, or it rots.
+      - name: The testcontainers harness still works (F-005)
+        run: cargo test -p casual-task-persistence --test schema_harness -- --ignored
 
   # docs/26 NFR-5 / ADR-011: no user-reachable query performs a sequential scan
   # on a tenant-scale table. Every query in tests/explain/queries/ is planned as

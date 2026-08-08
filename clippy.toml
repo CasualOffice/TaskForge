@@ -34,11 +34,25 @@ disallowed-methods = [
     { path = "async_channel::unbounded", reason = "unbounded queue — docs/24 §Backpressure; use async_channel::bounded(n)" },
     { path = "std::sync::mpsc::channel", reason = "std's mpsc::channel is unbounded — docs/24 §Backpressure; use std::sync::mpsc::sync_channel(n)" },
 
-    # ── Blocking inside async (docs/30 §Anti-patterns) ───────────────────────
-    # Blocking a runtime worker thread stalls every task scheduled on it, and
-    # the symptom is unrelated latency somewhere else entirely.
-    { path = "std::thread::sleep", reason = "blocks the runtime worker thread — use tokio::time::sleep in async code" },
-    { path = "tokio::runtime::Runtime::block_on", reason = "block_on inside a runtime panics or deadlocks — restructure, or use spawn_blocking at the edge" },
+    # ── NOT BANNED HERE: blocking-inside-async ───────────────────────────────
+    #
+    # `std::thread::sleep` and `Runtime::block_on` were both banned here and
+    # both have been removed, because a path cannot express the hazard.
+    # `block_on` is what `#[tokio::test]` and `main` legitimately do; sleeping
+    # is what a synchronous CLI does. The same path is correct outside a
+    # runtime and wrong inside one, and clippy sees only the path.
+    #
+    # Two false positives in one day made the cost concrete: an allow in
+    # tools/casual-task-loadtest/src/db.rs, and every `#[tokio::test]` in
+    # crates/casual-task-persistence. Phase 1 would add one suppression per
+    # async test — and `#[allow(clippy::disallowed_methods)]` is not selective,
+    # so each of those would ALSO switch off the unbounded-queue checks in that
+    # file. A ban that has to be suppressed everywhere protects nothing and
+    # takes the working rules down with it.
+    #
+    # The hazard is real and is caught elsewhere: tokio panics at runtime on
+    # `block_on` inside a runtime, and docs/30 §Anti-patterns already assigns
+    # blocking-in-async to a `tokio-console` check rather than a lint.
 ]
 
 disallowed-types = [

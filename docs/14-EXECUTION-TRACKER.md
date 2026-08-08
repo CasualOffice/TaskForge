@@ -254,7 +254,7 @@ implementation:
 | F-002 | Toolchain pin, MSRV ADR, `deny.toml` | **Gated** | — |
 | F-003 | CI: fmt, clippy, deny, nextest | **Gated** | F-001 |
 | F-004 | Custom architecture lints ([15](15-CI-AND-RELEASE-GATES.md)) | **Gated** | F-001 |
-| F-005 | PostgreSQL testcontainers harness + migration runner | `Building` | F-001 |
+| F-005 | PostgreSQL testcontainers harness + migration runner | **Gated** | — |
 | F-006 | `tools/casual-task-seed` reference corpus | **Gated** | F-005 |
 | F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
 | F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
@@ -354,13 +354,17 @@ Remaining Phase 0:
   the `dependency-policy` job, but the MSRV ADR the row names does not exist —
   **D-044**. `rust-version = "1.90.0"` is currently a number with no accepted
   decision behind it.
-- **F-005** is `Building`. The migration runner exists and is gated
-  (`scripts/verify-schema.sh`), but the *testcontainers* half of the row does
-  not: there is no `testcontainers` dependency anywhere in the workspace. The
-  schema and query gates use a service container directly instead. The Rust
-  harness arrives with the first repository that needs one, and
-  [15](15-CI-AND-RELEASE-GATES.md) §Pending gates records the `Integration` gate
-  as waiting on it.
+- **F-005** is `Gated`. Both halves now exist: `scripts/verify-schema.sh` is
+  the gate, and `crates/casual-task-persistence/tests/schema_harness.rs` is the
+  seam Phase 1 builds on — it starts PostgreSQL 16 through testcontainers,
+  applies every migration in lexical order, and reaches the invariants from
+  Rust rather than from shell. The tests are `#[ignore]`, so `cargo test` still
+  runs on a machine with no Docker daemon; the `schema` job runs them
+  explicitly, because a test nobody runs is not a test.
+
+  Adding `sqlx`, `tokio` and `testcontainers` did **not** move the MSRV: the
+  workspace still builds and tests on 1.88.0, which is the first real exercise
+  of ADR-031's rule.
 - **F-013** is unchanged and unverifiable from here: [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md)
   §Threat model is written, but nothing records that a *review* happened. If one
   did, the row should say so and by whom; if not, it is Phase 0 work still open.
