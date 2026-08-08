@@ -15,24 +15,24 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 [OpenCalc](https://github.com/CasualOffice/opencalc) (Casual Sheets) and
 [OpenDoc](https://github.com/CasualOffice/opendoc) (Casual Editor).
 
-> **Status: Phase 0 — foundation.** The design record is complete (numbered
-> documents in `docs/`, 30 accepted ADRs, covering Phases 0 through 4). Landed
-> and gated: the Cargo workspace and its enforced dependency DAG, architecture
-> lints, the full database schema with row-level security proven against a real
-> PostgreSQL 16, a deployable container image with a verified deployment path,
-> a deterministic 2,000,000-task reference corpus, an `EXPLAIN` gate proving all
-> 20 read paths are index-served on every pull request, and the ADR-024 bundle
-> budget measured at 113.2 KiB of 200.
+> **Status: Phase 0 closed; Phase 1 — usable core — open.** The design record
+> covers Phases 0 through 4 (numbered documents in `docs/`, 32 accepted ADRs).
 >
-> That `EXPLAIN` gate runs against a reduced corpus, and **a green run does not
-> mean the rule holds at reference scale** — measured, not assumed: full-text
-> search degrades to a sequential scan under row-level security at 2 M tasks
-> (**D-043**). A number of design decisions are open, and are tracked as `D-###`
-> rows rather than resolved quietly in code — several of them opened by auditing
-> Phase 0's own work.
+> Phase 0 built no product functionality, by design — it built the ability to
+> tell when a later phase is wrong. Gated on every pull request: the enforced
+> dependency DAG, architecture lints, the database schema with row-level
+> security proven as the non-superuser role, a deployable image with a verified
+> deployment path, a deterministic 2,000,000-task reference corpus, an `EXPLAIN`
+> gate over all 20 read paths, and the ADR-024 bundle budget measured at 113.2
+> KiB of 200.
 >
-> **No product functionality exists yet** — the binaries are scaffolds, by
-> design. Phase 0 builds none; it exists to make every later phase verifiable.
+> Two things that gate honestly rather than flatteringly: the `EXPLAIN` gate
+> runs against a reduced corpus, and **a green run does not mean the rule holds
+> at reference scale** — full-text search degrades to a sequential scan under
+> row-level security at 2 M tasks (**D-043**). And the Phase 0 threat-model
+> review was conducted by an agent, says so, and asks to be countersigned.
+>
+> **Phase 1 has started.** The permission resolver is the first piece.
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 ## The problem
