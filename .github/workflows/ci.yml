@@ -51,6 +51,29 @@ jobs:
       - uses: actions/checkout@v4
       - run: cargo test --workspace --all-features --locked
 
+  # Applies every migration to a clean PostgreSQL 16 and asserts the schema
+  # invariants — including tenant isolation and append-only history, which are
+  # verified as the NON-SUPERUSER application role because neither guarantee
+  # holds for a superuser (migration 0012, docs/32).
+  schema:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tf
+          POSTGRES_PASSWORD: tf
+          POSTGRES_DB: tf
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tf"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TF_VERIFY_DSN: postgres://tf:tf@127.0.0.1:5432/tf
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify-schema.sh
+
   docs:
     runs-on: ubuntu-latest
     env:
