@@ -221,10 +221,16 @@ async fn metrics_are_served_in_the_prometheus_exposition_format() {
 }
 
 #[tokio::test]
-async fn an_unrouted_path_creates_no_metric_series() {
+async fn an_unrouted_path_is_counted_under_one_series_and_never_its_own() {
     // docs/46 §Cardinality discipline. The path is attacker-controlled: without
     // interning against the router's own table, every 404 to a random URL would
     // permanently add a time series.
+    //
+    // Asserted in both directions on purpose. This test used to check only that
+    // the paths were absent, which an empty body satisfies — so a recorder that
+    // had stopped recording entirely, or a `/metrics` route that returned
+    // nothing, passed it while every dashboard in docs/50 went blank. The
+    // 404s must land, all three of them, on the single `unmatched` series.
     let (_, app) = unreachable_database();
 
     for path in ["/../../etc/passwd", "/api/v1/tasks/018f2c", "/wp-admin"] {
@@ -257,4 +263,31 @@ async fn an_unrouted_path_creates_no_metric_series() {
             "{path} reached the metrics body as a label:\n{body}"
         );
     }
+
+    // The other half: the three requests are still *measured*, folded into the
+    // one interned `unmatched` series. A 404 flood is something an operator has
+    // to be able to see; silence here would be indistinguishable from the
+    // absence checks above passing because nothing records at all.
+    assert!(
+        body.contains("# TYPE http_requests_total counter"),
+        "the request counter is missing entirely:\n{body}"
+    );
+    assert!(
+        body.contains(
+            r#"http_requests_total{method="GET",route="unmatched",status_class="4xx"} 3"#
+        ),
+        "the three unrouted requests did not reach the unmatched series:\n{body}"
+    );
+    // And the duration histogram, which is recorded through a second, separate
+    // path in `record` — one of the two has been silently dropped before.
+    assert!(
+        body.contains(r#"http_request_duration_seconds_count{method="GET",route="unmatched"} 3"#),
+        "the unrouted requests were counted but not timed:\n{body}"
+    );
+    assert!(
+        body.contains(
+            r#"http_request_duration_seconds_bucket{method="GET",route="unmatched",le="+Inf"} 3"#
+        ),
+        "the duration histogram disagrees with its own count:\n{body}"
+    );
 }

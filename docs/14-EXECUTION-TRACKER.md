@@ -721,7 +721,18 @@ reason is the crate's own invariant: `LabelValue` has no `From<String>`, no
 become a label. Every general-purpose metrics facade takes labels as `&str`
 pairs; putting one underneath this crate would turn a compile error into a
 convention at the call site. The cost — owning the exposition format, the
-buckets and the locking — is stated in the module.
+buckets and the concurrency — is stated in the module.
+
+**One third of that cost came due.** The first recorder put a single
+process-wide mutex around one map, and every HTTP request took it twice — the
+RED counter and the duration histogram — while `GET /metrics` took the same one
+and held it across the whole render. The metrics layer was a serialisation point
+on the path it exists to measure, and a scrape stalled every request in flight.
+It is now sharded, atomic, and snapshot-then-format, with the ordering rules and
+the stated cost in [46](46-OBSERVABILITY-AND-OPERATIONS.md) §The recorder is on
+the request path. Three tests hold it: N threads × M increments render as exactly
+N×M, a scrape running throughout loses no observation, and no scrape taken
+mid-observation sees a histogram whose cumulative counts go backwards.
 
 Buckets are chosen against [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) rather
 than copied: p95 read < 150 ms, so there is a boundary *at* 0.150 and four more
