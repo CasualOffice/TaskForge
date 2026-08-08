@@ -60,9 +60,13 @@ else
 fi
 
 # ── the database gates ────────────────────────────────────────────────────────
-# Both start their own PostgreSQL 16 container and tear it down again.
+# Each starts its own PostgreSQL 16 container and tears it down again.
 if docker info >/dev/null 2>&1; then
   run ./scripts/verify-schema.sh
+  # docs/50's queries are read during an incident by someone who cannot tell a
+  # stale query from a correct one until it errors. Migration 0013 broke every
+  # query in two runbooks and nothing said so.
+  run ./scripts/verify-runbooks.sh
   run ./scripts/verify-queries.sh
 else
   skip "schema" "Docker is not running"
