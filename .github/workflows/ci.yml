@@ -82,10 +82,13 @@ jobs:
       # every migration, and can reach the invariants from Rust. It is #[ignore]
       # by default so `cargo test` stays runnable without a Docker daemon, which
       # means CI is the only place it runs — so CI has to run it, or it rots.
-      - name: The testcontainers harness and the tenant-isolation suite (F-005, C-005)
-        # Every ignored test in the crate, not one named file: a new suite added
-        # beside these would otherwise be written, pass locally, and never run.
-        run: cargo test -p casual-task-persistence -- --ignored
+      - name: Every Docker-backed suite (F-005, C-005, C-011)
+        # --workspace, not -p: the same argument that made this "every ignored
+        # test in the crate rather than one named file" applies a level up. The
+        # C-011 acceptance gate lives in casual-task-worker, and pinning this to
+        # one crate meant a new crate's suites would be written, pass locally,
+        # and never run here — which is the only place they run at all.
+        run: cargo test --workspace -- --ignored
 
   # docs/26 NFR-5 / ADR-011: no user-reachable query performs a sequential scan
   # on a tenant-scale table. Every query in tests/explain/queries/ is planned as
@@ -184,6 +187,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Internal documentation links resolve
         run: python3 scripts/check-doc-links.py
+
+      - name: README phase progress matches the execution tracker
+        # Derived, not typed. A percentage in a second place has no reason to
+        # change when the tracker does, which is exactly how the status badge
+        # went a week out of date.
+        run: python3 scripts/phase-progress.py --check
       - name: Reject merge-conflict markers
         run: |
           if git grep -nE '^(<{7}|={7}|>{7})( |$)' -- ':!*.yml' ; then

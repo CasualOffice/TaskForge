@@ -45,8 +45,9 @@ Beyond RED, these are the ones that describe *this* system's health:
 
 | Metric | Why it matters |
 | --- | --- |
-| `outbox_lag_seconds` (p50/p95/max) — **see D-047** | **The primary health signal.** Moves first under database pressure, consumer failure, or a dead worker. What it *measures* is not settled: the registry models it as a histogram while the help text describes the age of the single oldest pending event, which is a gauge quantity. The §Alerts page condition and the §SLOs target below both rest on this. |
-| `outbox_dlq_depth` | Events that gave up. Never expected to be non-zero. |
+| `outbox_lag_seconds` — **gauge**, by `consumer` (D-047, settled) | **The primary health signal.** Moves first under database pressure, consumer failure, or a dead worker. It is the age of the oldest **actionable** pending delivery: a single current value, so a gauge — there is only ever one oldest, and a histogram would report percentiles over repeated readings of the same number. "Actionable" excludes deliveries inside their backoff window and deliveries already dead-lettered; counting those would make the primary signal rise during normal retry behaviour and stay high forever after one permanent failure. |
+| `outbox_dlq_depth` — gauge, by `consumer` and `event_type` | Deliveries that gave up. Never expected to be non-zero. A dead letter is one `(event, consumer)` pair since migration [0013](../migrations/0013_outbox_delivery.sql), not an event — "which consumer" is the first question RB-02 asks. |
+| `outbox_dispatch_total` — counter, by `consumer` and `outcome` | Delivery attempts and how they ended. Answers "is the dispatcher running at all", which the lag gauge cannot distinguish from "it is running and everything is slow". |
 | `search_projection_lag_seconds` | How stale search is |
 | `authz_resolution_duration` + cache hit ratio | Permission cost, on every request |
 | `authz_epoch_bumps_total` | Cache churn; a spike means mass permission change |

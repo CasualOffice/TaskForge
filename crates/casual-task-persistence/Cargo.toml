@@ -7,6 +7,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Off by default: a release build must not contain `expire_all_claims`.
+test-support = []
+
 [dependencies]
 sqlx = { workspace = true }
 casual-task-model = { workspace = true }
@@ -21,7 +25,7 @@ workspace = true
 [dev-dependencies]
 time = { workspace = true }
 uuid = { workspace = true }
-casual-task-persistence = { path = "." }
+casual-task-persistence = { path = ".", features = ["test-support"] }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 testcontainers = { workspace = true }

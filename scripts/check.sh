@@ -34,6 +34,10 @@ run env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-dep
 
 # ── documentation ─────────────────────────────────────────────────────────────
 run python3 scripts/check-doc-links.py
+# The README's phase percentages are derived from the tracker, not typed. This
+# is the check that keeps them honest — the status badge that still said
+# "Phase 0" a week after Phase 0 closed is what a number in a second place does.
+run python3 scripts/phase-progress.py --check
 printf '\n\033[1m▸ merge-conflict markers and banned words\033[0m\n'
 if git grep -nE '^(<{7}|={7}|>{7})( |$)' -- ':!*.yml'; then
   echo "merge-conflict markers found" >&2

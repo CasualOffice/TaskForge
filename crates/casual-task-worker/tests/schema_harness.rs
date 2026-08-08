@@ -1,33 +1,21 @@
-//! The PostgreSQL test harness (F-005), and the first assertions that use it.
+//! A PostgreSQL container with the migrations applied.
 //!
-//! # Why this exists when `scripts/verify-schema.sh` already passes
+//! **This duplicates `casual-task-persistence/tests/schema_harness.rs`.** Said
+//! plainly rather than left to be discovered: integration tests are per-crate
+//! binaries, and there is no test-support crate to share this from. Two copies
+//! can drift, and the drift would be silent — a worker test passing against a
+//! schema the persistence tests no longer describe.
 //!
-//! That script is the gate, and it stays the gate. What it cannot do is hand a
-//! *connection* to a Rust test. Every repository written in Phase 1 needs a
-//! real PostgreSQL with the migrations applied — `sqlx` is compile-time checked
-//! against a live schema, and the tenant-isolation suites in `docs/15` are
-//! per-endpoint Rust tests, not shell assertions. Building that seam now means
-//! C-001's first repository test starts with a database instead of inventing
-//! one.
+//! Consolidating it into a shared dev crate changes the workspace dependency
+//! DAG that `docs/19` fixes and `casual-task-lint` enforces, which is a design
+//! decision, not a refactor. Recorded as **D-052** rather than made here.
 //!
-//! # Why it is `#[ignore]` by default
-//!
-//! It needs a working Docker daemon and pulls a ~250 MB image on a cold cache.
-//! `cargo test` must stay runnable on a laptop with no daemon and on a CI job
-//! that did not ask for one, so these are opt-in:
-//!
-//! ```text
-//! cargo test -p casual-task-persistence -- --ignored
-//! ```
-//!
-//! The cost of that choice, stated: an ignored test is one nobody runs. It is
-//! acceptable here only because the same invariants are gated unconditionally
-//! by `scripts/verify-schema.sh` in CI — this harness is a *seam*, not a second
-//! gate, and the day it becomes the only thing asserting something it must
-//! stop being ignored.
+//! This copy is deliberately trimmed to the container and the migration runner.
+//! The schema assertions stay in the persistence crate, so they cannot run
+//! twice and disagree.
 
 use anyhow::{Context, Result};
-use sqlx::{Executor, PgPool, Row};
+use sqlx::{Executor, PgPool};
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
@@ -83,6 +71,9 @@ impl TestDatabase {
     /// Tests that assert row-level security MUST connect as this role: RLS is
     /// inert for a superuser (migration 0012), so the same assertions run as
     /// the owner would pass while proving nothing.
+    // Unused by the acceptance gate, which connects as the owner; kept so the
+    // two copies of this harness stay comparable.
+    #[allow(dead_code)]
     pub fn app_url(&self) -> String {
         format!(
             "postgres://taskforge_app:apppw@127.0.0.1:{}/postgres",
@@ -138,59 +129,4 @@ fn migrations() -> Result<Vec<(String, String)>> {
             Ok((name, sql))
         })
         .collect()
-}
-
-#[tokio::test]
-#[ignore = "needs Docker; run with --ignored"]
-async fn every_migration_applies_to_a_clean_postgres_16() -> Result<()> {
-    let db = TestDatabase::start().await?;
-
-    // A schema that applied but produced no tables would satisfy a naive
-    // "did it error?" check.
-    let tables: i64 = sqlx::query("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")
-        .fetch_one(&db.pool)
-        .await?
-        .get(0);
-    assert!(
-        tables > 20,
-        "only {tables} tables after applying every migration"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "needs Docker; run with --ignored"]
-async fn the_harness_reaches_the_invariants_the_shell_gate_asserts() -> Result<()> {
-    // The point of this test is not the assertions — verify-schema.sh already
-    // gates them, unconditionally, in CI. It is that a Rust test can reach
-    // them, which is what Phase 1's per-endpoint tenant-isolation suites need.
-    let db = TestDatabase::start().await?;
-
-    let unprotected: Vec<String> = sqlx::query_scalar(
-        "SELECT c.relname
-           FROM pg_class c
-           JOIN pg_namespace n ON n.oid = c.relnamespace
-           JOIN pg_attribute a ON a.attrelid = c.oid
-          WHERE n.nspname = 'public'
-            AND c.relkind IN ('r', 'p')
-            AND a.attname = 'workspace_id'
-            AND NOT c.relrowsecurity
-            AND c.relname <> 'outbox_event'",
-    )
-    .fetch_all(&db.pool)
-    .await?;
-    assert!(
-        unprotected.is_empty(),
-        "tables carry workspace_id without row-level security: {unprotected:?}"
-    );
-
-    let app_is_superuser: bool =
-        sqlx::query_scalar("SELECT rolsuper FROM pg_roles WHERE rolname = 'taskforge_app'")
-            .fetch_one(&db.pool)
-            .await?;
-    assert!(
-        !app_is_superuser,
-        "the application role is a superuser, which makes RLS inert (migration 0012)"
-    );
-    Ok(())
 }

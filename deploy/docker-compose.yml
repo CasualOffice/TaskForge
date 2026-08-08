@@ -25,12 +25,15 @@ services:
       # healthy with no application role — at which point the app connects as
       # the owner and RLS is silently inert. Failing at `up` is the point.
       TASKFORGE_DB_PASSWORD: ${TASKFORGE_DB_PASSWORD:?set TASKFORGE_DB_PASSWORD in .env}
+      # Same reasoning, second role: the dispatcher bypasses RLS, so it is a
+      # separate credential rather than a capability added to the one above.
+      TASKFORGE_DISPATCHER_PASSWORD: ${TASKFORGE_DISPATCHER_PASSWORD:?set TASKFORGE_DISPATCHER_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Runs once on an empty data directory: creates the non-superuser
-      # application role. Without it the app connects as the owner, and a
-      # superuser bypasses RLS unconditionally — tenant isolation and
-      # append-only history would both be inert (migration 0012).
+      # application role and the dispatcher. Without it the app connects as the
+      # owner, and a superuser bypasses RLS unconditionally — tenant isolation
+      # and append-only history would both be inert (migration 0012).
       - ./init-app-role.sh:/docker-entrypoint-initdb.d/10-init-app-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
@@ -58,6 +61,10 @@ services:
       TF_SECRET_KEY: ${TF_SECRET_KEY:?set TF_SECRET_KEY}
       TF_STORAGE_BACKEND: fs
       TF_STORAGE_PATH: /data/attachments
+      # The embedded worker dispatches as taskforge_dispatcher, not as the role
+      # serving requests. Same process, different connection — the capability to
+      # read across tenants belongs to the loop, not to the API.
+      DISPATCHER_DATABASE_URL: postgres://taskforge_dispatcher:${TASKFORGE_DISPATCHER_PASSWORD:?set TASKFORGE_DISPATCHER_PASSWORD}@postgres:5432/${POSTGRES_DB:-taskforge}
       TF_WORKER_EMBEDDED: "true"
       TF_LOG_FORMAT: json
       # docs/48 §Configuration declares TF_SMTP_* as "host, port, user, pass,
