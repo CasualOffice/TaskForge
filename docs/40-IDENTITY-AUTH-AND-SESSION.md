@@ -105,12 +105,20 @@ jit_provisioning: bool, allowed_domains: [...], enforce_sso: bool
 ## Tokens
 
 ```
-tf_pat_<32 bytes base62>          personal access token
-tf_sat_<32 bytes base62>          service account token
+tf_pat_<16 bytes base62 selector><32 bytes base62 verifier>   personal access token
+tf_sat_<16 bytes base62 selector><32 bytes base62 verifier>   service account token
 ```
 
-- Stored as **argon2id hashes**; the plaintext is displayed once and is
-  unrecoverable. A database dump is not a credential dump.
+- **Selector/verifier** (ADR-032). The selector is a non-secret lookup key with
+  its own unique index; the verifier is the secret, stored as a per-row salted
+  hash and compared in constant time. Lookup is one indexed read on the
+  selector, which is what [21](21-API-LIMITS-AND-QUOTAS.md) §Query limits
+  budgets, and the plaintext is displayed once and is unrecoverable. A database
+  dump is not a credential dump.
+- The token is longer than the earlier `tf_pat_<32 bytes>` form, deliberately.
+  That is the price of having **no server-held pepper**: nothing outside the
+  database is load-bearing for authentication, so there is no key to lose, no
+  key to rotate, and no key-custody procedure to get wrong at 3 a.m.
 - The prefix is deliberate: it makes secret-scanning tools (and our own
   pre-commit hook) able to detect a leaked token in a repository.
 - Scoped to one workspace, with an optional permission subset **not exceeding the
@@ -163,112 +171,107 @@ recorded.
 - **Break-glass test** — an owner locked out by a broken IdP can recover through
   the documented path, and the recovery is audited.
 
-## Mechanism — **Proposed, not Accepted** (D-032 / ADR-032)
+## Mechanism (ADR-032, **Accepted**)
 
-Everything above is settled and is not reopened here. What follows is the layer
-*beneath* it: how a presented credential is found, where auth state lives, and
-how a request that has no workspace yet reaches a row the tenancy backstop is
-designed to hide.
+Everything above is the auth *protocol* and is unchanged. This is the layer
+beneath it: how a presented credential is found, where auth state lives, and how
+a request that has no workspace yet reaches a row the tenancy backstop hides.
 
-It is written down because the design record and the **already-`Gated`** schema
-contradict each other in four places, and two of the resolutions change that
-schema — which is cheapest now, before the tables hold data.
+It exists because the design record and the **already-`Gated`** schema
+contradicted each other in four places. Accepted with amendments — two of the
+proposals were rejected in favour of better ones, and both rejections removed a
+cost rather than adding one.
 
-**Status: `Proposed`.** A human accepts this. Until then D-032 stays `Blocked`,
-and nothing below has been implemented.
+### Credential lookup: selector/verifier, no pepper
 
-### The four contradictions, and what is proposed
+`api_token` and `session` store a **selector** (non-secret, uniquely indexed)
+and a **hash of the verifier** (per-row salt). Authentication is one indexed
+read on the selector followed by a constant-time comparison of the verifier
+hash — which is what [21](21-API-LIMITS-AND-QUOTAS.md) budgets, and what the
+`UNIQUE` index on the old `token_hash` column was already shaped for.
 
-**1. A salted hash cannot be looked up.** `api_token.token_hash` is
-`text NOT NULL UNIQUE` (migration 0008) and [21](21-API-LIMITS-AND-QUOTAS.md)
-budgets authentication at "one indexed read". Both require a *deterministic*
-digest. This document says tokens are "hashed at rest" without naming an
-algorithm, two lines below specifying Argon2id for passwords — so an
-implementer reaching for the nearest password hasher produces a token no query
-can find.
+A keyed HMAC under a server-held pepper was proposed and **rejected**. It would
+have made a secret outside the database load-bearing for every authentication:
+lose it and every session and token dies, rotate it and they die unless a
+versioning window exists, which forces `hash_key_id` on two tables and a key
+custody procedure into the runbooks. Selector/verifier buys the same property —
+a database dump contains no usable credential, because the verifier hash is
+salted per row and the tokens are ~190 bits — for a longer token and no key.
 
-*Proposed:* `token_hash` holds `HMAC-SHA256(pepper, token)` under a server-held
-pepper. Argon2id exists to make a *low-entropy* secret expensive to guess; a
-32-byte token carries ~190 bits of entropy, so the KDF buys nothing and costs
-64 MB per verification **on attacker-controlled input**. The gate "a database
-dump contains no usable credential" is satisfied more strongly, because the
-pepper is not in the database.
+Argon2id stays exactly where it was, on passwords, where a low-entropy secret
+genuinely needs a slow KDF.
 
-*Cost:* the pepper becomes a credential-invalidating key — lose it and every
-session and token dies. That forces `hash_key_id smallint` on both tables and a
-rotation window that tries the current key then one predecessor, plus key
-custody in a runbook that does not exist today.
+**Migration required:** `api_token.token_hash text NOT NULL UNIQUE` becomes
+`token_selector` + `verifier_hash`. Cheap now; the table is empty.
 
-*Judgement call:* a `selector`/`verifier` split avoids the pepper entirely, at
-the cost of a longer token than this document specifies. Both satisfy every
-gate. A reviewer who weights key custody above wire-format stability should
-choose the split.
+### `TF_SECRET_KEY` is not a cookie signature
 
-**2. `TF_SECRET_KEY` has no stated job.**
-[48](48-DEPLOYMENT-PROFILES.md) calls it "session/cookie signing" and this
-document specifies a plain opaque cookie, which has nothing to sign.
+The session cookie stays opaque and unsigned — a signature over a random value
+proves nothing the value does not already prove. The key is used for the CSRF
+binding. [48](48-DEPLOYMENT-PROFILES.md) describing it as "session/cookie
+signing" is what changes.
 
-*Proposed:* the cookie stays opaque and unsigned — a signature over a random
-value proves nothing that the value does not already prove — and the key is
-what the HMAC above is keyed with, plus the CSRF binding. docs/48's description
-is what changes.
+### Sessions and tokens are never cached
 
-**3. The Redis cache can outlive a revocation.** "Revocation is immediate:
-delete the row" is the *entire* stated reason this document rejects JWTs, and a
-read-through cache reintroduces exactly that staleness window.
+The optional Redis read-through cache is **withdrawn**. "Revocation is
+immediate" is the entire stated reason this document rejects JWTs, and a cache
+reintroduces exactly the staleness window that argument rejects. The lookup is
+one indexed read — already cheaper than verifying a signature, which is the same
+argument, applied consistently.
 
-*Proposed:* sessions and tokens are never cached. The lookup is one indexed
-read on a primary-key-shaped index, which is already cheaper than verifying a
-signature — the argument this document makes against JWTs applies to the cache
-too. The optional-cache sentence is withdrawn.
+### A plugin installation is an auth actor, not an RBAC principal
 
-**4. A plugin token has no principal.** `principal_type` is
-`ENUM ('USER','TEAM','SERVICE_ACCOUNT')` (migration 0001) and this document
-specifies a per-installation plugin token.
+`principal_type` is **not** extended, and the `ENUM ('USER','TEAM',
+'SERVICE_ACCOUNT')` in migration 0001 stands.
 
-*Proposed:* extend the enum. An enum change to a `Gated` schema is cheap while
-the table is empty and expensive afterwards, which is the argument for settling
-this now rather than at C-017.
+Extending it was proposed and **rejected**. A plugin installation authenticates,
+but it is not something a role is assigned to: its authority is the scoped token
+issued to it, bounded by the installing actor's permissions
+([34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)). Making it a `principal_type`
+would have put it in the resolver's principal set and invited grants to be
+assigned to installations directly — a second, parallel authority model reaching
+the same resources. Keeping the enum closed keeps [04](04-RBAC-AND-AUTHORIZATION.md)
+the only answer to "who may do what", and avoids a schema change entirely.
+
+### The pre-workspace seam: a tightly scoped `SECURITY DEFINER`
+
+`api_token` and `invitation` both carry `workspace_id` and stay RLS-covered.
+Authentication happens before any workspace is known, so the request that must
+read the credential row is exactly the one that cannot yet set
+`taskforge.workspace_id`.
+
+A `SECURITY DEFINER` function returns a **fixed projection** — identifying
+material only, never the stored verifier hash — with `EXECUTE` granted to
+`taskforge_app` and `search_path` pinned. The table keeps its policy; the single
+door through it is a fixed shape rather than a `SELECT`.
+
+**The cost, and the conditions.** This is a deliberate hole in the ADR-020
+backstop, and it is security-critical logic in SQL, outside the type system and
+outside `unsafe_code = "forbid"`. A future edit widening its `RETURNS TABLE`
+widens the hole silently. Three things are therefore not optional: the pinned
+`search_path`, a test asserting it returns zero rows for a revoked or expired
+credential, and an extension of the F-015 schema gate to assert the function's
+**definition** — the gate checks tables today, so a redefinition would pass.
+
+### Workspace-level SSO and MFA step-up
+
+The browser session is user-scoped. `user_account` is the only table without
+`workspace_id` — a person spans workspaces — while `enforce_sso`, MFA
+enforcement and `allowed_domains` are per-workspace, so a login has no single
+policy to apply.
+
+Per-workspace policy is enforced at **workspace resolution**, not at login. The
+session records how it was authenticated (`auth_method`, `mfa_satisfied_at`);
+entering a workspace that demands more than the session carries triggers a
+step-up. The cost is that "signed in" and "may enter this workspace" are two
+questions, and every workspace-scoped entry point must ask the second.
 
 ### Where auth state lives
 
-No session, credential, MFA-factor, recovery-code, reset-token, invitation or
-SSO-connection table exists — migrations 0001–0012 are `Gated` and define none
-of them, and [05](05-API-SPEC.md) lists no auth endpoint.
-
-*Proposed:* one migration adds them. All except `invitation` are keyed on
-`user_account`, carry no `workspace_id`, and therefore fall outside migration
-0010's catalogue loop **by construction** — which is the dangerous kind of
-exemption, so it is proposed as a *written* one in 0010's existing exemption
-block, in the same style as `outbox_event` and `user_account`.
-
-### The pre-workspace seam
-
-`api_token` and `invitation` both carry `workspace_id`, so both are RLS-covered.
-But authentication happens *before* any workspace is known: the request that
-must read the token row is exactly the request that cannot yet set
-`taskforge.workspace_id`.
-
-*Proposed:* a `SECURITY DEFINER` function returning a fixed projection —
-identifying material only, never the digest — with `EXECUTE` granted to
-`taskforge_app` and `search_path` pinned. The table keeps its policy; the one
-door through it is a fixed shape rather than a `SELECT`.
-
-*Cost, plainly:* a `SECURITY DEFINER` function is a deliberate hole in the
-ADR-020 backstop, and it is security-critical logic living in SQL — outside the
-type system and outside `unsafe_code = "forbid"`. A future edit widening its
-`RETURNS TABLE` widens the hole silently, so the F-015 schema gate would need to
-assert the function's definition, not only the tables it currently checks.
-
-### Which workspace's policy governs a login
-
-`user_account` is the only table without `workspace_id` — a person spans
-workspaces — while `enforce_sso`, MFA enforcement and `allowed_domains` are
-per-workspace. So a login has no single policy to apply.
-
-*Proposed:* the browser session is user-scoped, and per-workspace policy is
-enforced at **workspace resolution** rather than at login. A session records
-how it was authenticated (`auth_method`, `mfa_satisfied_at`); entering a
-workspace that demands more than the session carries triggers a step-up. The
-cost is that "signed in" and "may enter this workspace" become two questions,
-and every workspace-scoped entry point has to ask the second.
+One migration adds `session`, `user_credential`, `mfa_factor`, `recovery_code`,
+`password_reset_token` and `invitation`. All except `invitation` are keyed on
+`user_account`, carry no `workspace_id`, and so fall outside migration 0010's
+catalogue loop **by construction** — the dangerous kind of exemption. It is
+therefore written into 0010's existing exemption block, in the same style as
+`outbox_event` and `user_account`, with the reason recorded: a session and a
+password belong to a person.

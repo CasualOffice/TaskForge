@@ -182,6 +182,8 @@ a row in this table. Never neither.
 
 | Gate (from the tables above) | Lands with | Why not yet |
 | --- | --- | --- |
+| Schema gate asserts the auth `SECURITY DEFINER` definition | **C-001** | ADR-032 accepts the pre-workspace seam **on this condition**. The F-015 gate checks tables; a redefinition widening the function's `RETURNS TABLE` would pass today, which is exactly how a narrowed hole becomes a wide one. |
+| Schema gate asserts the auth `SECURITY DEFINER` definition | **C-001** | ADR-032 accepts the pre-workspace seam **on this condition**. The F-015 gate checks tables; a redefinition widening the function's `RETURNS TABLE` would pass today, which is exactly how a narrowed hole becomes a wide one. |
 | Latency (subset + full) | **F-007** | The harness and the comparison gate are built and tested. There is no baseline to compare against: `benchmarks/reference-8vcpu-32gb.reference.json` is a placeholder that no run can pass, because the docs/30 reference machine does not exist yet. |
 | Frontend lint (`eslint`) | **C-019** | `tsc --noEmit` runs today in `bundle-size`. There is no ESLint config, and no product code to lint. |
 | Frontend tests (Vitest), E2E (Playwright) | **C-018**, **C-019** | No product frontend exists; `webapp/` is the bundle-floor harness only. |
