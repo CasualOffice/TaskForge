@@ -90,6 +90,37 @@ until an operator removes it. That is the one half of this paragraph the code
 does not deliver — tracked as **D-042**, with the revocation step in
 [50](50-RUNBOOKS.md) until it is.
 
+### The recorder is on the request path, so it may not serialise it
+
+Writing the recorder by hand buys the cardinality guard above and costs us the
+concurrency, and the first version got that wrong: one process-wide `Mutex`
+around one map, taken **twice per HTTP request** — once for `http_requests_total`
+and once for `http_request_duration_seconds` — and taken again by `GET /metrics`,
+which held it across the whole of `render()`. Every request queued behind every
+other request, and a scrape added its own render time to the latency of every
+request in flight. A measurement layer that becomes the bottleneck also
+mis-attributes it: the symptom is latency on all endpoints at once, which reads
+like the database.
+
+The contract now, enforced by tests in `recorder.rs` rather than by this
+paragraph:
+
+- Recording into an existing series takes a **shared** lock on one of 16 shards
+  and then an atomic. Scrapes take shared locks too, so `/metrics` cannot stall a
+  request; the exclusive lock is taken only on a series' first observation, and
+  the set of series is bounded by the cardinality rule above.
+- `render()` snapshots under those shared locks and formats outside them.
+- Output stays **sorted and byte-stable** for one state, because [50](50-RUNBOOKS.md)
+  diffs two scrapes during an incident.
+- A histogram never renders an *invalid* shape under concurrency. `_count` is
+  incremented before the buckets and the buckets from the top down, so a scrape
+  landing mid-observation still sees cumulative counts that do not go backwards.
+
+**The cost, stated:** a scrape is no longer one instantaneous snapshot across all
+series — two series in a body may be microseconds apart, and a histogram's `_sum`
+may miss an observation whose bucket it already has. Prometheus already treats a
+scrape as independently timed samples; the alternative is the stall above.
+
 ## Alerts
 
 Alert on **symptoms users feel**, not on causes. High CPU is not an alert; slow

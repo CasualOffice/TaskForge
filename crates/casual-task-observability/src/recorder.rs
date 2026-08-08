@@ -19,19 +19,45 @@
 //!
 //! The cost, stated: the exposition format, the bucket layout, and the
 //! concurrency are ours to get right. The format is small and stable, the
-//! buckets are declared once below, and the concurrency is a mutex around a map
-//! — a scrape happens every fifteen seconds and a counter increment is not on a
-//! hot path that a lock-free structure would rescue.
+//! buckets are declared once below, and the concurrency is the section that
+//! follows — it was got wrong once already.
 //!
-//! # What this does not do
+//! # Concurrency: why this is not one mutex
 //!
-//! **It does not serve HTTP.** `docs/19` puts every HTTP type in
-//! `casual-task-api` and `casual-task-lint` enforces it, so the `/metrics`
-//! endpoint arrives with the API in C-001. This produces the body it will send.
+//! It was one mutex, and that was a defect. Every HTTP request records **twice**
+//! — the RED counter and the duration histogram — so a single process-wide lock
+//! made this crate a serialisation point on the hot path it exists to measure.
+//! `GET /metrics` then took the *same* lock and held it across the whole of
+//! [`Recorder::render`], so a scrape stalled every in-flight request for as long
+//! as it took to build the body. At a handful of requests per second nobody
+//! notices; at the concurrency `docs/30` targets, the wait shows up as latency
+//! on every endpoint simultaneously, which reads like a database problem and
+//! sends the investigation to the wrong place.
+//!
+//! Three changes, each aimed at one half of that:
+//!
+//! - **The value is an atomic, not a field behind a lock.** Recording into a
+//!   series that already exists is a `fetch_add`; no thread waits for another.
+//! - **The map is split into [`SHARDS`] shards, each behind an `RwLock`, and a
+//!   lookup takes a *shared* read lock.** A scrape and any number of recorders
+//!   hold theirs at the same time. Only the *first* observation of a series
+//!   takes a write lock, and the set of series is bounded by the declared
+//!   cardinality — in steady state that path is never taken again.
+//! - **[`Recorder::render`] snapshots, then formats.** No lock is held while the
+//!   string is built.
+//!
+//! **The cost, stated** (`docs/10` §4): a scrape is no longer an instantaneous
+//! snapshot of every series. Two series in the same body may be microseconds
+//! apart, and a histogram's `_sum` may not include an observation whose bucket
+//! it does. Prometheus already treats a scrape as a set of independently timed
+//! samples, and the alternative is the stall above. What is **not** given up is
+//! that a single histogram never renders an *invalid* shape — the write order
+//! in `Histogram::observe` guarantees it, and a test hammers it.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 use crate::labels::LabelSet;
 use crate::metrics::{Metric, MetricKind};
@@ -50,6 +76,15 @@ pub const BUCKETS: &[f64] = &[
     0.005, 0.010, 0.025, 0.050, 0.075, 0.100, 0.150, 0.200, 0.300, 0.500, 0.750, 1.0, 2.5, 5.0,
     10.0,
 ];
+
+/// How many independently locked shards the series map is split into.
+///
+/// A power of two, and larger than the core count of the machines `docs/48`
+/// deploys on, so two threads recording two different series usually contend on
+/// nothing at all. It is not tuned to a benchmark: the shard is only held for a
+/// hash-map lookup, and past the point where each core can usually find its own,
+/// more shards buy nothing and cost a fixed walk on every scrape.
+pub const SHARDS: usize = 16;
 
 /// A metric was recorded through the wrong method for its declared kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,34 +106,137 @@ impl std::fmt::Display for WrongKind {
 
 impl std::error::Error for WrongKind {}
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Histogram {
     /// Cumulative counts, parallel to [`BUCKETS`].
-    counts: Vec<u64>,
-    sum: f64,
-    count: u64,
+    counts: Vec<AtomicU64>,
+    /// `f64` bits: there is no atomic float, and the sum is only ever read as a
+    /// whole number of bits (see [`Histogram::read`]).
+    sum_bits: AtomicU64,
+    count: AtomicU64,
+}
+
+impl Histogram {
+    fn new() -> Self {
+        Self {
+            counts: BUCKETS.iter().map(|_| AtomicU64::new(0)).collect(),
+            sum_bits: AtomicU64::new(0),
+            count: AtomicU64::new(0),
+        }
+    }
+
+    /// Record one observation.
+    ///
+    /// **The write order is the correctness argument, not a style choice.** A
+    /// Prometheus histogram's bucket counts are cumulative, so they must never
+    /// be seen decreasing as `le` rises, and no bucket may exceed `+Inf` — which
+    /// is rendered from `count`. Without a lock, a scrape can land in the middle
+    /// of this function, so the ordering has to make every intermediate state a
+    /// *valid* histogram rather than merely a stale one:
+    ///
+    /// 1. `count` first, so a reader can never see a bucket that has been
+    ///    incremented while `+Inf` has not — a finite bucket above `+Inf` is a
+    ///    histogram Prometheus rejects.
+    /// 2. Buckets from the **top down**, so the increments a reader can see
+    ///    always form a suffix. Bottom-up, a reader walking `le` ascending could
+    ///    see `le="0.005" 1` followed by `le="0.010" 0`: cumulative counts going
+    ///    backwards.
+    ///
+    /// The `Release` on each bucket store, paired with the `Acquire` loads in
+    /// [`Histogram::read`], is what makes that order visible to another core
+    /// rather than merely written in that order here.
+    fn observe(&self, value: f64) {
+        self.count.fetch_add(1, Ordering::Relaxed);
+
+        // `f64` has no atomic add, so compare-and-swap the bit pattern. The loop
+        // serialises concurrent adds but not their *order*, so the last bits of
+        // `_sum` may differ between two runs of the same workload — float
+        // addition is not associative. Stated rather than hidden: the sum feeds
+        // an average, and no alert reads its final ulp.
+        let mut current = self.sum_bits.load(Ordering::Relaxed);
+        loop {
+            let next = (f64::from_bits(current) + value).to_bits();
+            match self.sum_bits.compare_exchange_weak(
+                current,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
+
+        for (i, bound) in BUCKETS.iter().enumerate().rev() {
+            // BUCKETS ascends, so the first bound this value exceeds ends the
+            // suffix it belongs to.
+            if value > *bound {
+                break;
+            }
+            self.counts[i].fetch_add(1, Ordering::Release);
+        }
+    }
+
+    /// Read the histogram for rendering, in the inverse of the write order.
+    ///
+    /// Buckets ascending and `count` last: an `Acquire` load that observes a
+    /// bucket increment also observes everything [`Histogram::observe`] wrote
+    /// before it, which is what turns that function's write order into an
+    /// ordering this reader can rely on.
+    fn read(&self) -> (Vec<u64>, f64, u64) {
+        let counts = self
+            .counts
+            .iter()
+            .map(|c| c.load(Ordering::Acquire))
+            .collect();
+        let sum = f64::from_bits(self.sum_bits.load(Ordering::Relaxed));
+        let count = self.count.load(Ordering::Acquire);
+        (counts, sum, count)
+    }
 }
 
 #[derive(Debug)]
 enum Series {
-    Counter(u64),
+    Counter(AtomicU64),
     /// Stored as bits: a gauge is read and written whole, and `f64` has no
-    /// atomic form. The mutex around the map already serialises access.
-    Gauge(f64),
+    /// atomic form.
+    Gauge(AtomicU64),
     Histogram(Histogram),
 }
+
+/// The identity of one time series: metric name, and its rendered label set.
+type SeriesKey = (&'static str, String);
+
+/// One independently locked slice of the series map.
+///
+/// `align(64)` is the point of the type. Two shards sharing a cache line would
+/// put their locks' state words on the same line, and two cores recording two
+/// unrelated series would bounce that line between them — reintroducing the
+/// contention sharding exists to remove, invisibly.
+#[derive(Debug, Default)]
+#[repr(align(64))]
+struct Shard(RwLock<HashMap<SeriesKey, Arc<Series>>>);
 
 /// Somewhere to record values, and the source of the `/metrics` body.
 ///
 /// One per process. Cloning is deliberately not offered — two recorders would
 /// each hold half the truth and a scrape would report whichever it found.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Recorder {
-    series: Mutex<BTreeMap<(&'static str, String), Series>>,
+    shards: [Shard; SHARDS],
     /// Recording attempts refused for a declared-kind mismatch. Exposed so a
     /// test can assert the count is zero rather than trusting that no call site
     /// ignored a `Result`.
     rejected: AtomicU64,
+}
+
+impl Default for Recorder {
+    fn default() -> Self {
+        Self {
+            shards: std::array::from_fn(|_| Shard::default()),
+            rejected: AtomicU64::new(0),
+        }
+    }
 }
 
 impl Recorder {
@@ -114,14 +252,16 @@ impl Recorder {
     /// [`WrongKind`] if `metric` is not declared a counter.
     pub fn increment(&self, metric: Metric, labels: &LabelSet, by: u64) -> Result<(), WrongKind> {
         self.check(metric, MetricKind::Counter)?;
-        let mut series = self.series.lock().expect("not poisoned");
-        match series
-            .entry(key(metric, labels))
-            .or_insert(Series::Counter(0))
-        {
-            Series::Counter(n) => *n += by,
-            _ => unreachable!("kind checked above"),
-        }
+        self.with_series(
+            key(metric, labels),
+            || Series::Counter(AtomicU64::new(0)),
+            |series| match series {
+                Series::Counter(n) => {
+                    n.fetch_add(by, Ordering::Relaxed);
+                }
+                _ => unreachable!("kind checked above, and the kind follows the name in the key"),
+            },
+        );
         Ok(())
     }
 
@@ -132,8 +272,14 @@ impl Recorder {
     /// [`WrongKind`] if `metric` is not declared a gauge.
     pub fn set(&self, metric: Metric, labels: &LabelSet, value: f64) -> Result<(), WrongKind> {
         self.check(metric, MetricKind::Gauge)?;
-        let mut series = self.series.lock().expect("not poisoned");
-        series.insert(key(metric, labels), Series::Gauge(value));
+        self.with_series(
+            key(metric, labels),
+            || Series::Gauge(AtomicU64::new(value.to_bits())),
+            |series| match series {
+                Series::Gauge(bits) => bits.store(value.to_bits(), Ordering::Relaxed),
+                _ => unreachable!("kind checked above, and the kind follows the name in the key"),
+            },
+        );
         Ok(())
     }
 
@@ -144,26 +290,14 @@ impl Recorder {
     /// [`WrongKind`] if `metric` is not declared a histogram.
     pub fn observe(&self, metric: Metric, labels: &LabelSet, value: f64) -> Result<(), WrongKind> {
         self.check(metric, MetricKind::Histogram)?;
-        let mut series = self.series.lock().expect("not poisoned");
-        let entry = series.entry(key(metric, labels)).or_insert_with(|| {
-            Series::Histogram(Histogram {
-                counts: vec![0; BUCKETS.len()],
-                sum: 0.0,
-                count: 0,
-            })
-        });
-        match entry {
-            Series::Histogram(h) => {
-                for (i, bound) in BUCKETS.iter().enumerate() {
-                    if value <= *bound {
-                        h.counts[i] += 1;
-                    }
-                }
-                h.sum += value;
-                h.count += 1;
-            }
-            _ => unreachable!("kind checked above"),
-        }
+        self.with_series(
+            key(metric, labels),
+            || Series::Histogram(Histogram::new()),
+            |series| match series {
+                Series::Histogram(h) => h.observe(value),
+                _ => unreachable!("kind checked above, and the kind follows the name in the key"),
+            },
+        );
         Ok(())
     }
 
@@ -185,18 +319,62 @@ impl Recorder {
         })
     }
 
+    /// Find (or create) a series and hand it to `record`.
+    ///
+    /// The steady-state path is the read lock: a series exists after its first
+    /// observation and is never removed, so the exclusive lock is taken at most
+    /// once per series for the life of the process. That is what keeps a scrape
+    /// — which holds only read locks — from blocking a request.
+    fn with_series<T>(
+        &self,
+        key: SeriesKey,
+        new: impl FnOnce() -> Series,
+        record: impl FnOnce(&Series) -> T,
+    ) -> T {
+        let shard = &self.shards[shard_of(&key)];
+
+        {
+            let series = shard.0.read().expect("not poisoned");
+            if let Some(existing) = series.get(&key) {
+                return record(existing);
+            }
+        }
+
+        // First observation of this series. The `Arc` is cloned out so the write
+        // lock is released before recording, which keeps the exclusive hold to
+        // the map insert itself.
+        let mut series = shard.0.write().expect("not poisoned");
+        let created = Arc::clone(series.entry(key).or_insert_with(|| Arc::new(new())));
+        drop(series);
+        record(&created)
+    }
+
     /// The Prometheus text exposition body.
     ///
-    /// Deterministic: series come from a `BTreeMap`, so the output is sorted and
-    /// a test can assert on it without sorting first. That also makes a diff
-    /// between two scrapes readable during an incident.
+    /// Deterministic: the snapshot is collected into a `BTreeMap`, so the output
+    /// is sorted by metric name and then by label set whatever order the shards
+    /// happen to hold. A test can assert on it without sorting first, and a diff
+    /// between two scrapes is readable during an incident.
+    ///
+    /// Snapshot first, format second. Formatting under the lock was the defect
+    /// this crate's module docs describe: it made the length of a scrape into
+    /// added latency on every concurrent request.
     #[must_use]
     pub fn render(&self) -> String {
-        let series = self.series.lock().expect("not poisoned");
+        let mut snapshot: BTreeMap<SeriesKey, Arc<Series>> = BTreeMap::new();
+        for shard in &self.shards {
+            let series = shard.0.read().expect("not poisoned");
+            snapshot.extend(
+                series
+                    .iter()
+                    .map(|(series_key, value)| (series_key.clone(), Arc::clone(value))),
+            );
+        }
+
         let mut out = String::new();
         let mut described: Option<&str> = None;
 
-        for ((name, labels), value) in series.iter() {
+        for ((name, labels), value) in &snapshot {
             if described != Some(name) {
                 // HELP and TYPE are emitted once per metric family, not once
                 // per series — repeating them is a parse error in some
@@ -211,33 +389,43 @@ impl Recorder {
                 described = Some(name);
             }
 
-            match value {
+            match &**value {
                 Series::Counter(n) => {
-                    out.push_str(&format!("{name}{labels} {n}\n"));
+                    out.push_str(&format!("{name}{labels} {}\n", n.load(Ordering::Relaxed)));
                 }
-                Series::Gauge(v) => {
+                Series::Gauge(bits) => {
+                    let v = f64::from_bits(bits.load(Ordering::Relaxed));
                     out.push_str(&format!("{name}{labels} {v}\n"));
                 }
                 Series::Histogram(h) => {
+                    let (counts, sum, count) = h.read();
                     for (i, bound) in BUCKETS.iter().enumerate() {
                         out.push_str(&format!(
                             "{name}_bucket{} {}\n",
                             with_le(labels, &format!("{bound}")),
-                            h.counts[i]
+                            counts[i]
                         ));
                     }
                     out.push_str(&format!(
-                        "{name}_bucket{} {}\n",
-                        with_le(labels, "+Inf"),
-                        h.count
+                        "{name}_bucket{} {count}\n",
+                        with_le(labels, "+Inf")
                     ));
-                    out.push_str(&format!("{name}_sum{labels} {}\n", h.sum));
-                    out.push_str(&format!("{name}_count{labels} {}\n", h.count));
+                    out.push_str(&format!("{name}_sum{labels} {sum}\n"));
+                    out.push_str(&format!("{name}_count{labels} {count}\n"));
                 }
             }
         }
         out
     }
+}
+
+/// Which shard owns a series. Stable for a given key within a process, which is
+/// all that is required — [`Recorder::render`] re-sorts, so the assignment is
+/// never visible in the output.
+fn shard_of(key: &SeriesKey) -> usize {
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    (hasher.finish() % SHARDS as u64) as usize
 }
 
 const fn type_name(kind: MetricKind) -> &'static str {
@@ -253,7 +441,7 @@ const fn type_name(kind: MetricKind) -> &'static str {
 /// Sorted, so the same logical series always renders identically — an unsorted
 /// label set would produce two map keys for one series and silently split its
 /// counts.
-fn key(metric: Metric, labels: &LabelSet) -> (&'static str, String) {
+fn key(metric: Metric, labels: &LabelSet) -> SeriesKey {
     let mut pairs = labels.pairs();
     pairs.sort_unstable();
     if pairs.is_empty() {
@@ -290,6 +478,8 @@ fn escape_help(help: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicBool;
+
     use super::*;
     use crate::labels::keys;
     use crate::metrics::{
@@ -482,6 +672,204 @@ mod tests {
                 "{} is declared but never rendered",
                 metric.name()
             );
+        }
+    }
+
+    #[test]
+    fn the_body_is_sorted_and_identical_between_two_scrapes_of_one_state() {
+        // The series now live in SHARDS separate maps, in whatever order each
+        // one's hashing puts them. Sorted output is a promise this crate makes —
+        // `docs/50` diffs two scrapes during an incident, and a body that
+        // reordered itself between scrapes would make that diff useless. This is
+        // the test that keeps the sort where the shards could have removed it.
+        let r = Recorder::new();
+        for consumer in ["webhook_delivery", "sse_fanout", "search_projection"] {
+            let labels = LabelSet::for_metric(OUTBOX_DISPATCH_TOTAL)
+                .with(keys::CONSUMER, consumer)
+                .expect("declared")
+                .with(keys::OUTCOME, "dispatched")
+                .expect("declared");
+            r.increment(OUTBOX_DISPATCH_TOTAL, &labels, 1)
+                .expect("a counter");
+        }
+        for metric in crate::metrics::ALL {
+            let mut labels = LabelSet::for_metric(*metric);
+            for key in metric.labels() {
+                labels = labels.with(*key, "x").expect("declared label");
+            }
+            let _ = match metric.kind() {
+                MetricKind::Counter => r.increment(*metric, &labels, 1),
+                MetricKind::Gauge => r.set(*metric, &labels, 1.0),
+                MetricKind::Histogram => r.observe(*metric, &labels, 0.1),
+            };
+        }
+
+        let first = r.render();
+        assert_eq!(first, r.render(), "two scrapes of one state differ");
+
+        let families: Vec<&str> = first
+            .lines()
+            .filter_map(|l| l.strip_prefix("# TYPE "))
+            .filter_map(|l| l.split(' ').next())
+            .collect();
+        let mut sorted = families.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            families, sorted,
+            "metric families are out of order:\n{first}"
+        );
+
+        // And within one family, label sets ascend too — the second half of the
+        // ordering, which sorting families alone would not catch.
+        let positions: Vec<usize> = ["search_projection", "sse_fanout", "webhook_delivery"]
+            .iter()
+            .map(|consumer| {
+                first
+                    .find(&format!(
+                        "outbox_dispatch_total{{consumer=\"{consumer}\",outcome=\"dispatched\"}}"
+                    ))
+                    .unwrap_or_else(|| panic!("{consumer} is missing:\n{first}"))
+            })
+            .collect();
+        assert!(
+            positions.windows(2).all(|p| p[0] < p[1]),
+            "label sets within a family are out of order:\n{first}"
+        );
+    }
+
+    #[test]
+    fn concurrent_increments_never_lose_one() {
+        // The mutex this replaced made a lost update impossible by making every
+        // recorder wait. Atomics keep the guarantee without the waiting, and the
+        // only way to know they do is to hammer them: N threads x M increments
+        // must render as exactly N*M.
+        const THREADS: u64 = 16;
+        const PER_THREAD: u64 = 5_000;
+
+        let r = Recorder::new();
+        let hot = LabelSet::for_metric(OUTBOX_DISPATCH_TOTAL)
+            .with(keys::CONSUMER, "sse_fanout")
+            .expect("declared")
+            .with(keys::OUTCOME, "dispatched")
+            .expect("declared");
+
+        std::thread::scope(|scope| {
+            for _ in 0..THREADS {
+                let (r, hot) = (&r, &hot);
+                scope.spawn(move || {
+                    for _ in 0..PER_THREAD {
+                        r.increment(OUTBOX_DISPATCH_TOTAL, hot, 1)
+                            .expect("a counter");
+                    }
+                });
+            }
+        });
+
+        let out = r.render();
+        assert!(
+            out.contains(&format!(
+                "outbox_dispatch_total{{consumer=\"sse_fanout\",outcome=\"dispatched\"}} {}\n",
+                THREADS * PER_THREAD
+            )),
+            "lost an increment:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_scrape_running_throughout_costs_no_observation_and_sees_no_invalid_histogram() {
+        // Two properties in one hammer, because they need the same setup.
+        //
+        // 1. Nothing is lost while a scrape runs. The whole reason `render` no
+        //    longer holds an exclusive lock is that recorders must not wait for
+        //    it — so a recorder running *during* a scrape must still be counted.
+        // 2. No scrape taken mid-observation renders an invalid histogram.
+        //    Cumulative bucket counts must never decrease as `le` rises. Without
+        //    the write order in `Histogram::observe` this fails within a few
+        //    thousand iterations, and the symptom in production is a scraper
+        //    dropping the sample rather than an error anyone sees.
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 4_000;
+
+        let r = Recorder::new();
+        let labels = LabelSet::for_metric(HTTP_REQUEST_DURATION_SECONDS)
+            .with(keys::METHOD, "GET")
+            .expect("declared")
+            .with(keys::ROUTE, "/health/live")
+            .expect("declared");
+        let stop = AtomicBool::new(false);
+
+        std::thread::scope(|scope| {
+            let scraper = scope.spawn(|| {
+                let mut scrapes = 0_u64;
+                while !stop.load(Ordering::Relaxed) {
+                    assert_buckets_never_decrease(&r.render());
+                    scrapes += 1;
+                }
+                scrapes
+            });
+
+            let workers: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let (r, labels) = (&r, &labels);
+                    scope.spawn(move || {
+                        // A spread of values, so different threads write
+                        // different bucket suffixes and the descending write
+                        // order is actually exercised.
+                        for i in 0..PER_THREAD {
+                            let value = BUCKETS[i % BUCKETS.len()];
+                            r.observe(HTTP_REQUEST_DURATION_SECONDS, labels, value)
+                                .expect("a histogram");
+                        }
+                    })
+                })
+                .collect();
+
+            for worker in workers {
+                worker.join().expect("a recording thread panicked");
+            }
+            stop.store(true, Ordering::Relaxed);
+            let scrapes = scraper.join().expect("the scraping thread panicked");
+            assert!(
+                scrapes > 0,
+                "the scraper never ran; the test proved nothing"
+            );
+        });
+
+        let out = r.render();
+        let total = THREADS * PER_THREAD;
+        assert!(
+            out.contains(&format!(
+                "http_request_duration_seconds_count{{method=\"GET\",route=\"/health/live\"}} {total}\n"
+            )),
+            "lost an observation:\n{out}"
+        );
+        assert!(
+            out.contains(&format!(
+                "http_request_duration_seconds_bucket{{method=\"GET\",route=\"/health/live\",le=\"+Inf\"}} {total}\n"
+            )),
+            "+Inf disagrees with _count:\n{out}"
+        );
+    }
+
+    /// Every histogram family in a body has non-decreasing cumulative counts.
+    fn assert_buckets_never_decrease(body: &str) {
+        let mut previous = 0_u64;
+        for line in body.lines() {
+            let Some(rest) = line.split_once("_bucket{") else {
+                previous = 0;
+                continue;
+            };
+            let count: u64 = rest
+                .1
+                .rsplit(' ')
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("unparseable bucket line: {line}"));
+            assert!(
+                count >= previous,
+                "a scrape caught a histogram going backwards ({previous} then {count}):\n{body}"
+            );
+            previous = count;
         }
     }
 }
