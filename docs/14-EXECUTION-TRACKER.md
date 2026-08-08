@@ -266,26 +266,28 @@ implementation:
   advisory lock when a pod is terminated. Retrofitting cancellation through a
   codebase that never considered it is materially harder than designing it in.
 
-**Eight decisions were Accepted on 2026-08-08 and their design notes have not
-yet been rewritten.** The tracker rows above are authoritative until they are.
-One is actively misleading and is called out here rather than left to be
-discovered: [25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Dispatch still describes
-holding a database transaction open across consumer HTTP I/O, which **D-038
-rejected**. The accepted shape is claim → commit → HTTP → record result. Anyone
-implementing C-011 from that section today would build the rejected design.
+**Eight decisions were Accepted on 2026-08-08.** Their design notes are rewritten
+as each is consumed, so the change lands with the code that proves it.
 
-The others are additive rather than contradictory: pool bounds and 503 on
-exhaustion (D-039, [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)), queue bounds
-with an explicit overflow policy (D-040, [24](24-CONCURRENCY-AND-IDEMPOTENCY.md)),
-bounded drain on shutdown (D-041, [48](48-DEPLOYMENT-PROFILES.md)), no workspace
-ids in metric labels and expiring investigation admissions (D-042), a
-tenant-filtered search projection tried before weakening RLS (D-043), STARTTLS
-with certificate and hostname verification (D-046,
-[29](29-NOTIFICATIONS-AND-DELIVERY.md)), and `outbox_lag_seconds` as a gauge over
-the oldest *actionable* pending event (D-047, [46](46-OBSERVABILITY-AND-OPERATIONS.md)).
+**D-038 is now written into [25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Dispatch**, which
+until now still described holding a database transaction open across consumer
+HTTP I/O — the shape D-038 rejected. Anyone implementing C-011 from that section
+would have built it. It now specifies claim → commit → HTTP → record, the claim
+expiry that makes a crashed worker recoverable, per-consumer delivery state, and
+the `next_attempt_at` the backoff ladder needs. Two of those are schema changes
+that migration 0007 does not have; the section says so rather than reading as
+though they exist.
 
-Each note is rewritten by the item that consumes it, so the change lands with
-the code that proves it.
+The remaining seven are additive rather than contradictory: pool bounds and 503
+on exhaustion (D-039, [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)), queue
+bounds with an explicit overflow policy (D-040,
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)), bounded drain on shutdown (D-041,
+[48](48-DEPLOYMENT-PROFILES.md)), no workspace ids in metric labels and expiring
+investigation admissions (D-042), a tenant-filtered search projection tried
+before weakening RLS (D-043), STARTTLS with certificate and hostname
+verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
+`outbox_lag_seconds` as a gauge over the oldest *actionable* pending event
+(D-047, [46](46-OBSERVABILITY-AND-OPERATIONS.md)).
 
 ## Phase 0 — Foundation (F)
 
