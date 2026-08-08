@@ -70,16 +70,17 @@ The documentation phase. All complete unless noted.
 | D-032 | **Auth mechanism: credential lookup, session storage, plugin principal** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Proposed** — ADR-032 drafted; Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
-| D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Blocked** — Accept before C-011 |
-| D-039 | Connection pool sizing, acquisition timeout, exhaustion behaviour | [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) | **Blocked** — Accept before C-001 |
-| D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Blocked** — Accept before C-011 |
-| D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
-| D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-001 |
-| D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Blocked** — Accept before C-013 |
+| D-038 | **Outbox dispatch: claim protocol, per-consumer state, ordering** | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Accepted** — claim → commit → HTTP → record |
+| D-039 | Connection pool sizing, acquisition timeout, exhaustion behaviour | [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) | **Accepted** — bounded pool, short acquire timeout, 503 |
+| D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Accepted** — every queue bounded, explicit overflow policy |
+| D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Accepted** — bounded drain; transactions roll back |
+| D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Accepted** — no workspace ids in labels; admissions expire |
+| D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Accepted** — keep RLS; try a tenant-filtered projection first |
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Accepted** — ADR-031 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
-| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Blocked** — Accept before C-016 |
-| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-011 |
+| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Accepted** — STARTTLS + certificate/hostname verification |
+| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Accepted** — gauge: age of oldest actionable pending event |
+| D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -246,6 +247,27 @@ implementation:
   advisory lock when a pod is terminated. Retrofitting cancellation through a
   codebase that never considered it is materially harder than designing it in.
 
+**Eight decisions were Accepted on 2026-08-08 and their design notes have not
+yet been rewritten.** The tracker rows above are authoritative until they are.
+One is actively misleading and is called out here rather than left to be
+discovered: [25](25-EVENTS-OUTBOX-AND-AUDIT.md) §Dispatch still describes
+holding a database transaction open across consumer HTTP I/O, which **D-038
+rejected**. The accepted shape is claim → commit → HTTP → record result. Anyone
+implementing C-011 from that section today would build the rejected design.
+
+The others are additive rather than contradictory: pool bounds and 503 on
+exhaustion (D-039, [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)), queue bounds
+with an explicit overflow policy (D-040, [24](24-CONCURRENCY-AND-IDEMPOTENCY.md)),
+bounded drain on shutdown (D-041, [48](48-DEPLOYMENT-PROFILES.md)), no workspace
+ids in metric labels and expiring investigation admissions (D-042), a
+tenant-filtered search projection tried before weakening RLS (D-043), STARTTLS
+with certificate and hostname verification (D-046,
+[29](29-NOTIFICATIONS-AND-DELIVERY.md)), and `outbox_lag_seconds` as a gauge over
+the oldest *actionable* pending event (D-047, [46](46-OBSERVABILITY-AND-OPERATIONS.md)).
+
+Each note is rewritten by the item that consumes it, so the change lands with
+the code that proves it.
+
 ## Phase 0 — Foundation (F)
 
 | ID | Item | Status | Blocked by |
@@ -262,7 +284,7 @@ implementation:
 | F-010 | Docker Compose dev profile | **Gated** | — |
 | F-011 | Governance files, Apache-2.0, AGENTS.md | `Built` | — |
 | F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
-| F-013 | Threat model review | Accepted | D-007 |
+| F-013 | Threat model review | `Built` | — |
 | F-014 | Runbooks (initial set) | `Built` | F-009 |
 | F-015 | Migrations + application role + schema verification gate | **Gated** | F-005 |
 | F-016 | Container image, deployment compose, deployment guide | **Gated** | F-015 |
@@ -370,9 +392,17 @@ Remaining Phase 0:
   Adding `sqlx`, `tokio` and `testcontainers` did **not** move the MSRV: the
   workspace still builds and tests on 1.88.0, which is the first real exercise
   of ADR-031's rule.
-- **F-013** is unchanged and unverifiable from here: [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md)
-  §Threat model is written, but nothing records that a *review* happened. If one
-  did, the row should say so and by whom; if not, it is Phase 0 work still open.
+- **F-013** is `Built`. The Phase 0 review is recorded in
+  [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) §Review, with the reviewer and
+  date named. It found six things: the credential-theft row was stale by a day
+  (ADR-032), the cross-tenant row did not mention the `SECURITY DEFINER`
+  exception ADR-032 introduces, "pinned base images" was untrue (mutable tags —
+  now **D-048**), outbound mail was absent from the model entirely, five
+  supply-chain claims were verified rather than assumed, and one control became
+  structural rather than documented. `Built` and not `Gated` because prose has
+  no acceptance gate beyond link resolution — and because the review was
+  conducted by an agent and says so; a human should countersign before the
+  Phase 1 gate.
 
 None of these build product functionality — they exist to make every later phase
 verifiable.
