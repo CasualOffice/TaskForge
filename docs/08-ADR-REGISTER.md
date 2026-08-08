@@ -48,6 +48,7 @@ resolved below, with the reasoning in the linked design note.
 | **ADR-029** | Export is async above 1,000 rows, per-batch authorized, always audited | Accepted | Exports stream to object storage from the worker; the API never holds a result set. Permissions are re-evaluated per batch so an actor who loses access mid-export stops receiving rows. Every export writes an audit event — bulk data leaving the system is precisely what an audit trail is for. Cells beginning `=`, `+`, `-`, or `@` are quote-prefixed against CSV formula injection. |
 | **ADR-030** | XLSX export via OpenCalc | Accepted | The suite already maintains a Rust `.xlsx` engine, so spreadsheet export costs a dependency edge rather than a third-party writer and a new supply-chain surface. |
 | **ADR-031** | MSRV is the floor the dependency tree forces, not a chosen number | Accepted | MSRV = the lowest stable rustc the workspace and its locked dependencies actually build and test on; today that is **1.88.0**, forced by `time` 0.3.55. Raising it requires the PR to name the crate and version that forced it. The dev toolchain (`rust-toolchain.toml`) tracks current stable and is a separate number; CI tests both ends. Accepted at Phase 0 (D-044); `rust-version` and the CI matrix now read the measured floor. |
+| **ADR-032** | Auth mechanism: keyed digest lookup, uncached sessions, a narrowed pre-workspace seam | **Proposed** | Ratifies [40](40-IDENTITY-AUTH-AND-SESSION.md) as the auth *protocol* and settles only the layer beneath it, where the record and the `Gated` schema contradict each other: credential lookup is a keyed HMAC digest rather than a KDF (a 190-bit token does not need one, and `UNIQUE` already implies determinism); sessions and tokens are never cached, because that staleness window is the reason JWTs were rejected; the pre-workspace lookup goes through a fixed `SECURITY DEFINER` projection rather than exempting the table from RLS; `principal_type` gains a plugin-installation value while the table is still empty. **Not Accepted** — see [14](14-EXECUTION-TRACKER.md) D-032. |
 
 ## How the old §18 questions were resolved
 
@@ -77,8 +78,8 @@ The archived drafts ended with nine unanswered questions. Their disposition:
 
   What is actually unsettled is the mechanism layer where that prose meets the
   **already-`Gated` schema**, and in four places the two contradict each other.
-  Enumerated in [14](14-EXECUTION-TRACKER.md) under **D-032**; to be Accepted at
-  Phase 0.
+  Now drafted as **ADR-032**, status `Proposed`, with the reasoning in
+  [40](40-IDENTITY-AUTH-AND-SESSION.md) §Mechanism. To be Accepted at Phase 0.
 - **SSE vs WebSocket for bidirectional features** — SSE is the Phase 1 decision;
   a WebSocket ADR is required if any feature genuinely needs client→server
   streaming (none does yet).
