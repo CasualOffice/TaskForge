@@ -21,8 +21,9 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Phase 0 built no product functionality, by design — it built the ability to
 > tell when a later phase is wrong. It closed at **11 of 16 items `Gated`**;
 > the other five are built and tested but not yet behind an acceptance gate,
-> and are reported that way rather than rounded up. Gated on every pull request: the enforced
-> dependency DAG, architecture lints, the database schema with row-level
+> and are reported that way rather than rounded up.
+>
+> Gated on every pull request: the enforced dependency DAG, architecture lints, the database schema with row-level
 > security proven as the non-superuser role, a deployable image with a verified
 > deployment path, a deterministic 2,000,000-task reference corpus, an `EXPLAIN`
 > gate over all 20 read paths, and the ADR-024 bundle budget measured at 113.2
@@ -34,22 +35,27 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > row-level security at 2 M tasks (**D-043**). And the Phase 0 threat-model
 > review was conducted by an agent, says so, and asks to be countersigned.
 >
-> **Phase 1 is under way, and all of it is engine.** Landed so far, with tests
-> and none yet gated: the permission resolver and its escalation ceilings, the
-> workflow state machine, the filter AST and its closed field set, the
-> scoped-connection seam that puts every repository behind row-level security,
-> and the transactional outbox — a change and its activity, audit and per-consumer
-> delivery rows commit together or not at all, verified against a real
-> PostgreSQL 16 rather than asserted.
->
-> **There is no user interface, and none is being built yet.** Everything above
+> **There is no user interface, and none is being built yet.** Everything below
 > is backend: crates, migrations, and gates. The web client — shell, board,
 > list, My Work, task drawer, command palette — is C-018, and it is deliberately
 > late in Phase 1 because it consumes an HTTP API that does not exist yet
 > (C-001 through C-014 build it). The only frontend artefact in the repository
 > is a measurement harness for the ADR-024 bundle budget, which exists to hold a
 > number, not to render anything.
+>
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
+
+<!-- phase-1-landed:begin -->
+**Phase 1 is under way, and all of it is engine.** 7 items started, 0 gated:
+
+- **Permission resolver + `/explain`** (C-003) — `Building`
+- **Permission matrix + escalation suites** (C-004) — `Building`
+- **Cross-tenant property suite** (C-005) — `Building`
+- **Default workflow + transitions** (C-007) — `Building`
+- **Activity + audit + outbox** (C-011) — `Building`
+- **Filter grammar + compiler** (C-012) — `Building`
+- **Cursor pagination** (C-014) — `Building`
+<!-- phase-1-landed:end -->
 
 ## The problem
 
@@ -229,6 +235,12 @@ not a convenience. Full walkthrough: [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 > bypasses row-level security unconditionally, which would make tenant isolation
 > and audit immutability both silently inert. `deploy/` sets this up correctly
 > and CI asserts it — see [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
+>
+> **The database connection is not encrypted (D-050).** PostgreSQL must be on a
+> trusted network — this host, or a private subnet you control. A managed
+> PostgreSQL requiring `sslmode=require` is **not supported by this release**.
+> The reason, and what holds the constraint, are in
+> [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 
 **There is no runnable application yet, and nothing to look at.** The binaries
 are scaffolds: no HTTP endpoint serves a request and no page renders. What is
