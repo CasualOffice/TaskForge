@@ -82,6 +82,7 @@ The documentation phase. All complete unless noted.
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** (lag half) — gauge, age of oldest actionable pending delivery, C-011. The cache-hit ratio half stays open until C-003's cache exists. |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Consumed** — yes, distinct: `role.assign` vs `role.manage`, migration 0015 |
+| D-053 | A closed event-type registry, as the permission set has | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Open** — surfaced by F-009 |
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
@@ -318,7 +319,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | F-006 | `tools/casual-task-seed` reference corpus | **Gated** | F-005 |
 | F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
 | F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
-| F-009 | Observability skeleton | `Built` | F-001 |
+| F-009 | Observability skeleton | **Gated** | F-001 |
 | F-010 | Docker Compose dev profile | **Gated** | — |
 | F-011 | Governance files, Apache-2.0, AGENTS.md | `Built` | — |
 | F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
@@ -526,6 +527,54 @@ vacuously true.
 Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
+
+**F-009 is `Gated`.** It was `Built` because the crate was a registry of names
+with no way to record a value — declared metrics that nothing could emit.
+
+`Recorder` records counters, gauges and histograms and renders the Prometheus
+exposition body. **It was written here rather than taken from a crate**, and the
+reason is the crate's own invariant: `LabelValue` has no `From<String>`, no
+`From<Uuid>` and no constructor taking `impl Display`, so a workspace id cannot
+become a label. Every general-purpose metrics facade takes labels as `&str`
+pairs; putting one underneath this crate would turn a compile error into a
+convention at the call site. The cost — owning the exposition format, the
+buckets and the locking — is stated in the module.
+
+Buckets are chosen against [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) rather
+than copied: p95 read < 150 ms, so there is a boundary *at* 0.150 and four more
+between 50 ms and 350 ms. A layout jumping 0.1 → 1.0 would put the number this
+project is judged on inside one bucket, and every quantile across it would be an
+interpolation.
+
+The loop now emits `outbox_lag_seconds`, `outbox_dlq_depth` and
+`outbox_dispatch_total`, and the C-011 acceptance test asserts they appear —
+including that lag returns to **zero** when the queue drains. A gauge that stops
+being written keeps reporting its last value, so a backlog that cleared would
+show as a backlog forever.
+
+**The guard caught something real while wiring it up.** Consumer names round-trip
+through the database as runtime `String`s, and `LabelSet::with` accepts only
+`&'static str` — so the compiler refused them. That is not an inconvenience:
+[34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) lets a **plugin** subscribe, so
+consumer names are open at runtime and passing them straight through would have
+grown a series per installed plugin. They are now mapped back to the declared
+`CONSUMERS` entries, with anything else collapsing to `other`.
+
+The same problem has no such fix for event types, so `outbox_dlq_depth` is
+**not** broken down by one. There is no closed event-type registry to map a
+runtime string back to a source literal — the permission set has one, event
+types do not — and adding the label without it would put an unbounded value on a
+metric. Opened as **D-053** rather than resolved here; RB-02 still groups by
+event type in SQL, where cardinality costs nothing.
+
+Serving `/metrics` over HTTP is **not** here: [19](19-WORKSPACE-SCAFFOLD-DESIGN.md)
+puts every HTTP type in `casual-task-api` and `casual-task-lint` enforces it, so
+the endpoint arrives with C-001. This produces the body it will send.
+
+Two Phase 0 rows remain `Built`: F-007 needs a reference machine, F-011 is prose
+with no behaviour behind it. **F-013 needs a human** — the threat-model review
+records that an agent conducted it and asks to be countersigned before the
+Phase 1 gate.
 
 **F-014 is `Gated`.** It was `Built` with the reason recorded as "prose that no
 gate beyond link resolution can hold". That was wrong, and this session proved

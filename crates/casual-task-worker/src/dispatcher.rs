@@ -38,6 +38,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use casual_task_observability::labels::{LabelSet, keys};
+use casual_task_observability::metrics::{
+    OUTBOX_DISPATCH_TOTAL, OUTBOX_DLQ_DEPTH, OUTBOX_LAG_SECONDS,
+};
+use casual_task_observability::recorder::Recorder;
 use casual_task_persistence::dispatch::{self, Claimed, Dispatcher};
 use sqlx::PgPool;
 use tokio::sync::{Semaphore, watch};
@@ -174,12 +179,19 @@ pub async fn run<C: Consumer + 'static>(
     worker_id: &str,
     config: Config,
     mut cancel: Cancel,
+    metrics: Arc<Recorder>,
 ) -> Result<Stopped, sqlx::Error> {
     let permits = Arc::new(Semaphore::new(config.concurrency));
     let mut in_flight = tokio::task::JoinSet::new();
 
     while !cancel.is_cancelled() {
-        let claimed = claim_batch(pool, consumer.name(), worker_id, config.batch).await?;
+        // The lag reading is taken in the SAME transaction as the claim, before
+        // the claimed rows are marked. Read afterwards it would exclude the work
+        // just taken and report a healthier number than the truth — the
+        // direction of error nobody investigates.
+        let (claimed, lag, dlq) =
+            claim_batch(pool, consumer.name(), worker_id, config.batch).await?;
+        record_lag(&metrics, consumer.name(), lag, &dlq);
 
         if claimed.is_empty() {
             // Cancellable sleep: a worker asked to stop must not sit here for
@@ -203,6 +215,7 @@ pub async fn run<C: Consumer + 'static>(
                 .expect("the semaphore is never closed");
             let pool = pool.clone();
             let consumer = Arc::clone(&consumer);
+            let metrics = Arc::clone(&metrics);
             in_flight.spawn(async move {
                 let _permit = permit;
                 // Delivery happens INSIDE the task. Awaiting it before spawning
@@ -210,7 +223,7 @@ pub async fn run<C: Consumer + 'static>(
                 // make the semaphore decorative — concurrency of one, bounded
                 // by a permit nobody contends for.
                 let outcome = consumer.deliver(&event).await;
-                record(&pool, &event, outcome).await
+                record(&pool, &event, outcome, &metrics).await
             });
         }
 
@@ -235,17 +248,72 @@ pub async fn run<C: Consumer + 'static>(
 /// Claim in its own transaction, and **commit before returning**. The signature
 /// is why: nothing borrowed from the transaction escapes, so a caller cannot
 /// hold it across the delivery that follows.
+#[allow(clippy::type_complexity)]
 async fn claim_batch(
     pool: &PgPool,
     consumer: &str,
     worker_id: &str,
     batch: i64,
-) -> Result<Vec<Claimed>, sqlx::Error> {
+) -> Result<(Vec<Claimed>, Option<f64>, Vec<(String, i64)>), sqlx::Error> {
     let mut tx = pool.begin().await?;
     let mut dispatcher = Dispatcher::assume(&mut tx).await?;
+    let lag = dispatch::oldest_pending_seconds(&mut dispatcher, consumer).await?;
+    let dlq = dispatch::dlq_depth(&mut dispatcher).await?;
     let claimed = dispatch::claim(&mut dispatcher, consumer, worker_id, batch).await?;
     tx.commit().await?;
-    Ok(claimed)
+    Ok((claimed, lag, dlq))
+}
+
+/// Map a consumer name that came back from the database to the declared
+/// `&'static str` it must be, or to `other`.
+///
+/// This exists because `LabelSet::with` accepts only `&'static str` — the
+/// cardinality guard from `docs/46` — and a name read out of `outbox_delivery`
+/// is a runtime `String` even though it was written from [`CONSUMERS`]. The
+/// compiler refusing it is not an inconvenience here: `docs/34` lets a **plugin**
+/// subscribe, so consumer names are open at runtime, and passing them straight
+/// through would make `outbox_dlq_depth` grow a series per installed plugin.
+///
+/// Unknown names collapse to `other`, which is the same shape the tenant
+/// allow-list uses: the metric stays bounded and the detail is in the database.
+fn declared_consumer(name: &str) -> &'static str {
+    casual_task_persistence::CONSUMERS
+        .iter()
+        .copied()
+        .find(|declared| *declared == name)
+        .unwrap_or("other")
+}
+
+/// Publish the two gauges `docs/46` calls the primary health signal.
+///
+/// A gauge with no pending work is set to **0**, not left at its last value: a
+/// gauge that stops being written keeps reporting the last number it saw, so a
+/// backlog that drained would show as a backlog forever.
+fn record_lag(metrics: &Recorder, consumer: &'static str, lag: Option<f64>, dlq: &[(String, i64)]) {
+    let Ok(labels) = LabelSet::for_metric(OUTBOX_LAG_SECONDS).with(keys::CONSUMER, consumer) else {
+        // A consumer name is a `&'static str` from CONSUMERS, so this cannot
+        // fail today. Logged rather than unwrapped because a metric is not
+        // worth killing a dispatch loop over.
+        tracing::warn!(consumer, "outbox lag label rejected");
+        return;
+    };
+    if let Err(error) = metrics.set(OUTBOX_LAG_SECONDS, &labels, lag.unwrap_or(0.0)) {
+        tracing::error!(%error, "recording outbox lag");
+    }
+
+    for (dlq_consumer, depth) in dlq {
+        let labels = LabelSet::for_metric(OUTBOX_DLQ_DEPTH)
+            .with(keys::CONSUMER, declared_consumer(dlq_consumer));
+        match labels {
+            Ok(labels) => {
+                #[allow(clippy::cast_precision_loss)]
+                if let Err(error) = metrics.set(OUTBOX_DLQ_DEPTH, &labels, *depth as f64) {
+                    tracing::error!(%error, "recording dead-letter depth");
+                }
+            }
+            Err(error) => tracing::warn!(%error, "dead-letter depth label rejected"),
+        }
+    }
 }
 
 /// Record one outcome in its own short transaction.
@@ -253,14 +321,17 @@ async fn record(
     pool: &PgPool,
     event: &Claimed,
     outcome: Result<(), String>,
+    metrics: &Recorder,
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     let mut dispatcher = Dispatcher::assume(&mut tx).await?;
+    let mut result = "dispatched";
     match outcome {
         Ok(()) => dispatch::succeeded(&mut dispatcher, event.delivery_id).await?,
         Err(error) => {
             let dead = dispatch::failed(&mut dispatcher, event.delivery_id, event.attempts, &error)
                 .await?;
+            result = if dead { "dead_lettered" } else { "failed" };
             if dead {
                 // docs/46 alerts on any sustained DLQ increase, so this is the
                 // log line that explains one.
@@ -274,7 +345,22 @@ async fn record(
             }
         }
     }
-    tx.commit().await
+    tx.commit().await?;
+
+    // Counted after the outcome is committed, so the counter cannot claim a
+    // delivery the database rolled back.
+    let labels = LabelSet::for_metric(OUTBOX_DISPATCH_TOTAL)
+        .with(keys::CONSUMER, declared_consumer(&event.consumer))
+        .and_then(|l| l.with(keys::OUTCOME, result));
+    match labels {
+        Ok(labels) => {
+            if let Err(error) = metrics.increment(OUTBOX_DISPATCH_TOTAL, &labels, 1) {
+                tracing::error!(%error, "recording a dispatch outcome");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "dispatch outcome label rejected"),
+    }
+    Ok(())
 }
 
 /// Wait for in-flight deliveries, bounded.

@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use casual_task_model::{WorkspaceId, WorkspaceScope};
+use casual_task_observability::recorder::Recorder as Metrics;
 use casual_task_persistence::{Change, Provenance, Scoped, UnitOfWork, dispatch, test_support};
 use casual_task_worker::dispatcher::{Cancel, CancelOnDrop, Config, Consumer, Stopped};
 use sqlx::PgPool;
@@ -145,7 +146,15 @@ async fn no_event_is_lost_when_the_dispatcher_is_killed_mid_batch() -> Result<()
         let pool = db.pool.clone();
         let consumer = Arc::clone(&victim);
         tokio::spawn(async move {
-            casual_task_worker::dispatcher::run(&pool, consumer, "worker-1", config(), cancel).await
+            casual_task_worker::dispatcher::run(
+                &pool,
+                consumer,
+                "worker-1",
+                config(),
+                cancel,
+                Arc::new(Metrics::new()),
+            )
+            .await
         })
     };
 
@@ -179,13 +188,22 @@ async fn no_event_is_lost_when_the_dispatcher_is_killed_mid_batch() -> Result<()
 
     // --- Worker 2: healthy. Must pick up everything the first one dropped. ---
     let survivor = Arc::new(Recorder::new(usize::MAX));
+    let metrics = Arc::new(Metrics::new());
     let (stop2, cancel2) = CancelOnDrop::new();
     let worker2 = {
         let pool = db.pool.clone();
         let consumer = Arc::clone(&survivor);
+        let metrics = Arc::clone(&metrics);
         tokio::spawn(async move {
-            casual_task_worker::dispatcher::run(&pool, consumer, "worker-2", config(), cancel2)
-                .await
+            casual_task_worker::dispatcher::run(
+                &pool,
+                consumer,
+                "worker-2",
+                config(),
+                cancel2,
+                metrics,
+            )
+            .await
         })
     };
     tokio::time::sleep(Duration::from_millis(900)).await;
@@ -226,6 +244,25 @@ async fn no_event_is_lost_when_the_dispatcher_is_killed_mid_batch() -> Result<()
         "{} deliveries are still pending after a healthy worker ran",
         settled.outstanding
     );
+
+    // 4. AND IT WAS OBSERVABLE. A dispatcher that delivers correctly and emits
+    //    nothing is indistinguishable from one that is not running at all —
+    //    which is the question RB-01 step 3 exists to answer.
+    let scraped = metrics.render();
+    assert!(
+        scraped.contains(r#"outbox_dispatch_total{consumer="sse_fanout",outcome="dispatched"}"#),
+        "the dispatch counter was never recorded:\n{scraped}"
+    );
+    assert!(
+        scraped.contains(r#"outbox_lag_seconds{consumer="sse_fanout"}"#),
+        "the lag gauge was never recorded:\n{scraped}"
+    );
+    // Drained, so the gauge must read zero rather than keeping its last value —
+    // a gauge that stops being written reports a backlog forever.
+    assert!(
+        scraped.contains(r#"outbox_lag_seconds{consumer="sse_fanout"} 0"#),
+        "lag did not return to zero after the queue drained:\n{scraped}"
+    );
     Ok(())
 }
 
@@ -240,7 +277,15 @@ async fn a_cancelled_worker_with_nothing_in_flight_drains_immediately() -> Resul
     let (stop, cancel) = CancelOnDrop::new();
     let pool = db.pool.clone();
     let worker = tokio::spawn(async move {
-        casual_task_worker::dispatcher::run(&pool, consumer, "worker-1", config(), cancel).await
+        casual_task_worker::dispatcher::run(
+            &pool,
+            consumer,
+            "worker-1",
+            config(),
+            cancel,
+            Arc::new(Metrics::new()),
+        )
+        .await
     });
 
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -264,7 +309,15 @@ async fn dropping_the_handle_stops_the_worker() -> Result<()> {
     let (stop, cancel) = CancelOnDrop::new();
     let pool = db.pool.clone();
     let worker = tokio::spawn(async move {
-        casual_task_worker::dispatcher::run(&pool, consumer, "worker-1", config(), cancel).await
+        casual_task_worker::dispatcher::run(
+            &pool,
+            consumer,
+            "worker-1",
+            config(),
+            cancel,
+            Arc::new(Metrics::new()),
+        )
+        .await
     });
 
     tokio::time::sleep(Duration::from_millis(150)).await;

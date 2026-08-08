@@ -139,14 +139,23 @@ pub const OUTBOX_LAG_SECONDS: Metric = Metric::new(
 
 /// Deliveries that gave up. `docs/46` alerts on any sustained increase.
 ///
-/// Labelled by consumer as well as event type: since migration 0013 a dead
-/// letter is one `(event, consumer)` pair, not an event, and "which consumer"
-/// is the first question RB-02 asks. Both labels are bounded sets — no
-/// workspace id, per D-042.
+/// Labelled by consumer: since migration 0013 a dead letter is one
+/// `(event, consumer)` pair, not an event, and "which consumer" is the first
+/// question RB-02 asks. Consumer names are bounded by
+/// `casual_task_persistence::CONSUMERS`, with anything else collapsing to
+/// `other` — `docs/34` lets a plugin subscribe, so the set is open at runtime
+/// and a raw name would grow a series per installed plugin.
+///
+/// **Not** broken down by event type, though RB-02 groups by it in SQL. Event
+/// types round-trip through the database as runtime strings and there is no
+/// closed registry to map them back to source literals — the permission set has
+/// one, event types do not. Adding the label without that registry would put an
+/// unbounded value on a metric, which is the thing `docs/46` §Cardinality
+/// discipline forbids. Tracked as **D-053**.
 pub const OUTBOX_DLQ_DEPTH: Metric = Metric::new(
     "outbox_dlq_depth",
     MetricKind::Gauge,
-    &[keys::CONSUMER, keys::EVENT_TYPE],
+    &[keys::CONSUMER],
     "Deliveries in the dead letter queue; never expected to be non-zero",
 );
 
@@ -415,11 +424,7 @@ mod tests {
         // only ever one oldest, so the percentiles would have been taken over
         // repeated readings of the same number.
         ("outbox_lag_seconds", MetricKind::Gauge, &[keys::CONSUMER]),
-        (
-            "outbox_dlq_depth",
-            MetricKind::Gauge,
-            &[keys::CONSUMER, keys::EVENT_TYPE],
-        ),
+        ("outbox_dlq_depth", MetricKind::Gauge, &[keys::CONSUMER]),
         (
             "outbox_dispatch_total",
             MetricKind::Counter,

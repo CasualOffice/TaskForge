@@ -21,6 +21,7 @@ sqlx = { workspace = true }
 
 [dev-dependencies]
 casual-task-model = { workspace = true }
+casual-task-observability = { workspace = true }
 casual-task-persistence = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 sqlx = { workspace = true }
