@@ -81,6 +81,7 @@ The documentation phase. All complete unless noted.
 | D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Accepted** — STARTTLS + certificate/hostname verification |
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Accepted** — gauge: age of oldest actionable pending event |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
+| D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Blocked** — Accept before C-002 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -312,7 +313,7 @@ the code that proves it.
 | C-001 | Identity, sessions, MFA, invitations | Accepted |
 | C-002 | Workspace, membership, teams | Accepted |
 | C-003 | **Permission resolver + `/explain`** | `Building` |
-| C-004 | Permission matrix + escalation suites | Accepted |
+| C-004 | Permission matrix + escalation suites | `Building` |
 | C-005 | Cross-tenant property suite | Accepted |
 | C-006 | Projects, membership, visibility | Accepted |
 | C-007 | Default workflow + transitions | Accepted |
@@ -328,6 +329,26 @@ the code that proves it.
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+
+**C-004 is `Building`.** Five of the seven escalation controls are implemented
+in `casual-task-authz` as `may_assign` and `plugin_ceiling`, each with a test
+that *attempts* the exploit rather than asserting about it. The other two are
+not, and the module says so rather than skipping them quietly: last-owner
+protection is a database constraint checked inside the transaction (docs/04
+control 4 says "not just in application code", so a check here would be
+advisory and would race), and auditing every grant needs C-011.
+
+Both property tests docs/04 §Acceptance gates names are in: additivity — "the
+invariant the whole model rests on" — and cross-workspace isolation. Both are
+seeded so a failure names its reproducing case, and both were verified to fail:
+injecting a most-specific-wins rule between grants makes additivity red at a
+named seed. A third test asserts the generator produces both allows and denies,
+because a property test over a generator that never allows anything is
+vacuously true.
+
+Still missing before `Gated`: the golden matrix over every permission × role ×
+scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
+endpoints respectively.
 
 **C-003 is `Building`.** The resolution core is implemented in
 `casual-task-authz` — the scope containment chain, the additive union, the
