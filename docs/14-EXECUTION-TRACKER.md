@@ -114,7 +114,7 @@ implementation:
 | F-006 | `tools/casual-task-seed` reference corpus | **Gated** | F-005 |
 | F-007 | `tools/casual-task-loadtest` + baselines | `Built` | F-006 |
 | F-008 | `EXPLAIN` no-seq-scan harness | **Gated** | F-006 |
-| F-009 | Observability skeleton | `Building` | F-001 |
+| F-009 | Observability skeleton | `Built` | F-001 |
 | F-010 | Docker Compose dev profile | Accepted | F-001 |
 | F-011 | Governance files, Apache-2.0, AGENTS.md | Accepted | — |
 | F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
@@ -185,11 +185,18 @@ Remaining Phase 0:
   baseline it may legitimately compare against, because the docs/30 reference
   machine does not exist. The harness, the corpus, and the gate all work and are
   tested. Recorded in [15](15-CI-AND-RELEASE-GATES.md) §Pending gates.
-- **F-009** is `Building`. The crate exists and is substantial, but an audit
-  found correlation fields dropping out of any log line emitted inside a nested
-  span, and a cardinality guard that constrains label *keys* while leaving label
-  *values* free — which is an unbounded map in a long-running process. Neither
-  is safe to inherit into Phase 1.
+- **F-009** is `Built`. An audit found three defects, all now fixed and each
+  covered by a test that fails without its fix: correlation fields dropped out
+  of every log line emitted inside a nested span (which docs/46 §Traces makes
+  the common case, so most lines would have lost them); the cardinality guard
+  constrained label *keys* while leaving label *values* free, so a tenant id
+  admitted for one label was accepted on another and a plugin installation id
+  was accepted as a `statement` name — unbounded series on a histogram; and an
+  event field named `level` silently rewrote a line's severity, which docs/46
+  §Alerts fires on. It is `Built` rather than `Gated` because nothing installs
+  the subscriber yet — both binaries declare the dependency and neither calls
+  `init()` — and there is no CI gate on metric conformance beyond the crate's
+  own tests.
 - **F-014** is `Built`: the runbooks are written and cross-referenced. There is
   no meaningful CI gate on prose beyond link resolution.
 

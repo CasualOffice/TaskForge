@@ -11,7 +11,7 @@
 //!
 //! That paragraph is a rule, and `docs/10-PROJECT-GOAL-AND-STANDARDS.md` §3 says
 //! a rule survives until the eleventh engineer. So it is a mechanism here
-//! instead, in three parts:
+//! instead, in four parts:
 //!
 //! 1. **No constructor accepts an unbounded value.** [`LabelValue`] can be built
 //!    from `&'static str` (bounded by the source text), `bool`, and nothing else
@@ -26,6 +26,14 @@
 //!    again).
 //! 3. **A metric declares its legal label keys**, and [`LabelSet::with`] rejects
 //!    any other key. A dashboard series that nobody declared cannot appear.
+//! 4. **A value from door 2 may only go through the key it was minted for.**
+//!    Parts 1–3 are all about *keys*; on their own they let a value whose
+//!    cardinality was justified for one label be attached to a different one.
+//!    A tenant id admitted for `workspace_investigation` was accepted as a
+//!    `scope_kind`, and a plugin installation id as a `statement` — the label
+//!    that is bounded precisely because statement names are `&'static`. Both
+//!    compiled. [`LabelValue::minted_for`] closes that, and
+//!    [`CardinalityError::MisplacedValue`] says which key the value belonged to.
 //!
 //! **The cost, stated plainly** (`docs/10` §4): the bucket label answers "is
 //! throttling concentrated in a few tenants or spread across all of them?" It
@@ -167,18 +175,50 @@ pub mod keys {
 ///     .with(keys::WORKSPACE_BUCKET, workspace.to_string());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LabelValue(Cow<'static, str>);
+pub struct LabelValue {
+    value: Cow<'static, str>,
+    /// The key this value may be attached to, for values whose cardinality is a
+    /// deliberate, documented trade.
+    ///
+    /// Without this the guard was one-sided. A metric declares which *keys* are
+    /// legal, and `with` checked exactly that — but a `LabelValue` carried no
+    /// memory of what it was minted for, so any value could be attached to any
+    /// declared key. That let a raw workspace id through under `scope_kind`,
+    /// and a plugin installation id under `statement` — the label
+    /// `metrics.rs` documents as bounded *because* statement names are
+    /// `&'static`. Both compiled, both were accepted, and both are the
+    /// unbounded series `docs/46` §Cardinality discipline forbids.
+    ///
+    /// `None` for values fixed by the source text, which are safe anywhere.
+    minted_for: Option<LabelKey>,
+}
 
 impl LabelValue {
     /// The only general constructor: a value fixed by the source text, so its
     /// cardinality is bounded by the number of literals a developer wrote.
     pub const fn from_static(value: &'static str) -> Self {
-        Self(Cow::Borrowed(value))
+        Self {
+            value: Cow::Borrowed(value),
+            minted_for: None,
+        }
+    }
+
+    /// A value that may only be attached to `key`.
+    fn bound_to(value: String, key: LabelKey) -> Self {
+        Self {
+            value: Cow::Owned(value),
+            minted_for: Some(key),
+        }
+    }
+
+    /// The key this value may be attached to, if it is restricted to one.
+    pub fn minted_for(&self) -> Option<LabelKey> {
+        self.minted_for
     }
 
     /// The value as it appears in the exposition format.
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.value
     }
 
     /// Hash a tenant into one of [`WORKSPACE_BUCKET_COUNT`] buckets.
@@ -190,7 +230,10 @@ impl LabelValue {
     /// Attribution is a log or trace query, which is where `workspace_id` is
     /// allowed to appear.
     pub fn workspace_bucket(workspace: WorkspaceId) -> Self {
-        Self(Cow::Owned(WorkspaceBucket::of(workspace).to_string()))
+        Self::bound_to(
+            WorkspaceBucket::of(workspace).to_string(),
+            keys::WORKSPACE_BUCKET,
+        )
     }
 
     /// Label a plugin installation (`docs/46` domain metrics: `plugin_call_duration`
@@ -203,7 +246,7 @@ impl LabelValue {
     /// on a large deployment this is the metric to watch for series blowup, and
     /// the constructor is named so the trade is visible at every call site.
     pub fn plugin_installation(installation: PluginInstallationId) -> Self {
-        Self(Cow::Owned(installation.to_string()))
+        Self::bound_to(installation.to_string(), keys::INSTALLATION)
     }
 }
 
@@ -221,7 +264,7 @@ impl From<bool> for LabelValue {
 
 impl fmt::Display for LabelValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.value)
     }
 }
 
@@ -329,7 +372,7 @@ impl InvestigationAllowList {
     /// admitted set.
     pub fn label(&self, workspace: WorkspaceId) -> LabelValue {
         if self.admitted.contains(&workspace) {
-            LabelValue(Cow::Owned(workspace.to_string()))
+            LabelValue::bound_to(workspace.to_string(), keys::WORKSPACE_INVESTIGATION)
         } else {
             Self::OTHER
         }
@@ -351,6 +394,22 @@ pub enum CardinalityError {
         key: &'static str,
         /// The keys the metric does declare, comma separated.
         declared: String,
+    },
+
+    /// A cardinality-bearing value was attached to a key it was not minted for.
+    #[error(
+        "label `{key}` on metric `{metric}` was given a value minted for \
+         `{minted_for}`. That value's cardinality is a documented trade for \
+         `{minted_for}` only; on `{key}` it is an unbounded series \
+         (docs/46 §Cardinality discipline)"
+    )]
+    MisplacedValue {
+        /// The metric the label was attached to.
+        metric: &'static str,
+        /// The key it was attached to.
+        key: &'static str,
+        /// The key the value may be used with.
+        minted_for: &'static str,
     },
 
     /// The metric declared more labels than [`MAX_LABELS_PER_METRIC`].
@@ -427,7 +486,22 @@ impl LabelSet {
                     .join(", "),
             });
         }
-        self.pairs.insert(key, value.into());
+        let value = value.into();
+        // The other half of the guard. Declaring which keys are legal says
+        // nothing about what may be *put* in them, and the two cardinality
+        // constructors exist precisely because their values are expensive.
+        // Attaching one to a different key spends that cost on a metric that
+        // never agreed to it.
+        if let Some(minted_for) = value.minted_for()
+            && minted_for != key
+        {
+            return Err(CardinalityError::MisplacedValue {
+                metric: self.metric.name().as_str(),
+                key: key.as_str(),
+                minted_for: minted_for.as_str(),
+            });
+        }
+        self.pairs.insert(key, value);
         Ok(self)
     }
 
@@ -456,6 +530,77 @@ mod tests {
             .with(keys::PERMISSION, "task.delete")
             .expect("permission is declared on permission_denied_total");
         assert_eq!(labels.pairs(), vec![("permission", "task.delete")]);
+    }
+
+    #[test]
+    fn a_tenant_bucket_cannot_be_smuggled_onto_another_key() {
+        // Both keys are declared on this metric, so the key check passes and
+        // only the value check can stop it. Before that check existed, this
+        // produced `[("scope_kind", "019fe1ca-…")]` — a raw workspace UUID in a
+        // metric label, which is the exact thing docs/46 forbids.
+        let workspace = WorkspaceId::new();
+        let mut allow = InvestigationAllowList::default();
+        allow.admit(workspace).expect("empty list has room");
+
+        let err = LabelSet::for_metric(RATE_LIMIT_HITS_TOTAL)
+            .with(keys::SCOPE_KIND, allow.label(workspace))
+            .expect_err("an admitted tenant id must not be usable as a scope kind");
+        assert!(
+            matches!(
+                err,
+                CardinalityError::MisplacedValue {
+                    key: "scope_kind",
+                    minted_for: "workspace_investigation",
+                    ..
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn an_installation_id_cannot_be_used_as_a_statement_name() {
+        // `statement` is documented as bounded *because* statement names are
+        // `&'static`. An installation id there is unbounded cardinality on a
+        // histogram, which is the most expensive shape there is.
+        let err = LabelSet::for_metric(metrics::DB_QUERY_DURATION)
+            .with(
+                keys::STATEMENT,
+                LabelValue::plugin_installation(casual_task_model::PluginInstallationId::new()),
+            )
+            .expect_err("an installation id is not a statement name");
+        assert!(
+            matches!(
+                err,
+                CardinalityError::MisplacedValue {
+                    key: "statement",
+                    minted_for: "installation",
+                    ..
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_bounded_value_still_goes_where_it_belongs() {
+        // The counterweight: the guard must not break the two legitimate uses.
+        let bucket = LabelValue::workspace_bucket(WorkspaceId::new());
+        LabelSet::for_metric(RATE_LIMIT_HITS_TOTAL)
+            .with(keys::WORKSPACE_BUCKET, bucket)
+            .expect("a bucket belongs on workspace_bucket");
+
+        LabelSet::for_metric(PLUGIN_CIRCUIT_STATE)
+            .with(
+                keys::INSTALLATION,
+                LabelValue::plugin_installation(casual_task_model::PluginInstallationId::new()),
+            )
+            .expect("an installation id belongs on installation");
+
+        // And a source-text value stays usable on any declared key.
+        LabelSet::for_metric(metrics::PERMISSION_DENIED_TOTAL)
+            .with(keys::PERMISSION, "task.delete")
+            .expect("a static value is safe anywhere");
     }
 
     #[test]

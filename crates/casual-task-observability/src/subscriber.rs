@@ -241,10 +241,25 @@ where
             // segment in a query.
             .flatten_event(false)
             .with_current_span(true)
-            // The full ancestor list repeats the correlation fields on every
-            // line at several times the byte cost; the current span carries
-            // them already.
-            .with_span_list(false)
+            // The ancestor list is REQUIRED, not a luxury.
+            //
+            // The correlation fields live on the `unit_of_work` span, and
+            // `with_current_span` emits only the innermost span. docs/46
+            // §Traces specifies child spans for authorization, for each database
+            // query, and for each external call — so under the previous
+            // `with_span_list(false)` every line emitted inside any of those
+            // carried `"span":{"name":"db.query"}` and no correlation id at all.
+            // That is the majority of lines the system will emit, and it
+            // defeats docs/46 §Correlation, whose whole claim is that one query
+            // on a correlation id reconstructs the causal chain.
+            //
+            // The cost is real and was the original reason for `false`: the
+            // ancestor chain repeats on every line. It is the cheaper mistake.
+            //
+            // This puts the ids under `spans[]`, not at the top level. Lifting
+            // them out needs a custom `FormatEvent` that walks the span scope,
+            // which is worth doing when there is a pipeline to satisfy.
+            .with_span_list(true)
             .with_writer(writer)
             .boxed(),
         // No ANSI: a developer piping to a file or a pager should not get
@@ -408,6 +423,56 @@ mod tests {
         assert_eq!(
             line["fields"]["message"],
             serde_json::json!("status changed")
+        );
+    }
+
+    #[test]
+    fn correlation_survives_a_nested_span() {
+        // The regression this guards is the common case, not an edge case:
+        // docs/46 §Traces puts a child span around authorization, around every
+        // database query, and around every external call, so most log lines are
+        // emitted from inside one. Emitting only the *current* span dropped the
+        // correlation fields from all of them, and the existing test could not
+        // see it because it logged directly inside `unit_of_work`.
+        let context = CorrelationContext::at_edge()
+            .with_workspace(casual_task_model::WorkspaceId::new())
+            .with_actor(casual_task_model::UserId::new());
+
+        let output = capture(LogFormat::Json, || {
+            let root = context.span("task.transition");
+            let _entered = root.enter();
+            let child = tracing::info_span!("db.query", statement = "update_task");
+            let _in_child = child.enter();
+            tracing::info!("status changed");
+        });
+
+        let line: serde_json::Value = serde_json::from_str(output.trim())
+            .unwrap_or_else(|e| panic!("not JSON: {e}\n{output}"));
+
+        // The innermost span is the child — that is what `span` means.
+        assert_eq!(
+            line["span"]["name"],
+            serde_json::json!("db.query"),
+            "{output}"
+        );
+
+        // …and the correlation fields are still reachable, from the ancestor
+        // list, which is why it is enabled.
+        let spans = line["spans"].as_array().expect("span list");
+        let root = spans
+            .iter()
+            .find(|s| s["name"] == serde_json::json!("unit_of_work"))
+            .unwrap_or_else(|| panic!("no unit_of_work span in the ancestor list:\n{output}"));
+        for field in ["correlation_id", "request_id", "workspace_id", "actor_id"] {
+            assert!(
+                root.get(field).is_some_and(|v| !v.is_null()),
+                "docs/46 §The three signals: every line carries {field}, and this one \
+                 does not:\n{output}"
+            );
+        }
+        assert_eq!(
+            root["correlation_id"],
+            serde_json::json!(context.correlation_id().to_string())
         );
     }
 

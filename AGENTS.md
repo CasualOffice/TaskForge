@@ -171,11 +171,15 @@ row-level security proven as the non-superuser role, the deployable image, the
 deterministic 2M-task reference corpus, the `EXPLAIN` no-seq-scan gate over all
 20 read paths, and the ADR-024 bundle budget.
 
-Two Phase 0 items are deliberately not `Gated` yet, and
+Two Phase 0 items are `Built` but deliberately not `Gated`, and
 [docs/14](docs/14-EXECUTION-TRACKER.md) says why in each case: the latency gate
 (F-007) has no reference machine to produce a comparable baseline on, and the
-observability skeleton (F-009) has two defects that must not be inherited into
-Phase 1.
+observability skeleton (F-009) is not installed by either binary yet.
+
+Four design decisions are open and blocking Phase 1 work — **D-038** to
+**D-041**, covering outbox dispatch, connection-pool behaviour, queue bounds,
+and graceful shutdown. They were opened by auditing the concurrency design, and
+they are recorded rather than resolved because each is a decision.
 
 Three decisions are genuinely open and tracked as such in
 [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md): auth protocol
