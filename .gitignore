@@ -13,3 +13,7 @@ webapp/.vite
 
 # Local session/permission config — machine-specific, not shared.
 .claude/settings.local.json
+
+# Agent worktrees. Never committed — they are checkouts of this same repo, and
+# `git add -A` will otherwise sweep them in as embedded repositories.
+.claude/worktrees/

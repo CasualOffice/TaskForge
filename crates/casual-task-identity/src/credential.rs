@@ -62,6 +62,42 @@ const _: () = assert!(
     "a verifier shorter than ~190 bits needs a slow KDF; see the module docs"
 );
 
+/// What a credential is for, and therefore how it is prefixed.
+///
+/// `docs/40` §Tokens: "The prefix is deliberate: it makes secret-scanning tools
+/// (and our own pre-commit hook) able to detect a leaked token in a
+/// repository." A token without one is indistinguishable from any other hex
+/// blob, so a leak in a commit, a log, or a support ticket goes unnoticed —
+/// which is exactly when a leaked token does its damage.
+///
+/// A session cookie carries no prefix: it never leaves the browser's cookie
+/// jar, so there is nothing for a scanner to find, and a prefix would only make
+/// it easier to recognise in a stolen jar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// A browser session cookie. No prefix.
+    Session,
+    /// A personal access token — `tf_pat_`.
+    PersonalAccess,
+    /// A service account token — `tf_sat_`.
+    ServiceAccount,
+}
+
+impl Kind {
+    /// The prefix a presented credential of this kind carries.
+    #[must_use]
+    pub const fn prefix(self) -> &'static str {
+        match self {
+            Self::Session => "",
+            Self::PersonalAccess => "tf_pat_",
+            Self::ServiceAccount => "tf_sat_",
+        }
+    }
+
+    /// Every prefix, for a scanner or a parser that must recognise all of them.
+    pub const ALL_PREFIXES: &'static [&'static str] = &["tf_pat_", "tf_sat_"];
+}
+
 /// The separator between the two halves in the presented string.
 ///
 /// `.` rather than `:` — the credential travels in an `Authorization` header
@@ -101,6 +137,15 @@ pub struct Minted {
 /// unwrapped: a credential minted from a degraded entropy source is exactly the
 /// failure that must not be papered over with a fallback.
 pub fn mint() -> Result<Minted, rand::rand_core::OsError> {
+    mint_for(Kind::Session)
+}
+
+/// Mint a credential of a specific kind, carrying its prefix.
+///
+/// # Errors
+///
+/// If the operating system's randomness source fails.
+pub fn mint_for(kind: Kind) -> Result<Minted, rand::rand_core::OsError> {
     let mut selector_bytes = [0u8; SELECTOR_BYTES];
     let mut verifier_bytes = [0u8; VERIFIER_BYTES];
     rand::rngs::OsRng.try_fill_bytes(&mut selector_bytes)?;
@@ -113,7 +158,7 @@ pub fn mint() -> Result<Minted, rand::rand_core::OsError> {
 
     Ok(Minted {
         verifier_hash: hash_verifier(&verifier, &hex(&salt)),
-        presented: format!("{selector}{SEPARATOR}{verifier}"),
+        presented: format!("{}{selector}{SEPARATOR}{verifier}", kind.prefix()),
         selector,
     })
 }
@@ -131,6 +176,13 @@ pub fn mint() -> Result<Minted, rand::rand_core::OsError> {
 /// of arbitrary input reach [`verify`], and through it a hash of whatever an
 /// unauthenticated caller sent.
 pub fn split(presented: &str) -> Result<(&str, &str), Invalid> {
+    // A known prefix is stripped, an unknown one is not — `tf_xyz_...` must not
+    // parse, or the prefix stops being a reliable signal of what a credential
+    // is and a scanner cannot trust it either.
+    let presented = Kind::ALL_PREFIXES
+        .iter()
+        .find_map(|prefix| presented.strip_prefix(prefix))
+        .unwrap_or(presented);
     let (selector, verifier) = presented.split_once(SEPARATOR).ok_or(Invalid)?;
     if selector.len() != SELECTOR_BYTES * 2 || verifier.len() != VERIFIER_BYTES * 2 {
         return Err(Invalid);
@@ -214,6 +266,43 @@ mod tests {
         // half — checked explicitly because a future refactor that "helpfully"
         // kept it would be silent.
         assert_ne!(minted.verifier_hash, minted.presented);
+    }
+
+    #[test]
+    fn a_token_carries_the_prefix_a_secret_scanner_looks_for() {
+        // docs/40 §Tokens. Without it a leaked token in a commit or a log is an
+        // anonymous hex blob and nothing flags it.
+        for (kind, prefix) in [
+            (Kind::PersonalAccess, "tf_pat_"),
+            (Kind::ServiceAccount, "tf_sat_"),
+        ] {
+            let minted = mint_for(kind).expect("entropy");
+            assert!(minted.presented.starts_with(prefix), "{}", minted.presented);
+
+            // And it still round-trips, which is the half a prefix breaks.
+            let (selector, verifier) = split(&minted.presented).expect("well formed");
+            assert_eq!(selector, minted.selector);
+            assert!(verify(verifier, &minted.verifier_hash));
+        }
+    }
+
+    #[test]
+    fn a_session_cookie_carries_no_prefix() {
+        // It never leaves the cookie jar, so there is nothing for a scanner to
+        // find — and a prefix would only help someone reading a stolen jar.
+        let minted = mint().expect("entropy");
+        for prefix in Kind::ALL_PREFIXES {
+            assert!(!minted.presented.starts_with(prefix));
+        }
+    }
+
+    #[test]
+    fn an_unknown_prefix_does_not_parse() {
+        // If `tf_xyz_...` parsed, the prefix would stop being a reliable signal
+        // of what a credential is, and a scanner could not trust it either.
+        let minted = mint_for(Kind::PersonalAccess).expect("entropy");
+        let body = minted.presented.trim_start_matches("tf_pat_");
+        assert_eq!(split(&format!("tf_xyz_{body}")), Err(Invalid));
     }
 
     #[test]
