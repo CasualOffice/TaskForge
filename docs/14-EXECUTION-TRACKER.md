@@ -340,6 +340,27 @@ the code that proves it.
   It goes back on when the API needs it, with the licence decided deliberately
   at that point rather than smuggled in beside a test harness.
 
+**The filter compiler is in** (C-012, second half). A validated AST compiles to
+parameterized SQL in `casual-task-persistence`, which is where docs/19 requires
+all SQL to live — so the AST crate still cannot emit a fragment, and the split
+is what makes docs/27's "no path from user input to SQL" structural.
+
+Two of docs/27's requirements are enforced by the signature rather than by
+review. The permission filter is **injected**, not supplied: `compile` takes an
+`AuthorizedProjectSet` and there is no overload without one, so a query missing
+its tenant predicate does not compile. And many-to-many fields (`assignee`,
+`tag`) emit `EXISTS` rather than `JOIN` — a join makes a task with two matching
+tags appear twice, forcing `DISTINCT`, which breaks keyset pagination because
+the cursor's `(updated_at, id)` stops being a total order.
+
+The injection gate docs/15 §Security names is in, and it is stated as the
+property that actually holds. "The SQL contains no user text" is wrong in both
+directions — `$1` and `t.workspace_id` are hostile-looking inputs the SQL
+legitimately contains, and a leak could still take a form a substring search
+misses. The assertion is instead that compiling the same filter with **any**
+value produces byte-identical SQL. Verified by interpolating a value instead of
+binding it and watching the test name the string that leaked.
+
 **C-005 is `Building`, and the persistence seam is in.**
 `casual-task-persistence::Scoped` is the only door to tenant data: it applies a
 `WorkspaceScope` to a transaction as the GUC migration 0010's policy reads, and

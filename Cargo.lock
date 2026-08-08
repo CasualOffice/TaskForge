@@ -348,6 +348,7 @@ dependencies = [
  "anyhow",
  "casual-task-model",
  "casual-task-persistence",
+ "casual-task-search",
  "sqlx",
  "testcontainers",
  "testcontainers-modules",
