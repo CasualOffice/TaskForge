@@ -359,81 +359,46 @@ Rolled up until Phase 1 closes; expanded at each phase gate.
 
 ## Current state
 
-**Phase 0 — foundation. Design record complete; scaffolding under way.**
+**Phase 0 — foundation. Closed 2026-08-08.** Phase 1 is open.
 
-Landed and `Gated`: the Cargo workspace and dependency DAG (F-001), architecture
-lints (F-004), CI (F-003), the dev compose profile (F-010), the schema — 12
-migrations, the non-superuser application role, and the verification gate
-proving tenant isolation and append-only history against a real PostgreSQL 16
-(F-015) — the container image and deployment compose (F-016), and three gates
-added since:
+### The exit gate, checked
 
-- **F-006, the reference corpus.** `tools/casual-task-seed` generates the
-  docs/30 workspace deterministically — 2,000,000 tasks, 38,981,941 rows, 10.2
-  GiB of `COPY` text in 18.2 s at a 26 MiB peak RSS, byte-identical across runs
-  and loaded into PostgreSQL 16 end to end. Gated by determinism and
-  corpus-invariant tests in the `test` job.
-- **F-008, the `EXPLAIN` no-seq-scan gate.** All 20 read paths planned as the
-  non-superuser `taskforge_app` with RLS applied; 20 index-served, 0 sequential
-  scans, 0 skips. Gated by the `explain-no-seq-scan` job.
-- **F-012, the bundle floor.** Measured at 113.2 KiB gzip against ADR-024's 200
-  KiB. Gated by the `bundle-size` job.
+[06](06-ROADMAP-AND-DELIVERY.md) §Phase 0 states five conditions. Each was
+verified by running it, not by reading the row:
 
-Remaining Phase 0:
+| Condition | Evidence |
+| --- | --- |
+| CI green on an empty workspace | 12 jobs; fmt, clippy `-D warnings`, architecture lints, tests, schema, `explain-no-seq-scan`, bundle-size, docs, dependency-policy, documentation, image, platform matrix |
+| Seed generates the reference corpus | 2,000,000 tasks / 38,981,941 rows / 10.2 GiB in 18 s at a 26 MiB peak RSS, byte-identical across runs, loaded into PostgreSQL 16 |
+| The load-test harness runs and reports | Ran end-to-end at reference scale, and again on a quiet machine to produce a committed measurement |
+| The measured bundle floor is recorded | 113.2 KiB gzip against 200 KiB. It did **not** exceed, so no superseding ADR was required; ADR-024 now records the outcome and the unit |
+| The threat model is signed off | Reviewed and recorded in [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) §Review with reviewer and date. **Read the caveat there:** the review was conducted by an agent and says so, and asks to be countersigned by a human before the Phase 1 gate. Phase 0 was closed on the project owner's direction with that caveat standing |
 
-- **F-007** is `Built`, not `Gated`, for one reason: the comparison gate has no
-  baseline it may legitimately compare against, because the docs/30 reference
-  machine does not exist. The harness, the corpus, and the gate all work and are
-  tested. Recorded in [15](15-CI-AND-RELEASE-GATES.md) §Pending gates.
-- **F-009** is `Built`. An audit found three defects, all now fixed and each
-  covered by a test that fails without its fix: correlation fields dropped out
-  of every log line emitted inside a nested span (which docs/46 §Traces makes
-  the common case, so most lines would have lost them); the cardinality guard
-  constrained label *keys* while leaving label *values* free, so a tenant id
-  admitted for one label was accepted on another and a plugin installation id
-  was accepted as a `statement` name — unbounded series on a histogram; and an
-  event field named `level` silently rewrote a line's severity, which docs/46
-  §Alerts fires on. It is `Built` rather than `Gated` because nothing installs
-  the subscriber yet — both binaries declare the dependency and neither calls
-  `init()` — and there is no CI gate on metric conformance beyond the crate's
-  own tests.
-- **F-014** is `Built`: the runbooks are written and cross-referenced. There is
-  no meaningful CI gate on prose beyond link resolution.
-- **F-010**'s gate was a syntax check calling itself a gate. `docker compose
-  config` proves the file parses; it cannot see the invariant the file states in
-  its own header — that `mailpit` and `minio` are opt-in and *"nothing in the
-  default profile may depend on these"*. That sentence is what keeps
-  [48](48-DEPLOYMENT-PROFILES.md) §Profile 1 a supported target rather than an
-  aspiration, and a dependency creeping into the default profile would have been
-  invisible. `scripts/verify-dev-profile.sh` now starts the profile, waits for
-  PostgreSQL, and asserts that *exactly* `postgres` is running — verified to
-  fail by removing a `profiles:` marker and watching it catch the leak.
-- **F-005** is `Gated`. Both halves now exist: `scripts/verify-schema.sh` is
-  the gate, and `crates/casual-task-persistence/tests/schema_harness.rs` is the
-  seam Phase 1 builds on — it starts PostgreSQL 16 through testcontainers,
-  applies every migration in lexical order, and reaches the invariants from
-  Rust rather than from shell. The tests are `#[ignore]`, so `cargo test` still
-  runs on a machine with no Docker daemon; the `schema` job runs them
-  explicitly, because a test nobody runs is not a test.
+### What "closed" means here, and what it does not
 
-  Adding `sqlx`, `tokio` and `testcontainers` did **not** move the MSRV: the
-  workspace still builds and tests on 1.88.0, which is the first real exercise
-  of ADR-031's rule.
-- **F-013** is `Built`. The Phase 0 review is recorded in
-  [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) §Review, with the reviewer and
-  date named. It found six things: the credential-theft row was stale by a day
-  (ADR-032), the cross-tenant row did not mention the `SECURITY DEFINER`
-  exception ADR-032 introduces, "pinned base images" was untrue (mutable tags —
-  now **D-048**), outbound mail was absent from the model entirely, five
-  supply-chain claims were verified rather than assumed, and one control became
-  structural rather than documented. `Built` and not `Gated` because prose has
-  no acceptance gate beyond link resolution — and because the review was
-  conducted by an agent and says so; a human should countersign before the
-  Phase 1 gate.
+Eleven of the sixteen Phase 0 rows are `Gated` — each verified to map to a CI job
+that actually runs its harness, rather than to a row that claims one. Five are
+`Built`, each with the reason it is not `Gated` written down: the latency gate
+has no reference machine to produce a comparable baseline on (F-007), the
+observability skeleton has no exporter (F-009), and governance files, runbooks
+and a threat model are prose that no gate beyond link resolution can hold
+(F-011, F-013, F-014).
 
-None of these build product functionality — they exist to make every later phase
-verifiable.
+**No product functionality exists.** Phase 0 built none, by design. What it
+built is the ability to tell when a later phase is wrong.
 
-Three items are genuinely open and tracked as such: **D-032** (auth protocol
-specifics, to be Accepted at Phase 0), **D-033** (custom-field storage, before
-Phase 3), **D-034** (data residency, before any customer commitment).
+### Decisions
+
+Thirty-four `D-###` rows are `Designed` — the documentation phase, complete.
+Ten carry an explicit `Accepted` decision, and **all ten were settled on
+2026-08-08**: the auth mechanism, the MSRV policy, and the eight opened by
+auditing Phase 0's own work. **D-033**, **D-034** and **D-045** are deliberately
+deferred with reasons.
+**D-048** (pin base images by digest rather than tag) is open and due before the
+first release — it was opened by the threat-model review, which found that
+"pinned base images" described mutable tags.
+
+Eight of the decisions accepted on 2026-08-08 have not yet had their design
+notes rewritten; the note above §Phase 0 says which, and flags the one that is
+actively misleading until it is.
+
