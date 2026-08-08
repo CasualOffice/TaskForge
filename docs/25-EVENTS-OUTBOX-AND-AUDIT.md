@@ -188,11 +188,22 @@ outbox_delivery   one row per (event_id, consumer), carrying attempts,
                   dead_lettered_at, last_error
 ```
 
-**This is a schema change and it is not yet made.** Migration 0007 has
-`dispatched_at`, `attempts` and `last_error` on `outbox_event` itself, and no
-`next_attempt_at` anywhere — so the backoff ladder below is currently
-undeliverable: nothing records *when* to retry, and the claim query has no
-column to exclude a waiting row by. C-011 lands the migration.
+**Landed** in migration
+[0013](../migrations/0013_outbox_delivery.sql) (C-011). Migration 0007 had
+`dispatched_at`, `attempts` and `last_error` on `outbox_event` itself and no
+`next_attempt_at` anywhere, which made the backoff ladder below undeliverable:
+nothing recorded *when* to retry, and the claim query had no column to exclude a
+waiting row by.
+
+0013 **drops** those three columns rather than leaving them beside the new
+table. Two places to record one fact is how they come to disagree — a dispatcher
+that updated `outbox_event.dispatched_at` would run without error, report
+success, and deliver to none of the six consumers. Dropped, that query fails on
+an unknown column the first time it runs.
+
+One delivery row per consumer is written **in the producing transaction**, not
+at dispatch time. An event with no delivery rows would otherwise be
+indistinguishable from one already delivered.
 
 ### Delivery semantics
 

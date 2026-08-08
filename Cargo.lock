@@ -349,6 +349,7 @@ dependencies = [
  "casual-task-model",
  "casual-task-persistence",
  "casual-task-search",
+ "serde_json",
  "sqlx",
  "testcontainers",
  "testcontainers-modules",

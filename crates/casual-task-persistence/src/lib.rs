@@ -13,7 +13,10 @@
 //! `docs/14-EXECUTION-TRACKER.md`.
 
 pub mod compile;
+pub mod dispatch;
 pub mod scoped;
+pub mod unit_of_work;
 
 pub use compile::{AuthorizedProjectSet, Compiled, Page, Param, compile};
 pub use scoped::Scoped;
+pub use unit_of_work::{CONSUMERS, Change, Provenance, UnitOfWork};

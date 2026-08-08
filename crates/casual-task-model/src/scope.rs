@@ -37,6 +37,28 @@ pub enum ActorType {
     System,
 }
 
+impl ActorType {
+    /// The value stored in `audit_event.actor_type`.
+    ///
+    /// It lives on the type rather than at the call site because the audit
+    /// trail is read years later by people who were not here: "a plugin did
+    /// it" and "an admin did it" are different answers during an incident, and
+    /// a second copy of this mapping in the persistence layer would be free to
+    /// drift from this one without anything failing.
+    ///
+    /// The match is exhaustive, so a new actor type cannot be added without
+    /// deciding what it is called in the audit trail.
+    #[must_use]
+    pub fn as_audit_str(self) -> &'static str {
+        match self {
+            Self::User => "USER",
+            Self::ServiceAccount => "SERVICE_ACCOUNT",
+            Self::Plugin => "PLUGIN",
+            Self::System => "SYSTEM",
+        }
+    }
+}
+
 /// Private unit type. Its constructor is crate-private, so `AuthContext` cannot
 /// be built with struct-literal syntax from another crate even if every other
 /// field were public.

@@ -99,7 +99,10 @@ DECLARE required text[] := ARRAY[
     'task_tag_rev_ix','task_dependency_rev_ix','task_search_gin',
     'task_search_trgm','task_search_scope_ix','role_assignment_lookup_ix',
     'role_assignment_scope_ix','project_membership_user_ix',
-    'team_membership_user_ix','outbox_pending_ix','notification_unread_ix',
+    -- outbox_delivery_pending_ix replaces outbox_pending_ix: migration 0013
+    -- moved delivery state off outbox_event onto (event, consumer), so the
+    -- index the dispatcher's claim query needs is on the delivery table.
+    'team_membership_user_ix','outbox_delivery_pending_ix','notification_unread_ix',
     'comment_task_ix','attachment_task_ix'];
     missing text[];
 BEGIN

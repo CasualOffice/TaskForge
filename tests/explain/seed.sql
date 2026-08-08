@@ -32,8 +32,10 @@
 --   ~210k task_tag      — the reverse-lookup direction (docs/26 §task_tag).
 --   ~218k activity      — a task's history tab needs a haystack around it.
 --   109k notification   — 87% read, so notification_unread_ix is the small one.
---   109k outbox_event   — 97% dispatched, so outbox_pending_ix is genuinely tiny
---                         and preferring it is the planner's own conclusion.
+--   109k outbox_event   — the immutable facts.
+--   ~654k outbox_delivery — SIX per event (migration 0013), 97% dispatched, so
+--                         outbox_delivery_pending_ix is genuinely tiny and
+--                         preferring it is the planner's own conclusion.
 --
 -- Run as the OWNER. RLS is FORCEd on these tables (migration 0010), and seeding
 -- is not a request path, so it does not carry a tenant scope.
@@ -345,12 +347,35 @@ SELECT tf_seed_id(15, tf_seed_ordinal(t.id)),
   FROM task t;
 
 INSERT INTO outbox_event (id, workspace_id, event_type, aggregate_type, aggregate_id,
-                          payload, schema_version, created_at, dispatched_at, attempts)
+                          payload, schema_version, created_at)
 SELECT tf_seed_id(16, tf_seed_ordinal(t.id)),
-       t.workspace_id, 'task.created', 'task', t.id, '{}'::jsonb, 1, t.created_at,
-       CASE WHEN t.number % 32 <> 0 THEN t.created_at + interval '1 second' END,
-       CASE WHEN t.number % 512 = 0 THEN 7 ELSE 0 END
+       t.workspace_id, 'task.created', 'task', t.id, '{}'::jsonb, 1, t.created_at
   FROM task t;
+
+-- Six delivery rows per event (migration 0013): this table is SIX TIMES the
+-- event table, and it is the one the dispatcher actually polls. Seeding only
+-- the events would have measured the dispatch poll against a table an order of
+-- magnitude smaller than production's.
+--
+-- 97% dispatched and ~0.2% dead-lettered, so the partial index holds a small
+-- live set and preferring it is the planner's own conclusion rather than
+-- something forced by having no alternative.
+INSERT INTO outbox_delivery (id, workspace_id, event_id, consumer,
+                             created_at, next_attempt_at, attempts,
+                             dispatched_at, dead_lettered_at)
+SELECT tf_seed_id(18, tf_seed_ordinal(e.id) * 8 + c.n),
+       e.workspace_id, e.id, c.consumer,
+       e.created_at, e.created_at,
+       CASE WHEN tf_seed_ordinal(e.id) % 512 = 0 THEN 6 ELSE 0 END,
+       CASE WHEN (tf_seed_ordinal(e.id) + c.n) % 32 <> 0
+            THEN e.created_at + interval '1 second' END,
+       CASE WHEN tf_seed_ordinal(e.id) % 512 = 0 AND c.n = 5
+            THEN e.created_at + interval '1 hour' END
+  FROM outbox_event e
+ CROSS JOIN (VALUES (0, 'sse_fanout'), (1, 'search_projection'),
+                    (2, 'notification_fanout'), (3, 'automation_matcher'),
+                    (4, 'webhook_delivery'), (5, 'plugin_subscribers'))
+            AS c(n, consumer);
 
 INSERT INTO saved_view (id, workspace_id, project_id, owner_id, name, filter)
 SELECT tf_seed_id(17, (w - 1) * 5 + v), tf_seed_id(1, w), NULL,
