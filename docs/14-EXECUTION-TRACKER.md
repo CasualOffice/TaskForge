@@ -76,7 +76,7 @@ The documentation phase. All complete unless noted.
 | D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
 | D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-001 |
 | D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Blocked** — Accept before C-013 |
-| D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Blocked** — Accept at Phase 0 |
+| D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Proposed** — ADR-031 drafted; Accept at Phase 0 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
 | D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Blocked** — Accept before C-016 |
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-011 |
@@ -216,6 +216,28 @@ implementation:
   averaged across replicas or re-windowed in a query; the aggregatable shape is
   two counters with the ratio computed at query time. That changes a metric
   docs/46 names, so it is not a silent refactor.
+- **D-044 now has a drafted ADR-031, `Proposed`, and a measured answer.** The
+  declared `rust-version = "1.90.0"` turns out to be justified by nothing. The
+  real floor was measured by lowering the declaration and building against
+  installed toolchains:
+
+  | toolchain | result |
+  | --- | --- |
+  | 1.85.0 | fails — `time` 0.3.55, `time-core` 0.1.9 and `time-macros` 0.2.32 each require 1.88.0 |
+  | **1.88.0** | **builds, and all 154 tests pass** |
+  | 1.90.0 | the declared MSRV — two releases above anything that requires it |
+
+  So the "MSRV check" in the `platform` matrix currently tests a floor that is
+  not the floor, and 1.88 and 1.89 users are excluded for no reason anyone
+  wrote down. ADR-031 proposes defining the MSRV *as* the measured floor —
+  whatever the locked dependency tree forces — so that raising it requires a PR
+  to name the crate and version responsible. The alternative, a rolling N-2
+  policy, is easier to state and disconnects the number from any real
+  constraint; that trade is the thing to accept or reject.
+
+  It is **`Proposed`, not Accepted.** Choosing a support window is a decision,
+  and lowering the declared MSRV changes what the project promises. Nothing in
+  the tree was changed by this: `rust-version` still reads 1.90.0.
 - **D-045.** [08](08-ADR-REGISTER.md) §Pending also lists SSE vs WebSocket.
   `Deferred` rather than `Blocked`: SSE is the Phase 1 decision and no feature
   yet needs client→server streaming, so this only becomes live if one does.

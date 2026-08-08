@@ -47,6 +47,7 @@ resolved below, with the reasoning in the linked design note.
 | **ADR-028** | `task_state_interval` projection as the metric substrate | Accepted | Cycle time, lead time, and time-in-state are derived from state history, not from a `resolved_at` column. Computing them by scanning `activity_event` at query time is the unbounded query reporting must not introduce. The projection is maintained by the outbox worker and is fully rebuildable from `activity_event`, so it is a cache and not a second source of truth. |
 | **ADR-029** | Export is async above 1,000 rows, per-batch authorized, always audited | Accepted | Exports stream to object storage from the worker; the API never holds a result set. Permissions are re-evaluated per batch so an actor who loses access mid-export stops receiving rows. Every export writes an audit event — bulk data leaving the system is precisely what an audit trail is for. Cells beginning `=`, `+`, `-`, or `@` are quote-prefixed against CSV formula injection. |
 | **ADR-030** | XLSX export via OpenCalc | Accepted | The suite already maintains a Rust `.xlsx` engine, so spreadsheet export costs a dependency edge rather than a third-party writer and a new supply-chain surface. |
+| **ADR-031** | MSRV is the floor the dependency tree forces, not a chosen number | **Proposed** | MSRV = the lowest stable rustc the workspace and its locked dependencies actually build and test on; today that is **1.88.0**, forced by `time` 0.3.55. Raising it requires the PR to name the crate and version that forced it. The dev toolchain (`rust-toolchain.toml`) tracks current stable and is a separate number; CI tests both ends. **Not Accepted** — see [14](14-EXECUTION-TRACKER.md) D-044. |
 
 ## How the old §18 questions were resolved
 
@@ -78,7 +79,9 @@ The archived drafts ended with nine unanswered questions. Their disposition:
   **already-`Gated` schema**, and in four places the two contradict each other.
   Enumerated in [14](14-EXECUTION-TRACKER.md) under **D-032**; to be Accepted at
   Phase 0.
-- **MSRV and toolchain pin** — once the workspace is scaffolded.
+- ~~**MSRV and toolchain pin**~~ — drafted as **ADR-031**, status `Proposed`,
+  tracked as **D-044**. Not yet Accepted, so `rust-version` remains a number
+  without an agreed decision behind it and F-002 stays `Building`.
 - **SSE vs WebSocket for bidirectional features** — SSE is the Phase 1 decision;
   a WebSocket ADR is required if any feature genuinely needs client→server
   streaming (none does yet).
