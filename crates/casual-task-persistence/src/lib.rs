@@ -15,5 +15,5 @@
 pub mod compile;
 pub mod scoped;
 
-pub use compile::{AuthorizedProjectSet, Compiled, Param, compile};
+pub use compile::{AuthorizedProjectSet, Compiled, Page, Param, compile};
 pub use scoped::Scoped;

@@ -324,7 +324,7 @@ the code that proves it.
 | C-011 | Activity + audit + **outbox** | Accepted |
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | Accepted |
-| C-014 | Cursor pagination | Accepted |
+| C-014 | Cursor pagination | `Building` |
 | C-015 | SSE + fan-out | Accepted |
 | C-016 | Notifications (in-app + email) | Accepted |
 | C-017 | Extension point registry (core panels only) | Accepted |
@@ -339,6 +339,26 @@ the code that proves it.
   connects to a remote database yet, and the tests talk to a local container.
   It goes back on when the API needs it, with the licence decided deliberately
   at that point rather than smuggled in beside a test harness.
+
+**Cursor pagination is in** (C-014). The sortable set is closed and **smaller
+than the filterable one** — a field can be filterable without being sortable,
+and conflating them is the mistake worth guarding: `title` filters through a
+trigram index, but *ordering* by it would sort the whole result set with nothing
+behind it. A test asserts six filterable fields are refused as sorts with
+`TF-QRY-0002`.
+
+Pages are keysets, never `OFFSET`. The resume predicate is a **row-value**
+comparison — `(key, id) < ($k, $id)` — rather than the expanded
+`key < $k OR (key = $k AND id < $id)`, because PostgreSQL drives a composite
+index directly from the row-value form and often cannot from the expanded one.
+That is the difference between a keyset page and a scan.
+
+Three things a test pins because each is silently wrong rather than loudly
+broken: the id tiebreaker is always present (without it, ties in `updated_at` —
+constant on bulk operations — make a page repeat or skip rows); the comparison
+follows the sort direction, and inverting it serves the same page forever; and
+`LIMIT` is n + 1, which answers "is there a next page" without a `COUNT` over
+the result set.
 
 **Symbolic resolution is in** (C-012). `@me`, `@my_teams`, `@unassigned`,
 `@today`, `@tomorrow`, `@start_of_week` and the `+7d` / `-3mo` forms resolve at
