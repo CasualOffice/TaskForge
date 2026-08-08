@@ -29,8 +29,10 @@
 //! order over the result set. `EXISTS` returns each task once with no
 //! deduplication.
 
+use casual_task_model::Cursor;
 use casual_task_model::{ProjectId, WorkspaceId};
 use casual_task_search::filter::{Field, Node, Operator, Value};
+use casual_task_search::sort::{Direction, Sort, SortField};
 
 /// The projects an actor may see, from the resolver.
 ///
@@ -61,6 +63,46 @@ pub enum Param {
     Projects(Vec<ProjectId>),
     Text(String),
     TextList(Vec<String>),
+}
+
+/// How a page is asked for: what to sort by, where to resume, and how many.
+///
+/// `docs/26` bans `OFFSET` — it scans, and it duplicates or skips rows under
+/// concurrent writes, "both of which a live board guarantees". A page is
+/// therefore always a keyset: a predicate on `(sort_key, id)` against the
+/// previous page's last row.
+#[derive(Debug, Clone)]
+pub struct Page {
+    pub sort: Sort,
+    /// `None` for the first page.
+    pub after: Option<Cursor>,
+    /// Rows wanted. One more is always fetched, to detect a next page without
+    /// a second count query.
+    pub limit: u32,
+}
+
+impl Default for Page {
+    fn default() -> Self {
+        Self {
+            sort: Sort::default(),
+            after: None,
+            limit: 50,
+        }
+    }
+}
+
+/// The column a sort field orders by. The static identifier map for sorting.
+fn sort_column(field: SortField) -> &'static str {
+    match field {
+        SortField::CreatedAt => "t.created_at",
+        SortField::UpdatedAt => "t.updated_at",
+        SortField::DueAt => "t.due_at",
+        SortField::Priority => "t.priority",
+        SortField::StatusPosition => "ws.position",
+        SortField::Position => "t.position",
+        SortField::Key => "t.number",
+        SortField::Rank => "rank",
+    }
 }
 
 /// SQL plus the parameters it references, in order.
@@ -105,6 +147,7 @@ pub fn compile(
     filter: &Node,
     workspace: WorkspaceId,
     authorized: &AuthorizedProjectSet,
+    page: &Page,
 ) -> Compiled {
     let mut params: Vec<Param> = Vec::new();
 
@@ -113,17 +156,57 @@ pub fn compile(
     params.push(Param::Projects(authorized.as_slice().to_vec()));
 
     let predicate = emit(filter, &mut params);
+    let keyset = keyset_predicate(page, &mut params);
+
+    let col = sort_column(page.sort.field);
+    let dir = match page.sort.direction {
+        Direction::Asc => "ASC",
+        Direction::Desc => "DESC",
+    };
+    // The id tiebreaker is mandatory and orders the same way as the key.
+    // `docs/26`: without it, ties in `updated_at` — which happen constantly on
+    // bulk operations — make the cursor non-deterministic, so a page can repeat
+    // or skip a row.
+    //
+    // LIMIT is n + 1: the extra row is how "has next page" is answered without
+    // a COUNT over the whole result set.
+    let limit = page.limit.saturating_add(1);
 
     let sql = format!(
         "SELECT t.* FROM task t \
          WHERE t.workspace_id = $1 \
            AND t.project_id = ANY($2) \
            AND t.deleted_at IS NULL \
-           AND ({predicate}) \
-         ORDER BY t.updated_at DESC, t.id DESC \
-         LIMIT 51"
+           AND ({predicate}){keyset} \
+         ORDER BY {col} {dir}, t.id {dir} \
+         LIMIT {limit}"
     );
     Compiled { sql, params }
+}
+
+/// The keyset resume predicate, or nothing on the first page.
+///
+/// Row-value comparison — `(key, id) < ($k, $id)` — rather than the expanded
+/// `key < $k OR (key = $k AND id < $id)`. PostgreSQL can drive a composite
+/// index directly from the row-value form; the expanded form is a filter it
+/// often cannot, which is the difference between a keyset page and a scan.
+fn keyset_predicate(page: &Page, params: &mut Vec<Param>) -> String {
+    let Some(cursor) = &page.after else {
+        return String::new();
+    };
+    let col = sort_column(page.sort.field);
+    // Descending sorts resume *below* the last row, ascending *above* it.
+    // Getting this backwards returns the page just served, forever.
+    let cmp = match page.sort.direction {
+        Direction::Asc => ">",
+        Direction::Desc => "<",
+    };
+    let key = bind(
+        params,
+        Param::Text(cursor.keys.first().cloned().unwrap_or_default()),
+    );
+    let id = bind(params, Param::Text(cursor.id.to_string()));
+    format!(" AND ({col}, t.id) {cmp} ({key}, {id})")
 }
 
 /// Push a parameter and return its `$N` placeholder.
@@ -286,10 +369,15 @@ mod tests {
     }
 
     fn compiled(node: &Node) -> Compiled {
+        paged(node, &Page::default())
+    }
+
+    fn paged(node: &Node, page: &Page) -> Compiled {
         compile(
             node,
             WorkspaceId::new(),
             &AuthorizedProjectSet::resolved(vec![ProjectId::new()]),
+            page,
         )
     }
 
@@ -311,6 +399,7 @@ mod tests {
             &Node::And(Vec::new()),
             WorkspaceId::new(),
             &AuthorizedProjectSet::resolved(Vec::new()),
+            &Page::default(),
         );
         assert!(c.sql.contains("t.project_id = ANY($2)"));
         assert_eq!(c.params[1], Param::Projects(Vec::new()));
@@ -428,6 +517,101 @@ mod tests {
             );
         }
         assert_eq!(c.params.len(), 6, "two injected plus four clause values");
+    }
+
+    #[test]
+    fn the_first_page_has_no_resume_predicate_and_fetches_one_extra() {
+        let c = paged(&Node::And(Vec::new()), &Page::default());
+        assert!(
+            !c.sql.contains(", t.id) <"),
+            "no cursor, no keyset: {}",
+            c.sql
+        );
+        // 50 requested, 51 fetched — the extra row answers "is there a next
+        // page" without a COUNT over the result set.
+        assert!(c.sql.ends_with("LIMIT 51"), "{}", c.sql);
+    }
+
+    #[test]
+    fn a_cursor_resumes_with_a_row_value_comparison_including_the_tiebreaker() {
+        let page = Page {
+            after: Some(Cursor::new(
+                vec!["2026-08-08T00:00:00Z".into()],
+                uuid::Uuid::now_v7(),
+            )),
+            ..Default::default()
+        };
+        let c = paged(&Node::And(Vec::new()), &page);
+        // Row-value form, and the id tiebreaker is present. docs/26 makes the
+        // tiebreaker mandatory: without it, ties in updated_at make the cursor
+        // non-deterministic and a page can repeat or skip a row.
+        assert!(
+            c.sql.contains("(t.updated_at, t.id) < ($3, $4)"),
+            "{}",
+            c.sql
+        );
+    }
+
+    #[test]
+    fn the_resume_comparison_follows_the_sort_direction() {
+        // Backwards here returns the page just served, forever.
+        let cursor = Cursor::new(vec!["x".into()], uuid::Uuid::now_v7());
+        for (direction, expected) in [(Direction::Desc, "<"), (Direction::Asc, ">")] {
+            let page = Page {
+                sort: Sort {
+                    field: SortField::DueAt,
+                    direction,
+                },
+                after: Some(cursor.clone()),
+                limit: 10,
+            };
+            let c = paged(&Node::And(Vec::new()), &page);
+            assert!(
+                c.sql.contains(&format!("(t.due_at, t.id) {expected} (")),
+                "{direction:?} should resume with `{expected}`: {}",
+                c.sql
+            );
+            let dir_sql = if matches!(direction, Direction::Asc) {
+                "ASC"
+            } else {
+                "DESC"
+            };
+            assert!(
+                c.sql
+                    .contains(&format!("ORDER BY t.due_at {dir_sql}, t.id {dir_sql}")),
+                "the tiebreaker must order the same way as the key: {}",
+                c.sql
+            );
+        }
+    }
+
+    #[test]
+    fn no_page_ever_compiles_to_offset() {
+        // docs/26 bans it outright, and the architecture lint bans the token —
+        // this asserts the compiler cannot emit one by any route.
+        let cursor = Cursor::new(vec!["x".into()], uuid::Uuid::now_v7());
+        for after in [None, Some(cursor)] {
+            let c = paged(
+                &Node::And(Vec::new()),
+                &Page {
+                    after,
+                    ..Default::default()
+                },
+            );
+            assert!(!c.sql.to_uppercase().contains("OFFSET"), "{}", c.sql);
+        }
+    }
+
+    #[test]
+    fn the_cursor_values_are_bound_not_interpolated() {
+        let hostile = "'; DROP TABLE task; --";
+        let page = Page {
+            after: Some(Cursor::new(vec![hostile.into()], uuid::Uuid::now_v7())),
+            ..Default::default()
+        };
+        let c = paged(&Node::And(Vec::new()), &page);
+        assert!(!c.sql.contains(hostile), "{}", c.sql);
+        assert!(c.params.contains(&Param::Text(hostile.to_owned())));
     }
 
     #[test]
