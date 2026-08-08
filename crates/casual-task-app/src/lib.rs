@@ -27,6 +27,15 @@ pub use workflow::{CompositionError, StoredStatus, StoredTransition, compose, in
 /// it runs through here.
 pub use casual_task_authz::{Decision, DenyReason, ResourceFacts};
 
+/// The state machine's vocabulary, re-exported for the same reason.
+///
+/// `docs/19` lets this layer compose domain crates and forbids the API crate
+/// from reaching past it. A transition handler needs the workflow it is
+/// validating against, the facts it validates with, and the refusal it maps to
+/// an error code — so those three travel through here rather than becoming a
+/// second dependency edge from HTTP straight into the domain.
+pub use casual_task_workflow::{Rejection, TransitionRequest, ValidTransition, Workflow};
+
 /// Lexicographic board ranks (ADR-013), re-exported from the task domain crate
 /// for the same reason.
 pub use casual_task_task::rank;
