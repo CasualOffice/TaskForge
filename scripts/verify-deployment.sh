@@ -109,6 +109,15 @@ assert_eq "the dispatcher cannot manufacture an event that never happened" "f" \
   "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
       "select has_table_privilege('taskforge_dispatcher','outbox_event','INSERT')" | tr -d '[:space:]')"
 
+# D-050: the database connection is not encrypted, so the database must not be
+# reachable from outside the compose network. `expose` publishes nothing;
+# `ports` would. This asserts the compose file has not quietly gained one —
+# which is the single change that would turn a documented constraint into an
+# unencrypted database on the internet.
+published="$(docker compose -f "$COMPOSE" --env-file "$ENVF" config --format json 2>/dev/null \
+  | python3 -c "import json,sys; s=json.load(sys.stdin)['services']['postgres']; print(len(s.get('ports') or []))")"
+assert_eq "the database publishes no host port (D-050: the connection is unencrypted)" "0" "$published"
+
 step "A real application connection is genuinely constrained"
 assert_eq "unscoped session sees no tenant data" "0" \
   "$($DC exec -T -e PGPASSWORD=apppw postgres psql -U taskforge_app -h 127.0.0.1 -d taskforge \

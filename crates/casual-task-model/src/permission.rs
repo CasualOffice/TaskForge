@@ -61,6 +61,17 @@ permissions! {
     TASK_ATTACHMENT_READ  => "task.attachment.read",
 
     TAG_MANAGE            => "tag.manage",
+    // D-049: assigning a role and authoring one are DIFFERENT authorities.
+    //
+    // Merged, anyone who could assign could also author — and therefore mint a
+    // role with more power than their own and grant it to themselves. That is
+    // privilege escalation by construction, and it would have put a hole in the
+    // escalation ceilings exactly where the most privileged actors are.
+    //
+    // `role.assign` is the workspace-scope counterpart of `project.role.assign`
+    // above. `role.manage` keeps its narrower meaning: authoring the roles
+    // themselves, and workspace-scope only.
+    ROLE_ASSIGN           => "role.assign",
     ROLE_MANAGE           => "role.manage",
     AUDIT_READ            => "audit.read",
     PLUGIN_INSTALL        => "plugin.install",

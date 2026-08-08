@@ -106,6 +106,34 @@ that expects it cannot disagree.
 
 TaskForge does not terminate TLS. Put a proxy in front.
 
+### The database connection is NOT encrypted (D-050)
+
+**PostgreSQL must be reachable only over a trusted network** — the same host, or
+a private subnet you control. TaskForge connects to it in the clear.
+
+This is a decision, not an oversight, and it has a cost worth stating plainly:
+**a managed PostgreSQL reached across a public network is not a supported
+deployment today.** If your database provider requires `sslmode=require`, this
+release cannot connect to it.
+
+Why: enabling TLS in `sqlx` pulls in `webpki-roots`, Mozilla's CA bundle,
+licensed `CDLA-Permissive-2.0` — which `deny.toml` does not allow. Widening the
+licence allow-list is a policy decision, and it was made deliberately in the
+other direction for now: nothing in the product yet connects to a remote
+database, so the choice was between adding a licence obligation for a capability
+nobody uses and documenting a constraint everybody's current deployment already
+satisfies.
+
+**What holds it:** the `dependency-policy` CI job. Turning TLS on is not a
+one-line feature flag — it fails `cargo deny check licenses` with a named
+licence, which is the point. The decision gets revisited when a deployment
+needs it, by someone reading this section, rather than smuggled in beside an
+unrelated change.
+
+The single-node compose profile satisfies this by construction: `postgres` is
+declared with `expose`, not `ports`, so it is reachable from the application
+container and from nowhere else. `scripts/verify-deployment.sh` asserts that.
+
 ```nginx
 server {
     listen 443 ssl http2;
