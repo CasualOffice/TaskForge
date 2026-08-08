@@ -50,6 +50,14 @@ const STATEMENT_TIMEOUT: &str = "5s";
 /// preflight that hangs forever is no better than a case that does.
 const PREFLIGHT_TIMEOUT: &str = "10min";
 
+/// How long teardown waits for `psql` to exit after its stdin is closed before
+/// resorting to `kill`. Short: the process has nothing left to do once the pipe
+/// is closed, and this runs on the panic path too.
+const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// How often teardown checks, while waiting out [`SHUTDOWN_GRACE`].
+const SHUTDOWN_POLL: std::time::Duration = std::time::Duration::from_millis(10);
+
 /// How the `psql` binary is reached. Split out because `psql` is frequently not
 /// on the host (the schema gate routes through a container the same way).
 #[derive(Debug, Clone)]
@@ -64,7 +72,9 @@ pub struct ConnectSpec {
 #[derive(Debug)]
 pub struct Session {
     child: Child,
-    stdin: ChildStdin,
+    /// `None` once teardown has closed it. Optional so that `drop` can close
+    /// the pipe *before* waiting, which is what makes psql exit on its own.
+    stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
     stderr_path: PathBuf,
     sentinel_counter: u64,
@@ -109,7 +119,7 @@ impl Session {
 
         let mut session = Self {
             child,
-            stdin,
+            stdin: Some(stdin),
             stdout,
             stderr_path,
             sentinel_counter: 0,
@@ -223,21 +233,54 @@ impl Session {
     }
 
     fn send_raw(&mut self, s: &str) -> Result<()> {
-        self.stdin
-            .write_all(s.as_bytes())
-            .context("writing to psql")?;
-        self.stdin.flush().context("flushing psql stdin")
+        let stdin = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| anyhow!("psql stdin is already closed"))?;
+        stdin.write_all(s.as_bytes()).context("writing to psql")?;
+        stdin.flush().context("flushing psql stdin")
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        // Closing stdin lets psql exit on its own; kill is the fallback for a
-        // session wedged inside a statement.
-        let _ = self.stdin.write_all(b"\\q\n");
-        let _ = self.stdin.flush();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // The comment here used to say that closing stdin lets psql exit on its
+        // own and that kill is the fallback. Neither was true of the code:
+        // stdin was a plain field, so it was not closed until *after* `drop`
+        // returned — strictly after the `kill()` below — which made the `\q` a
+        // write into a pipe that was SIGKILLed microseconds later. There was no
+        // fallback ordering, only kill.
+        //
+        // Taking the handle closes the pipe here, which is the thing psql
+        // actually reacts to.
+        if let Some(mut stdin) = self.stdin.take() {
+            let _ = stdin.write_all(b"\\q\n");
+            let _ = stdin.flush();
+        }
+
+        // Then a bounded wait, so the ordinary path is a clean exit and the
+        // wedged path still terminates. Unbounded would be worse than kill:
+        // this runs on panic unwind too.
+        let deadline = std::time::Instant::now() + SHUTDOWN_GRACE;
+        loop {
+            match self.child.try_wait() {
+                // Exited on its own, and `try_wait` has already reaped it.
+                Ok(Some(_)) | Err(_) => break,
+                Ok(None) if std::time::Instant::now() >= deadline => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    break;
+                }
+                Ok(None) => {
+                    // `std::thread::sleep` is banned by clippy.toml because it
+                    // blocks a runtime worker. This binary is synchronous and
+                    // has no runtime — there is no task to starve, and the
+                    // alternative here is a busy loop.
+                    #[allow(clippy::disallowed_methods)]
+                    std::thread::sleep(SHUTDOWN_POLL);
+                }
+            }
+        }
         let _ = std::fs::remove_file(&self.stderr_path);
     }
 }

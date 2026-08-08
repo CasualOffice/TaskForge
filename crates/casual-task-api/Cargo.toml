@@ -14,6 +14,7 @@ casual-task-persistence = { workspace = true }
 casual-task-search = { workspace = true }
 casual-task-infra = { workspace = true }
 casual-task-observability = { workspace = true }
+tracing = { workspace = true }
 casual-task-plugin-contract = { workspace = true }
 
 [lints]

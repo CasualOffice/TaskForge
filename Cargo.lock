@@ -91,6 +91,7 @@ dependencies = [
  "casual-task-persistence",
  "casual-task-plugin-contract",
  "casual-task-search",
+ "tracing",
 ]
 
 [[package]]
@@ -183,7 +184,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -245,6 +245,7 @@ dependencies = [
  "casual-task-persistence",
  "casual-task-plugin-contract",
  "casual-task-search",
+ "tracing",
 ]
 
 [[package]]
