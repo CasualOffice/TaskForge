@@ -323,7 +323,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | F-011 | Governance files, Apache-2.0, AGENTS.md | `Built` | — |
 | F-012 | **Bundle floor measurement** (ADR-024) | **Gated** | — |
 | F-013 | Threat model review | `Built` | — |
-| F-014 | Runbooks (initial set) | `Built` | F-009 |
+| F-014 | Runbooks (initial set) | **Gated** | F-009 |
 | F-015 | Migrations + application role + schema verification gate | **Gated** | F-005 |
 | F-016 | Container image, deployment compose, deployment guide | **Gated** | F-015 |
 
@@ -526,6 +526,35 @@ vacuously true.
 Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
+
+**F-014 is `Gated`.** It was `Built` with the reason recorded as "prose that no
+gate beyond link resolution can hold". That was wrong, and this session proved
+it: migration 0013 dropped three columns from `outbox_event`, and **every query
+in RB-01 and RB-02 stopped working**. Both runbooks were silently broken and
+were repaired only because someone noticed while editing something else.
+
+`scripts/verify-runbooks.sh` now runs all 25 queries the document marks
+`✅ executable` against a freshly migrated schema, and fails naming the step.
+Two things it does deliberately:
+
+- Every query runs inside a transaction that is **rolled back**, so a runbook
+  may contain an `UPDATE` — RB-02's replay does — without the gate mutating
+  anything.
+- Queries taking bind parameters (`$1` — a workspace id, a correlation id) are
+  validated with `PREPARE` rather than executed. That parses and plans the
+  statement, resolves every table and column, and infers the parameter types,
+  without inventing a value. Executing with a made-up id would have proved less.
+
+Verified by reintroducing the exact historical breakage — a reference to
+`outbox_event.dispatched_at` — and confirming the gate names the step, the
+column, and the fix. What it does **not** check is whether a query answers a
+useful question; it checks that it still matches the schema, which is the
+failure drift actually produces.
+
+The remaining four Phase 0 rows are `Built` for reasons that still hold: F-007
+needs a reference machine, F-009 needs an exporter, F-011 is prose with no
+behaviour behind it, and **F-013 needs a human** — the threat-model review says
+an agent conducted it and asks to be countersigned.
 
 **D-049 and D-050 are settled, and C-001 and C-002 are unblocked.**
 

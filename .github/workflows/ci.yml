@@ -76,6 +76,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/verify-schema.sh
+
+      # docs/50's queries are read once, during an incident, by someone under
+      # time pressure who cannot tell a stale query from a correct one until it
+      # errors. Migration 0013 dropped three columns that every query in RB-01
+      # and RB-02 used; both runbooks were silently broken and were fixed by
+      # someone noticing. This is so the next one is noticed here.
+      - name: Runbook queries still run against the schema (F-014)
+        run: ./scripts/verify-runbooks.sh
+
       # The Rust side of the same ground (F-005). verify-schema.sh above is the
       # gate and stays the gate; this proves the testcontainers harness Phase 1
       # will build its repository tests on still starts a PostgreSQL 16, applies

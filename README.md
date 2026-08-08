@@ -19,9 +19,11 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > covers Phases 0 through 4 (numbered documents in `docs/`, 32 accepted ADRs).
 >
 > Phase 0 built no product functionality, by design — it built the ability to
-> tell when a later phase is wrong. It closed at **11 of 16 items `Gated`**;
-> the other five are built and tested but not yet behind an acceptance gate,
-> and are reported that way rather than rounded up.
+> tell when a later phase is wrong. It closed with some items built and tested
+> but not yet behind an acceptance gate; those are reported separately in the
+> table below rather than rounded up, and the count there is generated from the
+> tracker. (This sentence used to repeat the number, and was wrong within a day
+> of the next merge.)
 >
 > Gated on every pull request: the enforced dependency DAG, architecture lints, the database schema with row-level
 > security proven as the non-superuser role, a deployable image with a verified
@@ -120,7 +122,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 <!-- phase-progress:begin -->
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
-| **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 11/16 (5 built) | `███████░░░` 69% |
+| **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 12/16 (4 built) | `████████░░` 75% |
 | **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 0/19 (7 building) | `░░░░░░░░░░` 0% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
