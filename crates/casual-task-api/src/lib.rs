@@ -26,6 +26,7 @@ pub mod etag;
 pub mod json;
 pub mod middleware;
 pub mod projects;
+pub mod rate_limit;
 pub mod server;
 pub mod tasks;
 pub mod unit;

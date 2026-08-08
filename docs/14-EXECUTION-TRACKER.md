@@ -355,6 +355,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
+| C-020 | Rate limiting at the edge | `Building` |
 
 - **D-050** was opened by a failing gate rather than by reading anything.
   Adding `sqlx` with `tls-rustls` pulled in `webpki-roots` — Mozilla's CA bundle,
@@ -1056,6 +1057,49 @@ already-authenticated actor, so the auth mechanism could be settled separately �
 and was. Still missing before it can be `Gated`: the `authz_epoch` cache, the
 grant and scope ceilings, and the C-004 matrix and escalation suites that are
 its acceptance gates.
+
+**C-020 is `Building`, and it is the auth class only.** `POST /api/v1/auth/login`
+had no limit of any kind. The per-account backoff in `casual-task-identity`
+slows an attacker guessing one password repeatedly and does nothing against
+credential stuffing — one attempt each against ten thousand accounts never
+increments any single account's counter — so
+[40](40-IDENTITY-AUTH-AND-SESSION.md)'s "rate limited per account **and** per
+IP" was half true.
+
+What landed is the per-IP half of the auth class:
+[21](21-API-LIMITS-AND-QUOTAS.md)'s 10/min with a burst of 5, as a token bucket,
+over `/api/v1/auth/login`, with `TF-LIM-0001` and a `Retry-After` the constructor
+will not let a call site omit. `rate_limit_hits_total` now has something behind
+it for the first time, labelled `scope_kind` only.
+
+What did **not** land, stated so it is not mistaken for finished:
+
+- **The other five classes.** Reads, writes, search, bulk and invites are keyed
+  per `(workspace, actor)`, which needs an authenticated actor. The limiter runs
+  before authentication, so those are a separate piece of work, and
+  [21](21-API-LIMITS-AND-QUOTAS.md)'s "Rate-limit isolation" acceptance gate —
+  exhausting one workspace's bucket does not affect another's — cannot be
+  written until they exist. That gate is why this row is `Building` and not
+  `Gated`.
+- **Shared state.** The limiter is in-process, because
+  [48](48-DEPLOYMENT-PROFILES.md) Profile 1 has no Redis and must work. With more
+  than one API instance the limit is per instance and the deployment admits N
+  times the configured rate. Profile 2 already says Redis is required at ≥ 2
+  instances; nothing enforces it, and nothing warns at runtime.
+- **`D-042` stays open.** The metric carries no tenant label at all here, not
+  because the contradiction in [46](46-OBSERVABILITY-AND-OPERATIONS.md) §Domain
+  metrics was resolved, but because an endpoint whose entire purpose is that the
+  caller has no identity yet has no tenant to attribute. Attaching a bucket would
+  have meant inventing one.
+
+Two things were found while building it. The first version kept `tokens: f64` and
+refilled by `elapsed × rate`; `6 s × (10/60)` is `0.999999999999999`, so the
+token [21](21-API-LIMITS-AND-QUOTAS.md) says arrives after six seconds did not,
+and the limit was quietly stricter than the document in a way no reading of the
+code would show. It is integer duration arithmetic now, and two tests pin the
+published numbers. The second is that `client_ip` is duplicated from
+`casual-task-api/src/auth.rs`, where it is private; the copy is marked as
+temporary in both directions and the follow-up is to delete the one in `auth.rs`.
 
 **C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
 `Accepted` requires — "design final **and** its ADRs Accepted". It carries two

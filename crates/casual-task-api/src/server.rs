@@ -199,6 +199,19 @@ pub fn router(state: AppState) -> Router {
             state.clone(),
             crate::middleware::csrf_guard,
         ))
+        // Outside CSRF, inside `observe`. Outside, because `docs/21`
+        // §Enforcement order puts the cheapest checks first and a bucket check
+        // is cheaper than an HMAC; inside, so a 429 still gets a request id and
+        // still lands in the RED metrics — a refusal nobody can measure is a
+        // refusal nobody notices.
+        //
+        // Its state is built here rather than added to `AppState`, so the
+        // limiter's lifetime is the router's: every test gets its own, and no
+        // other construction site of `AppState` has to change.
+        .layer(axum::middleware::from_fn_with_state(
+            crate::rate_limit::RateLimitState::auth(Arc::clone(&state.metrics)),
+            crate::rate_limit::rate_limit,
+        ))
         .layer(axum::middleware::from_fn_with_state(state.clone(), observe))
         .with_state(state)
 }

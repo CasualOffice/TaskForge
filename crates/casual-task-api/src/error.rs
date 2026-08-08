@@ -57,6 +57,8 @@ pub mod codes {
     pub const FORBIDDEN: Code = Code::new("TF-AUT-0002");
     /// Absent or invisible — never disambiguated (`docs/04`).
     pub const NOT_FOUND: Code = Code::new("TF-REQ-0004");
+    /// Too many requests. Always carries `Retry-After`.
+    pub const RATE_LIMITED: Code = Code::new("TF-LIM-0001");
     /// The server is shedding load. Always carries `Retry-After`.
     pub const UNAVAILABLE: Code = Code::new("TF-SRV-0003");
     /// Anything unhandled.
@@ -259,6 +261,26 @@ impl ApiError {
         )
     }
 
+    /// 429 — rate limited. `docs/05` requires `Retry-After` on every one, so
+    /// `retry_after_seconds` is a parameter and not a builder step: a call site
+    /// cannot produce a 429 without saying when to come back.
+    ///
+    /// The message names no limit and no address. A refusal that told an
+    /// attacker which bucket they exhausted, or how many attempts remained,
+    /// would be a tuning aid — the numbers a legitimate client needs are in the
+    /// `RateLimit-*` headers, which are on successes too.
+    #[must_use]
+    pub fn too_many_requests(request_id: impl Into<String>, retry_after_seconds: u32) -> Self {
+        let mut error = Self::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            codes::RATE_LIMITED,
+            "Too many requests",
+            request_id,
+        );
+        error.retry_after = Some(retry_after_seconds);
+        error
+    }
+
     /// 503 — shedding load. `docs/05` requires `Retry-After` to be present, so
     /// this constructor sets it rather than trusting a caller to.
     #[must_use]
@@ -439,6 +461,33 @@ mod tests {
     }
 
     #[test]
+    fn a_rate_limit_refusal_always_carries_retry_after() {
+        // docs/05: "429 | rate limited (`Retry-After` always present)". The
+        // constructor takes the value, so there is no path to a 429 without it —
+        // a client told to back off with no idea for how long retries
+        // immediately, which is the flood the limiter was added to stop.
+        let response = ApiError::too_many_requests("r", 6).into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok()),
+            Some("6")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rate_limit_refusal_names_no_limit_and_no_address() {
+        // The body is reconnaissance if it says what was exceeded. The numbers a
+        // legitimate client needs are the RateLimit-* headers.
+        let json = body_of(ApiError::too_many_requests("r", 6)).await;
+        assert_eq!(json["error"]["code"], "TF-LIM-0001");
+        assert_eq!(json["error"]["message"], "Too many requests");
+        assert!(json["error"].get("details").is_none());
+    }
+
+    #[test]
     fn service_unavailable_always_carries_retry_after() {
         // docs/05 says "always present" for 429 and 503. The constructor sets
         // it, so a call site cannot omit it.
@@ -472,6 +521,7 @@ mod tests {
             codes::UNAUTHENTICATED,
             codes::FORBIDDEN,
             codes::NOT_FOUND,
+            codes::RATE_LIMITED,
             codes::UNAVAILABLE,
             codes::INTERNAL,
         ] {
