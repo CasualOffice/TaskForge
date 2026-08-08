@@ -1,0 +1,25 @@
+# Build artifacts — the image builds its own.
+target
+**/target
+webapp/node_modules
+webapp/dist
+node_modules
+
+# Never ship these into a build context.
+.git
+.github
+.env
+.env.*
+!.env.example
+.claude
+
+# Not needed at build or runtime.
+docs
+benchmarks
+fixtures
+fuzz
+tests
+scripts
+*.md
+!README.md
+.DS_Store

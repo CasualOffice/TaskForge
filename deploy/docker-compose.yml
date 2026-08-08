@@ -1,0 +1,85 @@
+# TaskForge — self-hosted single-node deployment.
+# See docs/52-DEPLOYMENT-GUIDE.md for the walkthrough and docs/48 for the
+# architecture behind these choices.
+#
+#   cp deploy/.env.example deploy/.env    # then EDIT IT — it will not start otherwise
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# This is Profile 1 from docs/48: one binary plus PostgreSQL. No Redis, no S3,
+# no separate worker process. Those are opt-in, and keeping this profile real is
+# a design constraint on the whole architecture, not a convenience.
+
+name: taskforge
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-taskforge}
+      # Consumed by init-app-role.sh below. Required here, not only on the api
+      # service: without it the init script fails, PostgreSQL leaves a data
+      # directory behind, and the NEXT start skips initialization and comes up
+      # healthy with no application role — at which point the app connects as
+      # the owner and RLS is silently inert. Failing at `up` is the point.
+      TASKFORGE_DB_PASSWORD: ${TASKFORGE_DB_PASSWORD:?set TASKFORGE_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once on an empty data directory: creates the non-superuser
+      # application role. Without it the app connects as the owner, and a
+      # superuser bypasses RLS unconditionally — tenant isolation and
+      # append-only history would both be inert (migration 0012).
+      - ./init-app-role.sh:/docker-entrypoint-initdb.d/10-init-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # Not published. Nothing outside this network needs the database.
+    expose: ["5432"]
+
+  api:
+    image: ${TASKFORGE_IMAGE:-ghcr.io/casualoffice/taskforge:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      # Connects as taskforge_app — NOT the owner. This is what makes RLS and
+      # append-only history actually enforce anything.
+      DATABASE_URL: postgres://taskforge_app:${TASKFORGE_DB_PASSWORD:?set TASKFORGE_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-taskforge}
+      TF_BIND_ADDR: 0.0.0.0:8080
+      TF_PUBLIC_URL: ${TF_PUBLIC_URL:?set TF_PUBLIC_URL}
+      # MUST differ from TF_PUBLIC_URL. A shared origin means a stored HTML or
+      # SVG attachment executes in the application's origin (docs/28).
+      TF_ATTACHMENT_ORIGIN: ${TF_ATTACHMENT_ORIGIN:?set TF_ATTACHMENT_ORIGIN}
+      TF_SECRET_KEY: ${TF_SECRET_KEY:?set TF_SECRET_KEY}
+      TF_STORAGE_BACKEND: fs
+      TF_STORAGE_PATH: /data/attachments
+      TF_WORKER_EMBEDDED: "true"
+      TF_LOG_FORMAT: json
+      TF_SMTP_HOST: ${TF_SMTP_HOST:-}
+      TF_SMTP_PORT: ${TF_SMTP_PORT:-587}
+      TF_SMTP_FROM: ${TF_SMTP_FROM:-}
+    volumes:
+      - attachments:/data/attachments
+    ports:
+      - "${TF_HTTP_PORT:-8080}:8080"
+    healthcheck:
+      # /health/live must not touch the database: a liveness probe that fails
+      # during a database blip restarts every healthy instance at once and turns
+      # a partial outage into a total one (docs/46).
+      test: ["CMD", "/usr/local/bin/taskforge-api", "--health-check"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp"]
+
+volumes:
+  pgdata:
+  attachments:

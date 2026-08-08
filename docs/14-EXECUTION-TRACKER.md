@@ -65,6 +65,8 @@ The documentation phase. All complete unless noted.
 | D-030 | Support matrix | [18](18-SUPPORT-MATRIX.md) | Designed |
 | D-031 | Repository & contribution | [09](09-REPOSITORY-AND-CONTRIBUTION.md), [10](10-PROJECT-GOAL-AND-STANDARDS.md) | Designed |
 | D-035 | **Reporting, export & dashboards** | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Designed |
+| D-036 | Runbooks | [50](50-RUNBOOKS.md) | Designed |
+| D-037 | Deployment guide | [52](52-DEPLOYMENT-GUIDE.md) | Designed |
 | D-032 | Auth protocol ADR (session/token specifics) | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Blocked** — Accept at Phase 0 |
 | D-033 | Custom-field value storage | — | **Deferred** — Accept before Phase 3 |
 | D-034 | Multi-region / data residency | — | **Deferred** — no commitment until designed |
@@ -88,6 +90,7 @@ The documentation phase. All complete unless noted.
 | F-013 | Threat model review | Accepted | D-007 |
 | F-014 | Runbooks (initial set) | Accepted | F-009 |
 | F-015 | Migrations + application role + schema verification gate | **Gated** | F-005 |
+| F-016 | Container image, deployment compose, deployment guide | **Gated** | F-015 |
 
 ## Phase 1 — Core (C)
 

@@ -43,7 +43,7 @@ should be read before writing any code:
     events, search, filters, attachments, notifications).
   - **30–49** — architecture pillars (performance, tenancy, plugins, automation,
     identity, frontend, observability, deployment).
-  - **50+** — per-feature design notes, added as phases open.
+  - **50+** — operations and per-feature design notes, added as phases open.
 
 ## Index
 
@@ -99,6 +99,13 @@ should be read before writing any code:
 | 42 | [Frontend Architecture](42-FRONTEND-ARCHITECTURE.md) | The thin client and its budget |
 | 46 | [Observability & Operations](46-OBSERVABILITY-AND-OPERATIONS.md) | Signals, alerts, runbooks, SLOs |
 | 48 | [Deployment Profiles](48-DEPLOYMENT-PROFILES.md) | Single node → scaled, one security model |
+
+### Operations (50+)
+
+| # | Title | Purpose |
+| --- | --- | --- |
+| 50 | [Runbooks](50-RUNBOOKS.md) | Symptom → diagnosis → action, per incident |
+| 52 | [Deployment Guide](52-DEPLOYMENT-GUIDE.md) | How to actually run it: image, compose, upgrade, backup |
 
 ## Status
 

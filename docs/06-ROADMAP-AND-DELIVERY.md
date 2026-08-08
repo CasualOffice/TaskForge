@@ -40,6 +40,12 @@ verifiable.*
 - Observability skeleton: tracing, metrics, correlation IDs
   ([46](46-OBSERVABILITY-AND-OPERATIONS.md)).
 - Docker Compose dev profile.
+- **The schema**: migrations, the non-superuser application role, and the
+  verification gate proving tenant isolation and append-only history against a
+  real PostgreSQL 16 ([22](22-DATABASE-SCHEMA.md), [32](32-TENANCY-AND-ISOLATION.md)).
+- **The deployable artifact**: container image, deployment compose, and the
+  deployment guide ([52](52-DEPLOYMENT-GUIDE.md)) — gated end-to-end, because the
+  dangerous deployment failures are silent.
 - Threat model, reviewed ([07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md)).
 - **Bundle floor measurement** — the real React dependency set measured against
   ADR-024 before Phase 1 commits to the number.

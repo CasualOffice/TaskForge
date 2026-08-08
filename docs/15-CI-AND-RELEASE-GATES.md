@@ -48,6 +48,25 @@ blocks merge, and disabling one requires an ADR.
 | Latency (subset) | reduced corpus, >10% regression vs baseline | ✅ |
 | Latency (full) | full reference corpus | nightly |
 
+### Schema & deployment
+
+| Gate | What | Blocks |
+| --- | --- | --- |
+| **Schema verification** | every migration applied to a clean PostgreSQL 16; 8 structural assertions (every tenant table has `workspace_id`; every such table has a **FORCEd** RLS policy; no policy casts `current_setting` without `NULLIF`; the [26](26-SEARCH-INDEXING-AND-QUERY.md) index inventory exists; the five states are unchanged; the app role is not a superuser) | ✅ |
+| **Tenant isolation, behavioural** | run as `taskforge_app`: unscoped sees nothing, scoped sees only its tenant, no pool bleed after COMMIT, no cross-tenant row | ✅ |
+| **Append-only history** | `UPDATE`/`DELETE` on `activity_event` and `audit_event` are rejected | ✅ |
+| **Image build** | multi-stage build; both binaries run; runs as uid 65532; migrations shipped | ✅ |
+| **Image size** | under 100 MB ([30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)) | ✅ |
+| **Deployment end-to-end** | the *deployment* compose comes up, creates a correctly-constrained role, and is verifiably isolated ([52](52-DEPLOYMENT-GUIDE.md)) | ✅ |
+
+> Why the last one is not redundant with the schema gate: the dangerous
+> deployment failures are **silent**. A missing environment variable makes the
+> role-init script fail, PostgreSQL leaves a data directory behind, and the next
+> start comes up *healthy with no application role* — at which point the
+> application connects as the owner and row-level security is inert. Nothing
+> looks broken. This gate exists because that bug was found by running the
+> compose, not by reading it.
+
 ### Security
 
 | Gate | What | Blocks |
@@ -110,6 +129,13 @@ Beyond per-PR, before a version ships:
 - Deep fuzz run, clean.
 - Manual keyboard-only accessibility pass.
 - **Restore drill**: backup restored into a scratch environment, timed, verified.
+- **Published artifact verified**: the image that was *pushed* — not the one
+  built locally — is deployed via the deployment compose and asserted secure.
+  A release that passes CI and then fails on a self-hoster's machine is exactly
+  what this catches.
+- **Multi-arch**: `linux/amd64` and `linux/arm64`. ARM is not optional — self-
+  hosters run this on Apple silicon and on ARM VPS instances.
+- **Provenance attestation** pushed to the registry alongside the image.
 - Migration rehearsal against a production-shaped snapshot, timed.
 - SBOM generated; release artifacts signed.
 - CHANGELOG updated; breaking changes called out explicitly.

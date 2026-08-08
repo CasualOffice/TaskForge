@@ -1,6 +1,6 @@
 # TaskForge
 
-[![Status: Documentation phase](https://img.shields.io/badge/status-documentation%20phase-orange.svg)](docs/06-ROADMAP-AND-DELIVERY.md)
+[![Status: Phase 0](https://img.shields.io/badge/status-phase%200%20foundation-orange.svg)](docs/06-ROADMAP-AND-DELIVERY.md)
 [![Rust: MSRV 1.90](https://img.shields.io/badge/rust-MSRV%201.90-black.svg?logo=rust)](rust-toolchain.toml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -15,11 +15,16 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 [OpenCalc](https://github.com/CasualOffice/opencalc) (Casual Sheets) and
 [OpenDoc](https://github.com/CasualOffice/opendoc) (Casual Editor).
 
-> **Status: documentation phase → Phase 0.** The design record is complete —
-> 37 numbered documents, 26 accepted ADRs, covering Phases 0 through 4. The Rust
-> workspace and CI gates are being scaffolded. **No product functionality exists
-> yet.** Track live state in
-> [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
+> **Status: Phase 0 — foundation.** The design record is complete (numbered
+> documents in `docs/`, 30 accepted ADRs, covering Phases 0 through 4). Landed
+> and gated: the Cargo workspace and its enforced dependency DAG, architecture
+> lints, the full database schema with row-level security proven against a real
+> PostgreSQL 16, and a deployable container image with a verified deployment
+> path.
+>
+> **No product functionality exists yet** — the binaries are scaffolds, by
+> design. Phase 0 builds none; it exists to make every later phase verifiable.
+> Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 ## The problem
 
@@ -82,7 +87,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 
 | Phase | Delivers | Status |
 | --- | --- | --- |
-| **0 — Foundation** | workspace, CI gates, architecture lints, reference corpus, load-test harness, observability skeleton | 🟡 in progress |
+| **0 — Foundation** | workspace + enforced layer division, CI gates, architecture lints, **schema + RLS + deployment image**, reference corpus, load-test harness, observability skeleton | 🟡 in progress |
 | 1 — Usable core | auth, workspaces, projects, tasks, comments, attachments, default workflow, **the full permission resolver**, activity/audit/outbox, filters, search, board/list/My Work, SSE, notifications | ⬜ |
 | 2 — Administration | custom roles, permission simulator, custom workflows + status migration, environments, milestones, dependencies, audit console, SSO | ⬜ |
 | 3 — Extension platform | declarative plugins → remote HTTPS → sandboxed frontend, integration SDK | ⬜ |
@@ -134,13 +139,40 @@ Openly, and on the record ([docs/12](docs/12-COMPETITIVE-ANALYSIS.md)):
 
 ## Getting started
 
+### Develop
+
 ```sh
-cargo test --workspace          # test suite (scaffold today)
-cargo run -p casual-task-lint   # architecture lints (docs/15)
-docker compose up -d            # PostgreSQL for local development
+docker compose up -d              # PostgreSQL for local development
+cargo test --workspace            # test suite
+cargo run -p casual-task-lint     # architecture lints (docs/15)
+./scripts/verify-schema.sh        # apply migrations + assert the invariants
+./scripts/check.sh                # everything CI runs
 ```
 
-There is no runnable application yet. See
+### Deploy
+
+```sh
+cp deploy/.env.example deploy/.env && $EDITOR deploy/.env
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+```
+
+One binary plus PostgreSQL — no Redis, no object storage, no message broker.
+Keeping that profile genuinely supported is a **constraint on the architecture**,
+not a convenience. Full walkthrough: [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
+
+| | |
+| --- | --- |
+| Image | `gcr.io/distroless/cc-debian12:nonroot`, ~49 MB, runs as uid 65532 |
+| Contains | `taskforge-api`, `taskforge-worker`, and the migrations |
+| Verified by | `./scripts/verify-deployment.sh`, gated in CI |
+
+> **The application does not connect as the database owner.** A superuser
+> bypasses row-level security unconditionally, which would make tenant isolation
+> and audit immutability both silently inert. `deploy/` sets this up correctly
+> and CI asserts it — see [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
+
+**There is no runnable application yet** — the binaries are Phase 0 scaffolds.
+The image, the schema, and the deployment path are real and gated. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the full command set and the PR contract.
 
 ## Documentation

@@ -1,5 +1,9 @@
 # 48 — Deployment Profiles
 
+> The *architecture* of the three profiles. For the operator walkthrough —
+> building the image, configuring, upgrading, backing up, and verifying a
+> deployment is actually secure — see [52](52-DEPLOYMENT-GUIDE.md).
+
 Three supported shapes. The security model is **identical** across all three —
 a smaller deployment is smaller, never weaker ([28](28-ATTACHMENT-PIPELINE.md)).
 

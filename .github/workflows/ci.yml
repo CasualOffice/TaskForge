@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Callable from release.yml so a release runs the identical gate set rather
+  # than a parallel copy that can drift (docs/15).
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -116,6 +119,40 @@ jobs:
             echo "banned word in docs (docs/16 §Writing standards)" >&2
             exit 1
           fi
+
+  # The deployable artifact. Built on every PR so a Dockerfile or dependency
+  # change cannot rot unnoticed, and so the image size stays visible against the
+  # <100 MB target (docs/30). Publishing happens on release, not here.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t taskforge:ci .
+      - name: Binaries run, migrations shipped, non-root
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/taskforge-api    taskforge:ci
+          docker run --rm --entrypoint /usr/local/bin/taskforge-worker taskforge:ci
+          test "$(docker inspect -f '{{.Config.User}}' taskforge:ci)" = "65532:65532"
+          docker run --rm --entrypoint /usr/local/bin/taskforge-api taskforge:ci --help >/dev/null 2>&1 || true
+      - name: Image size within budget (docs/30 — under 100 MB)
+        run: |
+          BYTES=$(docker image inspect taskforge:ci -f '{{.Size}}')
+          MB=$((BYTES / 1000000))
+          echo "image size: ${MB} MB"
+          if [ "$MB" -gt 100 ]; then echo "image exceeds the 100 MB budget" >&2; exit 1; fi
+      - name: Deployment compose files are valid
+        run: |
+          cp deploy/.env.example deploy/.env
+          docker compose -f deploy/docker-compose.yml --env-file deploy/.env config >/dev/null
+          docker compose -f docker-compose.yml config >/dev/null
+          rm deploy/.env
+      - name: Deployment is actually secure end-to-end
+        # Brings up the deployment compose and asserts the application role is
+        # created NOSUPERUSER/NOBYPASSRLS, RLS covers every tenant table, an
+        # unscoped connection sees nothing, and audit history rejects UPDATE.
+        # These failures are silent in production, which is why they are gated.
+        run: ./scripts/verify-deployment.sh
 
   platform:
     strategy:
