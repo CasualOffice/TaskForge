@@ -172,7 +172,7 @@ pub fn issue_recovery_codes() -> Result<Vec<RecoveryCode>, RecoveryError> {
             .iter()
             .map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char)
             .collect();
-        let hash = password::hash(&presented).map_err(|_| RecoveryError::Hashing)?;
+        let hash = password::hash_generated(&presented).map_err(|_| RecoveryError::Hashing)?;
         codes.push(RecoveryCode { presented, hash });
     }
     Ok(codes)

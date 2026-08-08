@@ -58,6 +58,17 @@ impl RequestId {
             .map_or_else(|| "unknown".to_owned(), |id| id.0.clone())
     }
 
+    /// The same, from headers alone — for a handler that took `HeaderMap`
+    /// rather than `Parts`.
+    #[must_use]
+    pub fn of_parts(headers: &axum::http::HeaderMap) -> String {
+        headers
+            .get(REQUEST_ID_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.is_empty() && v.len() <= 128)
+            .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned)
+    }
+
     /// The same, from a whole request.
     #[must_use]
     pub fn of_request(request: &Request<axum::body::Body>) -> String {

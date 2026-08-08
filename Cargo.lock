@@ -385,6 +385,7 @@ dependencies = [
  "subtle",
  "thiserror",
  "time",
+ "tokio",
 ]
 
 [[package]]

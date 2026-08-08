@@ -47,7 +47,7 @@ pub const SESSION_TTL: Duration = Duration::days(14);
 /// module docs. Computing it per request would double the cost of every failed
 /// login and make the endpoint a cheap denial-of-service amplifier.
 static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
-    password::hash("this password authenticates nobody").unwrap_or_else(|_| {
+    password::hash_generated("this password authenticates nobody").unwrap_or_else(|_| {
         "$argon2id$v=19$m=65536,t=3,p=4$AAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAA".into()
     })
 });
@@ -90,44 +90,58 @@ pub async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<Response, ApiError> {
-    let request_id = "login";
+    let request_id = crate::server::RequestId::of_parts(&headers);
     let mut conn = state
         .pool
         .acquire()
         .await
-        .map_err(|_| ApiError::unavailable(request_id, 5))?;
+        .map_err(|_| ApiError::unavailable(&request_id, 5))?;
 
     let found = identity::credential_for_email(&mut conn, &body.email)
         .await
         .map_err(|error| {
             tracing::error!(%error, "credential lookup failed");
-            ApiError::internal(request_id)
+            ApiError::internal(&request_id)
         })?;
 
-    let outcome = authenticate(
+    // The connection is RELEASED before hashing. Argon2id at 64 MB is ~100 ms
+    // of pure CPU with no I/O; holding a pooled connection across it pins one
+    // of a bounded set (D-039) for the whole time, so a burst of logins
+    // exhausts the pool with work that needs no database at all.
+    drop(conn);
+
+    let outcome = authenticate(found.as_ref(), &body.password, OffsetDateTime::now_utc()).await;
+
+    let mut conn = state
+        .pool
+        .acquire()
+        .await
+        .map_err(|_| ApiError::unavailable(&request_id, 5))?;
+
+    let outcome = record_outcome(
         &mut conn,
         found.as_ref(),
-        &body.password,
+        outcome,
         OffsetDateTime::now_utc(),
     )
     .await
     .map_err(|error| {
         tracing::error!(%error, "recording a login attempt failed");
-        ApiError::internal(request_id)
+        ApiError::internal(&request_id)
     })?;
 
     let LoginOutcome::Authenticated { user_id } = outcome else {
         // The single refusal. docs/40: constant shape, whatever the reason.
-        return Ok(ApiError::unauthenticated(request_id).into_response());
+        return Ok(ApiError::unauthenticated(&request_id).into_response());
     };
 
     let minted = credential::mint().map_err(|error| {
         tracing::error!(%error, "the randomness source failed");
-        ApiError::internal(request_id)
+        ApiError::internal(&request_id)
     })?;
     let (selector, _) = credential::split(&minted.presented).map_err(|_| {
         // Unreachable: the value was just minted in the shape `split` parses.
-        ApiError::internal(request_id)
+        ApiError::internal(&request_id)
     })?;
 
     identity::create_session(
@@ -137,13 +151,13 @@ pub async fn login(
         &minted.verifier_hash,
         "password",
         OffsetDateTime::now_utc() + SESSION_TTL,
-        header_str(&headers, "x-forwarded-for"),
+        client_ip(&headers).as_deref(),
         header_str(&headers, header::USER_AGENT.as_str()),
     )
     .await
     .map_err(|error| {
         tracing::error!(%error, "creating the session failed");
-        ApiError::internal(request_id)
+        ApiError::internal(&request_id)
     })?;
 
     let csrf_token = csrf::token_for(&state.secret_key, selector);
@@ -185,36 +199,68 @@ pub async fn login(
 ///
 /// Any database error while recording the attempt.
 pub async fn authenticate(
-    conn: &mut sqlx::PgConnection,
     found: Option<&identity::Credential>,
     presented: &str,
     now: OffsetDateTime,
-) -> Result<LoginOutcome, sqlx::Error> {
+) -> LoginOutcome {
     let Some(credential) = found else {
         // No account. The hash still runs — see the module docs.
-        let _ = password::verify(presented, &DUMMY_HASH);
-        return Ok(LoginOutcome::Refused);
+        let _ = password::verify_async(presented, &DUMMY_HASH).await;
+        return LoginOutcome::Refused;
     };
 
     if credential.locked_until.is_some_and(|until| until > now) {
         // Backing off. The hash still runs, so a locked account is not
         // detectable by how fast it refuses.
-        let _ = password::verify(presented, &DUMMY_HASH);
-        return Ok(LoginOutcome::Refused);
+        let _ = password::verify_async(presented, &DUMMY_HASH).await;
+        return LoginOutcome::Refused;
     }
 
-    let matched = password::verify(presented, &credential.password_hash).unwrap_or(false);
-    if !matched {
-        let attempts = u32::try_from(credential.failed_attempts).unwrap_or(u32::MAX);
-        let locked_until = password::locked_until(attempts.saturating_add(1), now);
-        identity::record_failure(conn, credential.user_id, locked_until).await?;
-        return Ok(LoginOutcome::Refused);
+    if password::verify_async(presented, &credential.password_hash)
+        .await
+        .unwrap_or(false)
+    {
+        LoginOutcome::Authenticated {
+            user_id: credential.user_id,
+        }
+    } else {
+        LoginOutcome::Refused
     }
+}
 
-    identity::clear_failures(conn, credential.user_id).await?;
-    Ok(LoginOutcome::Authenticated {
-        user_id: credential.user_id,
-    })
+/// Persist what the attempt implies, in a second short transaction.
+///
+/// Split from [`authenticate`] so the decision needs no database connection and
+/// the connection is not held across the hash.
+///
+/// # Errors
+///
+/// Any database error.
+async fn record_outcome(
+    conn: &mut sqlx::PgConnection,
+    found: Option<&identity::Credential>,
+    outcome: LoginOutcome,
+    now: OffsetDateTime,
+) -> Result<LoginOutcome, sqlx::Error> {
+    let Some(credential) = found else {
+        return Ok(outcome);
+    };
+    match outcome {
+        LoginOutcome::Authenticated { .. } => {
+            identity::clear_failures(conn, credential.user_id).await?;
+        }
+        LoginOutcome::Refused => {
+            // Only when the account was not already backing off: counting
+            // attempts made during a lock would let anyone hold a stranger's
+            // account locked indefinitely.
+            if credential.locked_until.is_none_or(|until| until <= now) {
+                let attempts = u32::try_from(credential.failed_attempts).unwrap_or(u32::MAX);
+                let locked_until = password::locked_until(attempts.saturating_add(1), now);
+                identity::record_failure(conn, credential.user_id, locked_until).await?;
+            }
+        }
+    }
+    Ok(outcome)
 }
 
 /// `POST /api/v1/auth/logout`.
@@ -230,26 +276,26 @@ pub async fn logout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let request_id = "logout";
+    let request_id = crate::server::RequestId::of_parts(&headers);
     if let Some(selector) = session_selector(&headers) {
         let mut conn = state
             .pool
             .acquire()
             .await
-            .map_err(|_| ApiError::unavailable(request_id, 5))?;
+            .map_err(|_| ApiError::unavailable(&request_id, 5))?;
         if let Some(session) =
             identity::live_session(&mut conn, &selector)
                 .await
                 .map_err(|error| {
                     tracing::error!(%error, "session lookup failed");
-                    ApiError::internal(request_id)
+                    ApiError::internal(&request_id)
                 })?
         {
             identity::revoke_session(&mut conn, session.id)
                 .await
                 .map_err(|error| {
                     tracing::error!(%error, "revoking the session failed");
-                    ApiError::internal(request_id)
+                    ApiError::internal(&request_id)
                 })?;
         }
     }
@@ -287,6 +333,27 @@ pub fn session_selector(headers: &HeaderMap) -> Option<String> {
 
 fn header_str<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
     headers.get(name).and_then(|value| value.to_str().ok())
+}
+
+/// The client IP from `X-Forwarded-For`, or `None`.
+///
+/// Two things this must not do, and previously did both:
+///
+/// - **Pass the raw header to an `inet` column.** A normal two-hop proxy chain
+///   sends `X-Forwarded-For: 203.0.113.9, 198.51.100.4`; that string is not an
+///   inet, so the insert failed and *login returned 500* for every client
+///   behind two proxies. The header is attacker-controlled, so it was also a
+///   trivial way to make anyone's login fail.
+/// - **Trust it as an identity.** It is a hint for the audit trail only. It is
+///   never used for authorisation, and the first hop is taken because that is
+///   the convention, not because it is verified.
+fn client_ip(headers: &HeaderMap) -> Option<String> {
+    let raw = header_str(headers, "x-forwarded-for")?;
+    let first = raw.split(',').next()?.trim();
+    first
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .map(|ip| ip.to_string())
 }
 
 #[cfg(test)]
