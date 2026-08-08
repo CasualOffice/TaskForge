@@ -117,6 +117,23 @@ pub fn router(state: AppState) -> Router {
             axum::routing::post(crate::auth::logout),
         )
         .route("/api/v1/auth/session", get(crate::middleware::whoami))
+        // C-006 / C-008. Every one of these takes `WorkspaceMember`, which is
+        // the only thing that mints an `AuthContext` — so none of them can
+        // reach a tenant row without a validated membership (`docs/32`).
+        .route(
+            "/api/v1/projects",
+            get(crate::projects::list).post(crate::projects::create),
+        )
+        .route(
+            "/api/v1/projects/{id}",
+            get(crate::projects::read).patch(crate::projects::update),
+        )
+        .route(
+            "/api/v1/projects/{id}/tasks",
+            axum::routing::post(crate::tasks::create),
+        )
+        .route("/api/v1/tasks", get(crate::tasks::list))
+        .route("/api/v1/tasks/{id}", get(crate::tasks::read))
         // CSRF sits over every route, so a route added later cannot be added
         // beside it. docs/05: "every unsafe method without a valid token is
         // rejected" — every, not most.
@@ -300,6 +317,13 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
+    // The route TEMPLATE, never the resolved path — `{id}` is one series, and
+    // `/api/v1/projects/<uuid>` would be one series per project.
+    "/api/v1/projects",
+    "/api/v1/projects/{id}",
+    "/api/v1/projects/{id}/tasks",
+    "/api/v1/tasks",
+    "/api/v1/tasks/{id}",
     "unmatched",
 ];
 
@@ -365,12 +389,46 @@ mod tests {
             "/api/v1/auth/login",
             "/api/v1/auth/logout",
             "/api/v1/auth/session",
+            "/api/v1/projects",
+            "/api/v1/projects/{id}",
+            "/api/v1/projects/{id}/tasks",
+            "/api/v1/tasks",
+            "/api/v1/tasks/{id}",
         ] {
             assert!(
                 declared_route(route).is_some(),
                 "{route} is served but not in ROUTES, so it records no metrics"
             );
         }
+    }
+
+    #[test]
+    fn every_route_in_the_source_of_router_is_interned() {
+        // The list above is hand-maintained, which is exactly the thing that
+        // drifts. This reads the `.route("...")` calls out of this file's own
+        // source, so a route added to `router` without a ROUTES entry fails
+        // here rather than silently losing its metrics.
+        let source = include_str!("server.rs");
+        let body = source
+            .split_once("pub fn router")
+            .and_then(|(_, rest)| rest.split_once(".layer("))
+            .map(|(body, _)| body)
+            .expect("router() is defined in this file and its routes precede its layers");
+        let mut seen = 0;
+        // Odd-indexed segments of a `"`-split are the insides of string
+        // literals; every path in `router()` is one.
+        for literal in body.split('"').skip(1).step_by(2) {
+            if !literal.starts_with('/') {
+                continue;
+            }
+            seen += 1;
+            assert!(
+                declared_route(literal).is_some(),
+                "{literal} is registered in router() but missing from ROUTES, \
+                 so every request to it records no metrics"
+            );
+        }
+        assert!(seen >= 8, "only found {seen} routes; the scan is broken");
     }
 
     #[test]

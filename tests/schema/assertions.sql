@@ -117,7 +117,10 @@ DECLARE required text[] := ARRAY[
     -- sequential scan in the full claim plan — the planner falls back to hashing
     -- every pending delivery — so the EXPLAIN gate alone would not miss it here.
     'team_membership_user_ix','outbox_delivery_pending_ix','outbox_event_aggregate_ix',
-    'notification_unread_ix','comment_task_ix','attachment_task_ix'];
+    'notification_unread_ix','comment_task_ix','attachment_task_ix',
+    -- C-006: the project list's keyset order, and the guard that keeps a
+    -- workspace from ending up with two default workflows (migration 0019).
+    'project_list_ix','workflow_default_uq'];
     missing text[];
 BEGIN
     SELECT array_agg(r) INTO missing

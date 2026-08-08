@@ -9,4 +9,8 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Phase 0 scaffold — no implementation yet. See `docs/14-EXECUTION-TRACKER.md`.
+//! Lexicographic board ranks are implemented ([`rank`], ADR-013). Assignees,
+//! dependencies and the cycle check are not. See
+//! `docs/14-EXECUTION-TRACKER.md`.
+
+pub mod rank;

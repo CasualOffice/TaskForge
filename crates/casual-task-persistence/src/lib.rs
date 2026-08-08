@@ -9,18 +9,23 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! The scoped-connection seam is implemented. Repositories are not yet. See
-//! `docs/14-EXECUTION-TRACKER.md`.
+//! The scoped-connection seam, the project and task repositories, and workflow
+//! storage are implemented. See `docs/14-EXECUTION-TRACKER.md`.
 
 pub mod auth;
+pub mod authz;
 pub mod compile;
 pub mod dispatch;
 pub mod health;
+pub mod idempotency;
 pub mod identity;
+pub mod project;
 pub mod scoped;
+pub mod task;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 pub mod unit_of_work;
+pub mod workflow;
 
 pub use compile::{AuthorizedProjectSet, Compiled, Page, Param, compile};
 pub use scoped::Scoped;

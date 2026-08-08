@@ -19,10 +19,16 @@
 
 pub mod auth;
 pub mod config;
+pub mod context;
 pub mod csrf;
 pub mod error;
+pub mod etag;
 pub mod middleware;
+pub mod projects;
 pub mod server;
+pub mod tasks;
+pub mod unit;
+pub mod wire;
 
 pub use config::{Config, ConfigError};
 pub use error::ApiError;

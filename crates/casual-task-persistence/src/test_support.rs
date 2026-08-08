@@ -276,6 +276,121 @@ pub async fn add_workspace_member(
     Ok(())
 }
 
+/// Grant a user a role carrying `permissions`, at workspace scope.
+///
+/// `role_assignment` is the only source of authority in the system (migration
+/// 0003), and nothing creates one yet — C-002 owns workspace bootstrap and the
+/// built-in role templates. Until it lands, this is how an authorization test
+/// puts a real grant in front of the resolver instead of asserting against a
+/// stub.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn grant_at_workspace(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    permissions: &[&str],
+) -> Result<Uuid, sqlx::Error> {
+    let role = Uuid::now_v7();
+    sqlx::query("INSERT INTO role (id, workspace_id, name) VALUES ($1,$2,$3)")
+        .bind(role)
+        .bind(workspace_id)
+        .bind(format!("test-{role}"))
+        .execute(pool)
+        .await?;
+    for permission in permissions {
+        sqlx::query("INSERT INTO role_permission (role_id, permission) VALUES ($1,$2)")
+            .bind(role)
+            .bind(*permission)
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query(
+        "INSERT INTO role_assignment
+             (id, workspace_id, principal_type, principal_id, role_id,
+              scope_type, scope_id, granted_by)
+         VALUES ($1,$2,'USER'::principal_type,$3,$4,'WORKSPACE'::scope_type,$2,$3)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind(role)
+    .execute(pool)
+    .await?;
+    Ok(role)
+}
+
+/// How many history rows one aggregate has: activity, audit, outbox, delivery.
+///
+/// ADR-006 makes all four a property of a single transaction, so a test that
+/// asserts on the domain row alone would pass with the eventing deleted.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn history_counts(
+    pool: &sqlx::PgPool,
+    aggregate_id: Uuid,
+) -> Result<(i64, i64, i64, i64), sqlx::Error> {
+    let activity: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM activity_event WHERE aggregate_id = $1")
+            .bind(aggregate_id)
+            .fetch_one(pool)
+            .await?;
+    let audit: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_event WHERE target_id = $1")
+        .bind(aggregate_id)
+        .fetch_one(pool)
+        .await?;
+    let outbox: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM outbox_event WHERE aggregate_id = $1")
+            .bind(aggregate_id)
+            .fetch_one(pool)
+            .await?;
+    let deliveries: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM outbox_delivery d
+           JOIN outbox_event e ON e.id = d.event_id
+          WHERE e.aggregate_id = $1",
+    )
+    .bind(aggregate_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((activity, audit, outbox, deliveries))
+}
+
+/// The status names of one workflow, in board order.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn workflow_status_names(
+    pool: &sqlx::PgPool,
+    workflow_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT name FROM workflow_status WHERE workflow_id = $1 ORDER BY position")
+        .bind(workflow_id)
+        .fetch_all(pool)
+        .await
+}
+
+/// The event types recorded in the outbox for one aggregate, oldest first.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn outbox_event_types(
+    pool: &sqlx::PgPool,
+    aggregate_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT event_type FROM outbox_event WHERE aggregate_id = $1 ORDER BY created_at, id",
+    )
+    .bind(aggregate_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing

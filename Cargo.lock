@@ -354,6 +354,8 @@ dependencies = [
  "casual-task-project",
  "casual-task-task",
  "casual-task-workflow",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

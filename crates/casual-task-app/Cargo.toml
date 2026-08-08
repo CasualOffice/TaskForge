@@ -17,6 +17,11 @@ casual-task-task = { workspace = true }
 casual-task-activity = { workspace = true }
 casual-task-attachment = { workspace = true }
 casual-task-notification = { workspace = true }
+# `role_assignment.constraints` is jsonb, and the mapping from that column to
+# the closed constraint set is this crate's job (docs/19: the only layer that
+# composes). Reading it needs the value type; nothing here serializes.
+serde_json = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

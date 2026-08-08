@@ -221,7 +221,23 @@ ALTER TABLE project ADD CONSTRAINT project_workflow_fk
 -- exactly one initial status per workflow
 CREATE UNIQUE INDEX workflow_initial_uq
     ON workflow_status (workflow_id) WHERE is_initial;
+
+-- exactly one DEFAULT workflow per workspace (migration 0019, C-006)
+CREATE UNIQUE INDEX workflow_default_uq
+    ON workflow (workspace_id) WHERE is_default;
+
+-- the project list's keyset order (migration 0019, C-006)
+CREATE INDEX project_list_ix
+    ON project (workspace_id, created_at DESC, id DESC) WHERE deleted_at IS NULL;
 ```
+
+`workflow_default_uq` is what makes lazy provisioning safe. `project.workflow_id`
+is `NOT NULL` and nothing creates a workflow, so the first project create in a
+workspace materializes the default one ([23](23-WORKFLOW-AND-STATE-MACHINE.md)
+§The default workflow) inside its own transaction. Two concurrent first creates
+would each insert one, and the workspace would end up with two workflows both
+claiming to be the default — with no error anywhere. A check-then-insert cannot
+prevent that; a unique index can.
 
 ## Task
 

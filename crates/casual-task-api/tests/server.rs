@@ -308,7 +308,12 @@ async fn an_unrouted_path_is_counted_under_one_series_and_never_its_own() {
     // 404s must land, all three of them, on the single `unmatched` series.
     let (_, app) = unreachable_database();
 
-    for path in ["/../../etc/passwd", "/api/v1/tasks/018f2c", "/wp-admin"] {
+    // `/api/v1/tasks/018f2c` used to be the middle probe and is now a real
+    // route (C-008), so it stopped being unrouted. Replaced rather than
+    // deleted: the point of the middle case is a path that *looks* like an API
+    // call with an id in it, because that is the shape an attacker probes with
+    // and the shape whose id would become a label.
+    for path in ["/../../etc/passwd", "/api/v1/widgets/018f2c", "/wp-admin"] {
         let _ = app
             .clone()
             .oneshot(
