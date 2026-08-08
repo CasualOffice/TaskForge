@@ -13,7 +13,9 @@
 //! projection and cursor pagination are not. See `docs/14-EXECUTION-TRACKER.md`.
 
 pub mod filter;
+pub mod resolve;
 
 pub use filter::{
     Clause, Field, FieldType, FilterError, MAX_CLAUSES, MAX_DEPTH, Node, Operator, Value, validate,
 };
+pub use resolve::{Context, ResolveError, resolve};

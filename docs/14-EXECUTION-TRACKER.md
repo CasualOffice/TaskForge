@@ -340,6 +340,24 @@ the code that proves it.
   It goes back on when the API needs it, with the licence decided deliberately
   at that point rather than smuggled in beside a test harness.
 
+**Symbolic resolution is in** (C-012). `@me`, `@my_teams`, `@unassigned`,
+`@today`, `@tomorrow`, `@start_of_week` and the `+7d` / `-3mo` forms resolve at
+evaluation, which is what keeps a stored `@me` correct for whoever opens the
+view — docs/27: "A view that hardcoded a user id would be shareable but wrong."
+
+The timezone bug docs/27 names is closed by the type. `Context` requires a
+`UtcOffset` and has **no default**, so a caller cannot accidentally resolve
+`@today` against the server's midnight. A test resolves the same instant for an
+actor at UTC-7 and one at UTC+12 and asserts they get **different** days —
+verified by reverting to server-local and watching it fail.
+
+Two smaller decisions are stated rather than hidden: `@start_of_week` is Monday
+per ISO 8601, which is a product choice and not a computation; and `-3mo` is
+ninety days, because calendar months make the same filter land on a different
+day depending on which months it crosses. An unknown symbol is **refused**, not
+passed through — a typo'd `@tomorow` reaching the database as a literal would
+compare a timestamp against a string and fail somewhere far worse.
+
 **The filter compiler is in** (C-012, second half). A validated AST compiles to
 parameterized SQL in `casual-task-persistence`, which is where docs/19 requires
 all SQL to live — so the AST crate still cannot emit a fragment, and the split

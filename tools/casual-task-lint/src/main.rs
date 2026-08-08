@@ -132,8 +132,16 @@ fn offset_takes_a_value(s: &str) -> bool {
         // Preceded by a boundary, so `BYTE_OFFSET` does not count.
         let boundary = i == 0
             || !upper.as_bytes()[i - 1].is_ascii_alphanumeric() && upper.as_bytes()[i - 1] != b'_';
-        let tail = upper[i + "OFFSET".len()..].trim_start();
-        boundary && tail.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '$' | ':' | '?'))
+        let after = &upper[i + "OFFSET".len()..];
+        // SQL separates the keyword from its value; Rust's `offset: UtcOffset`
+        // and `offset:` in a struct literal do not. Requiring whitespace here
+        // is what tells a struct field from a LIMIT clause — without it this
+        // lint fires on any field named `offset`, which it did.
+        let separated = after.starts_with(|c: char| c.is_whitespace());
+        let tail = after.trim_start();
+        boundary
+            && separated
+            && tail.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '$' | ':' | '?'))
     })
 }
 
@@ -308,6 +316,10 @@ mod tests {
         assert!(!mentions_sql_offset("offset += 1;"));
         assert!(!mentions_sql_offset("self.offset = other.offset;"));
         assert!(!mentions_sql_offset("let byte_offset: usize = 3;"));
+        // A struct field named `offset`. This fired in casual-task-search and
+        // is the reason the whitespace requirement exists.
+        assert!(!mentions_sql_offset("    offset: UtcOffset,"));
+        assert!(!mentions_sql_offset("        offset: 0,"));
         // A test that ENFORCES the rule must not be flagged by it.
         assert!(!mentions_sql_offset(
             r#"assert!(!c.sql.to_uppercase().contains("OFFSET"), "{}", c.id);"#
