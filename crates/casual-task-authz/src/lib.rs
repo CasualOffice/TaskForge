@@ -9,4 +9,15 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Phase 0 scaffold — no implementation yet. See `docs/14-EXECUTION-TRACKER.md`.
+//! Resolution is implemented (C-003); the `authz_epoch` cache and the grant and
+//! scope ceilings are not yet. See `docs/14-EXECUTION-TRACKER.md`.
+
+pub mod constraint;
+pub mod resolver;
+pub mod scope;
+
+pub use constraint::{Constraint, ResourceFacts};
+pub use resolver::{
+    Actor, Contribution, Decision, DenyReason, Grant, Principal, allows, effective, explain,
+};
+pub use scope::{ResourceScopes, Scope};
