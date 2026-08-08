@@ -74,6 +74,7 @@ The documentation phase. All complete unless noted.
 | D-039 | Connection pool sizing, acquisition timeout, exhaustion behaviour | [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md) | **Blocked** — Accept before C-001 |
 | D-040 | Queue bounds and full-queue policy | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Blocked** — Accept before C-011 |
 | D-041 | Cancellation and graceful shutdown | [48](48-DEPLOYMENT-PROFILES.md) | **Blocked** — Accept before C-001 |
+| D-042 | Rate-limit attribution, and expiry for investigation admissions | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Blocked** — Accept before C-001 |
 
 Four of those are new, opened by a Phase 0 audit of the concurrency and async
 design rather than by writing any code. They are recorded rather than resolved
@@ -97,6 +98,16 @@ implementation:
   now enforced mechanically — `clippy.toml` rejects every unbounded-channel
   constructor by resolved path — but "bounded" without a policy for the full case
   just moves the failure from an out-of-memory crash to an unspecified one.
+- **D-042.** [46](46-OBSERVABILITY-AND-OPERATIONS.md) contradicts itself: §Domain
+  metrics writes `rate_limit_hits_total` "by workspace", and §Cardinality
+  discipline forbids a raw `workspace_id` label on any metric. The registry
+  resolved it in favour of the discipline — a hashed bucket, which answers
+  "is throttling concentrated?" and not "which tenant?" — and the code claimed
+  that resolution was "recorded as an open question", which it was not. It is
+  now. Second half of the same row: §Cardinality discipline permits per-tenant
+  labels "enabled temporarily", and the allow-list enforces *small* but not
+  *temporarily*. There is no clock, so an admission lasts forever. Deciding the
+  expiry is a design choice, not an implementation detail.
 - **D-041.** No document describes cancellation or graceful shutdown: what
   happens to an in-flight request, a half-dispatched outbox row, or a held
   advisory lock when a pod is terminated. Retrofitting cancellation through a

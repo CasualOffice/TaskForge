@@ -292,10 +292,16 @@ pub const ATTACHMENT_SCAN_QUEUE_DEPTH: Metric = Metric::new(
 /// `docs/46` §Domain metrics writes this one "by workspace", and §Cardinality
 /// discipline forbids a raw `workspace_id` label. Those two lines are in
 /// tension. This registry resolves it the way §Cardinality discipline requires —
-/// [`keys::WORKSPACE_BUCKET`] and [`keys::WORKSPACE_INVESTIGATION`], both bounded
-/// — and the resolution is recorded as an open question in the task report
-/// rather than settled silently. **The cost:** this metric answers "is
-/// throttling concentrated?" and not "which tenant?"; the latter is a log query.
+/// [`keys::WORKSPACE_BUCKET`] and [`keys::WORKSPACE_INVESTIGATION`], both bounded.
+///
+/// That is an interim resolution, not a decision: the contradiction is
+/// **tracker D-042**, and docs/46 §Domain metrics now points at it. (This
+/// comment previously claimed the question was "recorded in the task report",
+/// which existed nowhere — a citation to a record that had never been written
+/// is worse than no citation, because it stops the next reader looking.)
+///
+/// **The cost:** this metric answers "is throttling concentrated?" and not
+/// "which tenant?"; the latter is a log query.
 pub const RATE_LIMIT_HITS_TOTAL: Metric = Metric::new(
     "rate_limit_hits_total",
     MetricKind::Counter,
