@@ -528,6 +528,41 @@ Still missing before `Gated`: the golden matrix over every permission × role ×
 scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
 endpoints respectively.
 
+**The HTTP server exists, and F-009's `/metrics` endpoint with it.** The API
+binary starts, and every step of its startup is a refusal rather than a warning:
+configuration that fails fast and names the variable, a bounded pool (D-039),
+and the superuser check [48](48-DEPLOYMENT-PROFILES.md) requires — "the API
+refuses to start if `current_setting('is_superuser')` is on". Connected as a
+superuser the application works perfectly, every test passes, and tenant
+isolation and audit immutability are both silently inert; there is no symptom
+until one customer sees another's tasks.
+
+`--health-check` is now real. It was a scaffold that refused rather than lied,
+which was the right holding position; `deploy/docker-compose.yml` has been
+probing liveness with it since F-016.
+
+**Health is two questions.** `/health/live` touches nothing — a liveness probe
+that checked the database would restart every API instance during a database
+outage, removing the only thing that could still serve anything and adding a
+reconnect storm. `/health/ready` does check it, and answers **503**, not 500:
+"do not send me traffic" rather than "I am broken".
+
+**The cardinality guard held at the HTTP boundary, and it mattered here.** The
+route label is the router's *template*, and it is interned against a fixed table
+before becoming a metric label — the request path is attacker-controlled, so
+without that every 404 to a random URL would permanently add a time series. A
+test fires `/../../etc/passwd` and `/wp-admin` at the server and asserts neither
+reaches the scrape body.
+
+The architecture lint refused `SELECT 1` in the readiness handler and the
+superuser check in `main`. Both moved to `casual-task-persistence`
+(`health::ping`, `health::is_superuser`) rather than the rule being bent for two
+one-line queries — the same call made for the C-011 acceptance gate.
+
+Config additions are documented in [48](48-DEPLOYMENT-PROFILES.md):
+`TF_DB_MAX_CONNECTIONS` and `TF_DB_ACQUIRE_TIMEOUT_SECONDS`. The acquire timeout
+is what makes D-039's 503 reachable; without it a saturated pool is a hang.
+
 **C-001's credential layer is in; C-001 is `Building`.** Migration 0016 adds
 `user_credential`, `session`, `mfa_factor`, `recovery_code`,
 `password_reset_token` and `invitation`, and `casual-task-identity` implements

@@ -16,6 +16,24 @@ casual-task-infra = { workspace = true }
 casual-task-observability = { workspace = true }
 tracing = { workspace = true }
 casual-task-plugin-contract = { workspace = true }
+casual-task-identity = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+axum = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tower = { workspace = true, features = ["util"] }
+casual-task-observability = { workspace = true }
 
 [lints]
 workspace = true

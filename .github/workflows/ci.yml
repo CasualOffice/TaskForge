@@ -232,9 +232,34 @@ jobs:
       - name: Build the image
         run: docker build -t taskforge:ci .
       - name: Binaries run, migrations shipped, non-root
+        # --version, not a bare invocation. This step used to run each binary
+        # with no arguments and require exit 0, which passed only because they
+        # were scaffolds that printed a line and stopped. The API is a real
+        # server now: started with no configuration it refuses, exits 1, and is
+        # RIGHT to — so the old check failed on correct behaviour.
+        #
+        # What this step actually wants to know is whether the binary executes
+        # in this image: right architecture, libraries present, not a broken
+        # link. --version answers exactly that and nothing else.
         run: |
-          docker run --rm --entrypoint /usr/local/bin/taskforge-api    taskforge:ci
-          docker run --rm --entrypoint /usr/local/bin/taskforge-worker taskforge:ci
+          docker run --rm --entrypoint /usr/local/bin/taskforge-api    taskforge:ci --version
+          docker run --rm --entrypoint /usr/local/bin/taskforge-worker taskforge:ci --version
+
+      - name: The API refuses to start unconfigured (docs/48)
+        # The behaviour that broke the check above is now asserted, not merely
+        # tolerated. docs/48: "startup validation fails fast and specifically" —
+        # a server that starts with no TF_SECRET_KEY has a CSRF binding that
+        # proves nothing, and one that starts with TF_ATTACHMENT_ORIGIN equal to
+        # TF_PUBLIC_URL serves user-uploaded HTML in the application's origin.
+        run: |
+          set +e
+          output=$(docker run --rm --entrypoint /usr/local/bin/taskforge-api taskforge:ci 2>&1)
+          status=$?
+          set -e
+          test "$status" -ne 0 || { echo "the API started with no configuration"; exit 1; }
+          echo "$output" | grep -q "TF_SECRET_KEY" || {
+            echo "it refused, but did not name the missing variable:"; echo "$output"; exit 1; }
+          echo "  refuses unconfigured, and names TF_SECRET_KEY"
           test "$(docker inspect -f '{{.Config.User}}' taskforge:ci)" = "65532:65532"
           docker run --rm --entrypoint /usr/local/bin/taskforge-api taskforge:ci --help >/dev/null 2>&1 || true
       - name: Image size within budget (docs/30 — under 100 MB)
