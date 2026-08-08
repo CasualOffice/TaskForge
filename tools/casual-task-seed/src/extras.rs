@@ -117,6 +117,15 @@ fn api_tokens(sink: &mut Sink, det: &mut Det, world: &World, accounts: &[Uuid]) 
 }
 
 fn plugins(sink: &mut Sink, det: &mut Det, world: &World, plan: &Plan) {
+    // `min` silently truncates; PLUGIN_IDS holds exactly what the reference
+    // plan asks for, so any increase would shrink the corpus without a word.
+    assert!(
+        plan.plugins <= vocab::PLUGIN_IDS.len(),
+        "scale {} asks for {} plugin installations and vocab::PLUGIN_IDS holds {}",
+        plan.scale.as_str(),
+        plan.plugins,
+        vocab::PLUGIN_IDS.len()
+    );
     for i in 0..plan.plugins.min(vocab::PLUGIN_IDS.len()) {
         let installed = world.now - det.range(20, 600) * DAY_MS;
         let scopes: Vec<&str> = [

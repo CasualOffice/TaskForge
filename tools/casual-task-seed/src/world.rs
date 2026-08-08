@@ -634,6 +634,13 @@ fn build_environments(
     (workspace_id, project): (Uuid, Uuid),
 ) -> Vec<Uuid> {
     let n = det.range(2, 5) as usize;
+    // Exactly at the limit today: range(2, 5) tops out at 4 and ENVIRONMENTS
+    // holds 4. Widening the range without adding names would silently cap.
+    assert!(
+        n <= vocab::ENVIRONMENTS.len(),
+        "asked for {n} environments and vocab::ENVIRONMENTS holds {}",
+        vocab::ENVIRONMENTS.len()
+    );
     let mut out = Vec::with_capacity(n);
     for (i, name) in vocab::ENVIRONMENTS.iter().take(n).enumerate() {
         let id = det.uuid_at(1_620_000_000_000);
@@ -745,6 +752,19 @@ fn build_tags(
     workspace_id: Uuid,
     projects: &mut [Project],
 ) -> Vec<Uuid> {
+    // `take` would silently hand back fewer tags than the plan asked for, and
+    // `tasks::generate` derives its Zipf tag-weight table from the length of
+    // what comes back — so a shortfall would propagate into task_tag
+    // cardinality with nothing to notice it. TAG_NAMES has exactly as many
+    // entries as the reference plan wants, i.e. no headroom at all.
+    assert!(
+        plan.workspace_tags <= vocab::TAG_NAMES.len(),
+        "scale {} asks for {} workspace tags and vocab::TAG_NAMES holds {}. Add \
+         names, or the corpus is quietly smaller than its plan.",
+        plan.scale.as_str(),
+        plan.workspace_tags,
+        vocab::TAG_NAMES.len()
+    );
     let mut workspace_tags = Vec::with_capacity(plan.workspace_tags);
     for name in vocab::TAG_NAMES.iter().take(plan.workspace_tags) {
         let id = det.uuid_at(1_630_000_000_000);
