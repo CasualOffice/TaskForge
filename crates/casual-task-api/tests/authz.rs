@@ -372,3 +372,62 @@ async fn a_safe_method_needs_no_csrf_token() -> Result<()> {
     assert_eq!(response.status(), StatusCode::OK);
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn an_error_body_carries_the_same_request_id_as_the_header() -> Result<()> {
+    // docs/05 promises "a `request_id` the user can quote to support". Two
+    // different values for one request makes that promise false in exactly the
+    // situation it exists for — a user reading an error and quoting the number
+    // in front of them.
+    //
+    // Every rejection in this file used to carry a hardcoded literal ("auth",
+    // "login", "csrf") in the body while the header carried a real id.
+    let db = schema_harness::TestDatabase::start().await?;
+    seed(&db.pool, "user@example.com").await?;
+    let app = app_with_protected_route(db.pool.clone());
+    let (cookie, _) = login(&app, "user@example.com").await?;
+
+    for (name, request) in [
+        (
+            "unauthenticated",
+            Request::builder()
+                .uri("/api/v1/auth/session")
+                .body(Body::empty())?,
+        ),
+        (
+            "csrf",
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/logout")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())?,
+        ),
+        // Deliberately NOT /test/workspace. That route is attached after
+        // `router()` returns, so it sits outside the observability layer and
+        // has no request id at all — which is a fact about this test harness,
+        // and also a warning: a route added after `.layer()` escapes both the
+        // request id and the CSRF guard. Every real route is registered before
+        // the layers, and `server.rs` says why.
+    ] {
+        let response = app.clone().oneshot(request).await?;
+        let header_id = response
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        let bytes = to_bytes(response.into_body(), 64 * 1024).await?;
+        let body: serde_json::Value = serde_json::from_slice(&bytes)?;
+        let body_id = body["error"]["request_id"].as_str().unwrap_or_default();
+
+        assert!(!header_id.is_empty(), "{name}: no request id header");
+        assert_eq!(
+            body_id, header_id,
+            "{name}: the error body says {body_id:?} and the header says \
+             {header_id:?}; a user quoting one of them cannot be found by the \
+             other"
+        );
+    }
+    Ok(())
+}

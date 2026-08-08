@@ -226,16 +226,38 @@ pub async fn revoke_all_sessions(
     .rows_affected())
 }
 
-/// Update `last_seen_at`.
+/// How stale `last_seen_at` may get before it is written again.
+///
+/// See [`touch_session`]. Five minutes is far finer than any use of the value —
+/// a session list showing "active 4 minutes ago" as "active just now" is not a
+/// defect — and it turns a write on every request into a write every few
+/// hundred.
+pub const LAST_SEEN_RESOLUTION: &str = "5 minutes";
+
+/// Update `last_seen_at`, **at most once per [`LAST_SEEN_RESOLUTION`]**.
+///
+/// The throttle is the point, and it is in the `WHERE` clause rather than in a
+/// read-then-write so it stays one statement and one round trip.
+///
+/// Written unconditionally, this ran an `UPDATE` on **every authenticated
+/// request**. That is a hot row per active session: every read becomes a write,
+/// every write is WAL and a dead tuple, and the table an authentication path
+/// depends on is the one autovacuum is chasing. `docs/30` sets p95 read
+/// < 150 ms, and a row-level lock on the session being used by the request in
+/// front of you is not the way to hold it.
 ///
 /// # Errors
 ///
 /// Any database error.
 pub async fn touch_session(conn: &mut sqlx::PgConnection, id: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query("UPDATE session SET last_seen_at = now() WHERE id = $1")
-        .bind(id)
-        .execute(conn)
-        .await?;
+    sqlx::query(
+        "UPDATE session SET last_seen_at = now()
+          WHERE id = $1 AND last_seen_at < now() - $2::interval",
+    )
+    .bind(id)
+    .bind(LAST_SEEN_RESOLUTION)
+    .execute(conn)
+    .await?;
     Ok(())
 }
 

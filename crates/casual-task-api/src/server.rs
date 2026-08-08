@@ -37,6 +37,37 @@ use crate::error::ApiError;
 /// The header carrying a request id in and out.
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
+/// The request id, put into extensions so handlers and extractors can put the
+/// **same** value in an error body that the response header carries.
+///
+/// It existed only as a header before, so every error body carried a hardcoded
+/// literal — `"auth"`, `"login"` — while the header carried a real id. `docs/05`
+/// promises "a `request_id` the user can quote to support"; two different values
+/// for one request makes that promise false in the exact situation it is for.
+#[derive(Debug, Clone)]
+pub struct RequestId(pub String);
+
+impl RequestId {
+    /// The id, or a marker when the observability layer did not run — which
+    /// happens only in a test that builds a bare handler.
+    #[must_use]
+    pub fn of(parts: &axum::http::request::Parts) -> String {
+        parts
+            .extensions
+            .get::<Self>()
+            .map_or_else(|| "unknown".to_owned(), |id| id.0.clone())
+    }
+
+    /// The same, from a whole request.
+    #[must_use]
+    pub fn of_request(request: &Request<axum::body::Body>) -> String {
+        request
+            .extensions()
+            .get::<Self>()
+            .map_or_else(|| "unknown".to_owned(), |id| id.0.clone())
+    }
+}
+
 /// How long shutdown waits for in-flight requests.
 ///
 /// Shorter than Kubernetes' default 30-second `SIGKILL` grace, because being
@@ -55,6 +86,12 @@ pub struct AppState {
 }
 
 /// Build the router.
+///
+/// **Every route is registered before the layers, and must stay that way.** In
+/// axum a route added *after* `.layer()` is not wrapped by it — so a route
+/// appended to the returned `Router` silently escapes both the CSRF guard and
+/// the request id. `docs/05` says "every unsafe method without a valid token is
+/// rejected", and that holds only while this ordering does.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health/live", get(live))
@@ -155,6 +192,13 @@ async fn observe(
         .map(|p| p.as_str().to_owned())
         .unwrap_or_else(|| "unmatched".to_owned());
     let method = request.method().clone();
+
+    // Into extensions BEFORE the inner layers run, so an error body built deep
+    // in an extractor carries the same id the response header will.
+    let mut request = request;
+    request
+        .extensions_mut()
+        .insert(RequestId(request_id.clone()));
 
     let started = std::time::Instant::now();
     let mut response = next.run(request).await;
