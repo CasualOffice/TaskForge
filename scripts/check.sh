@@ -26,7 +26,11 @@ run cargo fmt --all -- --check
 run cargo clippy --workspace --all-targets --all-features -- -D warnings
 run cargo run -q -p casual-task-lint          # architecture lints
 run cargo nextest run --workspace 2>/dev/null || run cargo test --workspace
-run cargo doc --workspace --no-deps
+# Exactly what the `docs` job runs. It used to omit both --all-features and
+# RUSTDOCFLAGS, so a broken intra-doc link — a link to a private item, say —
+# passed here and failed in CI. A local gate that is weaker than the real one
+# is how you learn about a failure from a pull request instead of a terminal.
+run env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
 
 # ── documentation ─────────────────────────────────────────────────────────────
 run python3 scripts/check-doc-links.py

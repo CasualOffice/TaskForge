@@ -12,6 +12,8 @@
 //! The scoped-connection seam is implemented. Repositories are not yet. See
 //! `docs/14-EXECUTION-TRACKER.md`.
 
+pub mod compile;
 pub mod scoped;
 
+pub use compile::{AuthorizedProjectSet, Compiled, Param, compile};
 pub use scoped::Scoped;

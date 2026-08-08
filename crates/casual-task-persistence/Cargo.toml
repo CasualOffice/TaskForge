@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 sqlx = { workspace = true }
 casual-task-model = { workspace = true }
+casual-task-search = { workspace = true }
 
 [lints]
 workspace = true
