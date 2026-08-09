@@ -10,6 +10,12 @@ primitives is kept at [`assets/ui-concept-board.png`](assets/ui-concept-board.pn
 It is **illustrative only** — the authoritative tokens and primitives come from
 `@schnsrw/design-system`, shared with Casual Sheets and Casual Editor.
 
+> **This document says how the client is built, not what it is for.**
+> Which surfaces exist, what question each answers, and what belongs above the
+> fold are in [44](44-PRODUCT-RESEARCH-AND-SURFACE-BRIEFS.md). That document was
+> written after the fact, and its first section explains what a product looks
+> like when it is missing: a screen per endpoint. Read it before adding a view.
+
 ## Stack
 
 | Concern | Choice | Why |

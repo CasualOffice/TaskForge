@@ -1612,6 +1612,44 @@ on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
 
+**The product had no user research, and the surfaces show it**
+([44](44-PRODUCT-RESEARCH-AND-SURFACE-BRIEFS.md)). Three findings, each
+checkable: [01](01-ORD.md) §Users lists buyer segments rather than people;
+[42](42-FRONTEND-ARCHITECTURE.md) is fourteen technical sections with nothing
+about what anyone is doing on a screen; and no persona, job or task flow appears
+anywhere in forty documents. [12](12-COMPETITIVE-ANALYSIS.md) is a strong
+*strategy* teardown and its own closing section — "Open questions to resolve with
+research" — was never resolved.
+
+**The consequence is structural.** With no layer between "build a work tracker"
+and "implement the API", the screen inventory became the *endpoint* inventory: a
+page for tasks, a page for the board, a settings page each for roles, teams,
+workflow and tags, because there is an endpoint for each. A product organised by
+its data model can be feature-complete and still read as a rendering of a
+database, because no screen can say why it exists. That is the gap between this
+and the products it is measured against, and restyling does not close it.
+
+**What 44 adds:** five roles, ten *moments* when a work tracker is actually
+opened with the time budget of each, nine jobs ranked by frequency × pain, and a
+brief per surface — its one question, what must be legible without scrolling, its
+first action, and how it fails. Every claim is marked `[Given]`, `[Pattern]` or
+`[Assumption]`, and each assumption is listed again with what would settle it.
+It is desk research and a teardown, **not** interviews, and says so: there are no
+users yet, and invented quotes would be worse than none.
+
+**Two things it settles that were previously taste.** Seven of the ten moments
+have budgets measured in *seconds* — so a glance surface that needs scrolling has
+failed the moment, which turns "no scrolling" from a preference into a derived
+requirement. And the job ranking shows the screens are built almost exactly
+backwards: the most complete surfaces serve the two rarest jobs (administration),
+while the highest-frequency job — "what is mine, and what changed" — has a
+filtered list that cannot say what changed.
+
+**Two current screens fail the test outright.** "All tasks" with no project scope
+serves no moment — nobody's question is "show me every task in the workspace" —
+and should become Search results. Tags settings is a destination for a vocabulary
+nobody visits on purpose, and belongs inside the picker where the need arises.
+
 **The attachment origin exists, which is what made the pipeline reachable**
 (C-010, `docs/28` §Serving downloads). Presign, commit, scan status and download
 had all been built; `presign_put` returned `{origin}/attachments/{key}` and
