@@ -35,6 +35,8 @@ export function filterFromSearch(search: AppSearch): TaskFilter {
   const filter: Record<string, string> = {}
 
   if (search.project !== undefined) filter['project'] = search.project
+  // Present-and-empty is the triage queue: owned by no team yet (`docs/45`).
+  if (search.team !== undefined) filter['team'] = search.team
   if (search.q !== undefined && search.q !== '') filter['q'] = search.q
   if (search.status !== undefined && search.status !== '') filter['status'] = search.status
   if (search.priority !== undefined && search.priority !== '') filter['priority'] = search.priority

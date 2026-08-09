@@ -476,6 +476,50 @@ pub async fn list_teams(
     Ok(rows.into_iter().map(into_team).collect())
 }
 
+/// The teams the actor is in, by name.
+///
+/// # Why this is not `list_teams` with a filter
+///
+/// "Which teams exist here" and "which am I in" are asked by different screens
+/// for different reasons: the first is an administrator picking one, the second
+/// is a person finding their own work. A caller who is in three of a hundred
+/// teams should not page through a hundred to find them, and a sidebar built on
+/// the unfiltered list would grow with the workspace rather than with the
+/// person.
+///
+/// Not paged, deliberately. A person is in a handful of teams — if that ever
+/// stops being true the sidebar has a worse problem than pagination.
+///
+/// Joins `workspace_membership` for the same reason [`list_team_members`] does:
+/// `team_membership` carries no `workspace_id` and therefore no policy of its
+/// own, so a row naming a team in another tenant must be invisible rather than
+/// rendered.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn list_my_teams(
+    scoped: &mut Scoped<'_>,
+    user_id: Uuid,
+) -> Result<Vec<TeamRecord>, sqlx::Error> {
+    let rows: Vec<(Uuid, String, i64, OffsetDateTime)> = sqlx::query_as(
+        "SELECT t.id, t.name, t.version, t.created_at
+           FROM team_membership tm
+           JOIN team t ON t.id = tm.team_id
+           JOIN workspace_membership m
+             ON m.user_id = tm.user_id AND m.workspace_id = t.workspace_id
+          WHERE tm.user_id = $1
+            AND t.workspace_id = $2
+            AND t.deleted_at IS NULL
+          ORDER BY t.name",
+    )
+    .bind(user_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .fetch_all(scoped.conn())
+    .await?;
+    Ok(rows.into_iter().map(into_team).collect())
+}
+
 /// One team of the scoped workspace, or `None`.
 ///
 /// `None` for a team in another tenant as well as for one that does not exist,

@@ -367,6 +367,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-020 | Rate limiting at the edge | `Building` |
 | C-022 | **Chain of custody** — team transfer, environment promotion, verification, `/me/queue` | `Built` |
 | C-023 | **Releases** — what went out together, cut from the pipeline | `Built` |
+| C-024 | **Team scope** — team as a place to stand, beside project and workspace | `Built` |
 
 **C-022 and C-023 are `Built`, and the missing half of `Gated` is the client.**
 Both servers are protected: `cargo test --workspace -- --ignored` runs in CI, and

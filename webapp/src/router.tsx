@@ -88,6 +88,15 @@ export interface AppSearch {
   readonly task?: string
   /** The project a view is scoped to. Absent means "everything visible". */
   readonly project?: string
+  /**
+   * The owning team a view is scoped to (`docs/45`).
+   *
+   * A *scope*, like `project`, not a filter: it says which slice of the
+   * workspace you are standing in, so "Clear filters" preserves it for the same
+   * reason it preserves the project. Present-and-empty is the triage queue —
+   * work owned by no team yet — which is why it survives validation.
+   */
+  readonly team?: string
   /** Free-text search, passed through to the server's `q` filter. */
   readonly q?: string
   /** Workflow status ids, comma-separated. */
@@ -123,6 +132,7 @@ export interface AppSearch {
 export const SEARCH_KEYS = [
   'task',
   'project',
+  'team',
   'q',
   'status',
   'priority',
@@ -144,9 +154,10 @@ export const SEARCH_KEYS = [
  * The filter parameters, as distinct from navigation state.
  *
  * `task` is not one — it says which drawer is open, not which rows to fetch — and
- * neither is `project`, which "Clear filters" deliberately preserves: dropping
- * the project would empty the board and unset the workflow, which is not what
- * anyone means by clearing a filter.
+ * neither is `project` or `team`, which "Clear filters" deliberately preserves:
+ * dropping the project would empty the board and unset the workflow, and
+ * dropping the team would silently widen "my team's work" to the whole
+ * workspace. Neither is what anyone means by clearing a filter.
  */
 export const FILTER_KEYS = [
   'q',
@@ -166,8 +177,21 @@ export const FILTER_KEYS = [
   'blocked',
 ] as const
 
-/** Parameters whose empty value means `is_empty` rather than "no constraint". */
-const EMPTY_IS_MEANINGFUL: ReadonlySet<string> = new Set(['assignee', 'tag', 'parent'])
+/**
+ * Parameters whose empty value means `is_empty` rather than "no constraint".
+ *
+ * Exported because the *write* path needs the same list. `shell/navigation.ts`
+ * prunes empty values out of the URL, and for a while it kept its own list of
+ * one — so `?tag=` (untagged) and `?parent=` (top level) survived being typed
+ * into the address bar but were dropped the moment any other control moved,
+ * which is a filter that works until you touch the page. One list, two readers.
+ */
+export const EMPTY_IS_MEANINGFUL: ReadonlySet<string> = new Set([
+  'assignee',
+  'tag',
+  'parent',
+  'team',
+])
 
 /**
  * Validate rather than cast.

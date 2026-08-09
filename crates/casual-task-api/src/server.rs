@@ -307,6 +307,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/me", get(crate::me::read).patch(crate::me::update))
         // Whose turn is it (`docs/45`). The home screen's whole answer.
         .route("/api/v1/me/queue", get(crate::custody::queue))
+        // Which teams the caller is in. The sidebar's list, and the reason a
+        // team is a place you can stand rather than a filter you must know the
+        // id of (`docs/45`).
+        .route("/api/v1/me/teams", get(crate::workspaces::teams::my_teams))
         .route(
             "/api/v1/me/password",
             axum::routing::post(crate::me::change_password),
@@ -749,6 +753,7 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/releases/{id}",
     "/api/v1/me",
     "/api/v1/me/queue",
+    "/api/v1/me/teams",
     "/api/v1/me/password",
     "/api/v1/me/sessions",
     "/api/v1/me/sessions/{id}",

@@ -42,6 +42,41 @@ pub async fn list_teams(
     Ok(page(found.iter().map(team_body).collect(), has_more, next))
 }
 
+/// `GET /api/v1/me/teams` — the teams the caller is in, by name.
+///
+/// # Why this is a different endpoint and not a filter on the list above
+///
+/// They answer different questions for different screens. "Which teams exist
+/// here" is an administrator choosing one; "which am I in" is a person finding
+/// their own work, and it is the sidebar's list — so it has to be short, stable
+/// and unpaged, which the administrative list is none of.
+///
+/// No permission gate. The answer is a fact about the caller, and a person who
+/// could not read which teams they are in could not be told why their queue
+/// looks the way it does.
+///
+/// # Errors
+///
+/// [`ApiError`] on a database failure.
+pub async fn my_teams(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    request_id: RequestId,
+) -> Result<Response, ApiError> {
+    let request_id = request_id.0;
+    let mut tx = begin(&state, &request_id).await?;
+    let mut scoped = scope_of(&mut tx, &member, &request_id).await?;
+    let found = repo::list_my_teams(&mut scoped, member.context.actor_id().as_uuid())
+        .await
+        .map_err(|error| internal(&error, "listing the caller's teams", &request_id))?;
+    commit(tx, &request_id).await?;
+
+    Ok(axum::Json(serde_json::json!({
+        "data": found.iter().map(team_body).collect::<Vec<_>>(),
+    }))
+    .into_response())
+}
+
 /// `POST /api/v1/workspaces/{workspace_id}/teams`.
 ///
 /// # Errors
