@@ -26,6 +26,177 @@
 
 use uuid::Uuid;
 
+/// Every `WORKSPACE`-scope grant in a workspace, as
+/// `(principal_id, role_name, permission)`.
+///
+/// The D-054 invariant, read back from the rows rather than from a repository
+/// function — a test that asked the same code under test whether it had worked
+/// would agree with itself.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn workspace_grants(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<Vec<(Uuid, String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT ra.principal_id, r.name, rp.permission
+           FROM role_assignment ra
+           JOIN role r ON r.id = ra.role_id
+           JOIN role_permission rp ON rp.role_id = ra.role_id
+          WHERE ra.workspace_id = $1
+            AND ra.scope_type = 'WORKSPACE'::scope_type
+          ORDER BY r.name, rp.permission",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// The template roles of a workspace, `(name, permission count)`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn role_templates(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT r.name, count(rp.permission)
+           FROM role r
+           LEFT JOIN role_permission rp ON rp.role_id = r.id
+          WHERE r.workspace_id = $1 AND r.is_template
+          GROUP BY r.name
+          ORDER BY r.name",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// The id of a workspace's owner assignment, if it has one.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn owner_assignment(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT ra.id
+           FROM role_assignment ra
+           JOIN role_permission rp ON rp.role_id = ra.role_id
+          WHERE ra.workspace_id = $1
+            AND ra.scope_type = 'WORKSPACE'::scope_type
+            AND rp.permission = 'workspace.owner'
+          LIMIT 1",
+    )
+    .bind(workspace_id)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Try to delete a role assignment, so a test can watch migration 0021's
+/// trigger refuse it.
+///
+/// # Errors
+///
+/// The database error the trigger raises, which is the point.
+pub async fn delete_role_assignment(pool: &sqlx::PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query("DELETE FROM role_assignment WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?
+        .rows_affected())
+}
+
+/// Point a role assignment at a different role, so a test can watch the
+/// "downgraded" half of `docs/04` control 4.
+///
+/// # Errors
+///
+/// The database error the trigger raises.
+pub async fn move_role_assignment(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+    role_id: Uuid,
+) -> Result<u64, sqlx::Error> {
+    Ok(
+        sqlx::query("UPDATE role_assignment SET role_id = $2 WHERE id = $1")
+            .bind(id)
+            .bind(role_id)
+            .execute(pool)
+            .await?
+            .rows_affected(),
+    )
+}
+
+/// Grant an existing role to a user at `WORKSPACE` scope. Returns the
+/// assignment id.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn grant_role_at_workspace(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    role_id: Uuid,
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO role_assignment
+             (id, workspace_id, principal_type, principal_id, role_id,
+              scope_type, scope_id, granted_by)
+         VALUES ($1, $2, 'USER'::principal_type, $3, $4,
+                 'WORKSPACE'::scope_type, $2, $3)",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind(role_id)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+/// A workspace's template role by name.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn role_by_name(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    name: &str,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM role WHERE workspace_id = $1 AND name = $2")
+        .bind(workspace_id)
+        .bind(name)
+        .fetch_optional(pool)
+        .await
+}
+
+/// The `changes` column of the audit rows for one target, newest first.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn audit_changes(
+    pool: &sqlx::PgPool,
+    target_id: Uuid,
+) -> Result<Vec<serde_json::Value>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT changes FROM audit_event WHERE target_id = $1 ORDER BY occurred_at DESC",
+    )
+    .bind(target_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// The backoff state of an account, for tests that assert on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LockoutState {
@@ -226,6 +397,77 @@ pub async fn mark_password_changed(pool: &sqlx::PgPool, user_id: Uuid) -> Result
     Ok(())
 }
 
+/// Age every outstanding reset token past its expiry.
+///
+/// `docs/40` gives a reset token one hour. Testing that by sleeping for one
+/// hour means it is tested once and then disabled, so the clock is moved
+/// instead of the test waiting for it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn expire_reset_tokens(pool: &sqlx::PgPool, user_id: Uuid) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query(
+        "UPDATE password_reset_token SET expires_at = now() - interval '1 second'
+          WHERE user_id = $1 AND used_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?
+    .rows_affected())
+}
+
+/// How many reset tokens a user has that are neither used nor expired.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn live_reset_token_count(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM password_reset_token
+          WHERE user_id = $1 AND used_at IS NULL AND expires_at > now()",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// Every stored reset-token column that could conceivably hold the credential.
+///
+/// Returned as text so a test can assert `docs/40`'s token-hash gate directly —
+/// "a database dump contains no usable credential" — against what is actually
+/// in the table rather than against what the writing code intended.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn reset_token_columns(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT selector || ' ' || verifier_hash FROM password_reset_token WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// The stored password hash, so a test can assert a reset actually replaced it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn password_hash_of(pool: &sqlx::PgPool, user_id: Uuid) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar("SELECT password_hash FROM user_credential WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+}
+
 /// How many deliveries a consumer has in each state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Counts {
@@ -322,6 +564,57 @@ pub async fn grant_at_workspace(
     Ok(role)
 }
 
+/// Grant a user a role carrying `permissions`, narrowed by `constraints`.
+///
+/// The constrained form exists because a constrained grant and an unconstrained
+/// one take different paths through the resolver's combining rule, and
+/// `/permissions/effective` reports them differently — one is exercisable
+/// everywhere in the scope and one only where its constraints hold. A suite
+/// that could only build unconstrained grants could not tell those apart.
+///
+/// `constraints` is the same JSON shape the `role_assignment.constraints`
+/// column stores, in `docs/04` §Constraint set's snake_case.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn grant_at_workspace_constrained(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    permissions: &[&str],
+    constraints: serde_json::Value,
+) -> Result<Uuid, sqlx::Error> {
+    let role = Uuid::now_v7();
+    sqlx::query("INSERT INTO role (id, workspace_id, name) VALUES ($1,$2,$3)")
+        .bind(role)
+        .bind(workspace_id)
+        .bind(format!("test-{role}"))
+        .execute(pool)
+        .await?;
+    for permission in permissions {
+        sqlx::query("INSERT INTO role_permission (role_id, permission) VALUES ($1,$2)")
+            .bind(role)
+            .bind(*permission)
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query(
+        "INSERT INTO role_assignment
+             (id, workspace_id, principal_type, principal_id, role_id,
+              scope_type, scope_id, granted_by, constraints)
+         VALUES ($1,$2,'USER'::principal_type,$3,$4,'WORKSPACE'::scope_type,$2,$3,$5)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind(role)
+    .bind(constraints)
+    .execute(pool)
+    .await?;
+    Ok(role)
+}
+
 /// How many history rows one aggregate has: activity, audit, outbox, delivery.
 ///
 /// ADR-006 makes all four a property of a single transaction, so a test that
@@ -391,6 +684,288 @@ pub async fn outbox_event_types(
     .await
 }
 
+/// The default workflow's statuses, as `(name, id)`, in board order.
+///
+/// A transition test needs the id of "Todo" and there is no endpoint that
+/// serves one yet — workflow reads are C-007's `GET /workflows/{id}`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn default_status_ids(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<Vec<(String, Uuid)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT s.name, s.id
+           FROM workflow_status s
+           JOIN workflow w ON w.id = s.workflow_id
+          WHERE w.workspace_id = $1 AND w.is_default
+          ORDER BY s.position",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// A task's status and state, read straight from the row.
+///
+/// Both together, because `docs/23`'s derived-state invariant is a claim about
+/// the pair: reading one of them could not catch a drift between them.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn task_status_and_state(
+    pool: &sqlx::PgPool,
+    task_id: Uuid,
+) -> Result<(Uuid, String), sqlx::Error> {
+    sqlx::query_as("SELECT status_id, state::text FROM task WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Whether a task is soft-deleted.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn task_is_deleted(pool: &sqlx::PgPool, task_id: Uuid) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT deleted_at IS NOT NULL FROM task WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// A task's assignees.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn task_assignees(pool: &sqlx::PgPool, task_id: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT user_id FROM task_assignee WHERE task_id = $1 ORDER BY assigned_at")
+        .bind(task_id)
+        .fetch_all(pool)
+        .await
+}
+
+/// How many comments a task carries.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn comment_count(pool: &sqlx::PgPool, task_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM comment WHERE task_id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Create a tag. `project_id` of `None` is a workspace-scoped tag.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_tag(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    project_id: Option<Uuid>,
+    name: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO tag (id, workspace_id, project_id, name) VALUES ($1,$2,$3,$4::citext)",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .bind(name)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+/// Record that `blocker` blocks `blocked` (`docs/23` step 7).
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_blocker(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    blocker: Uuid,
+    blocked: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO task_dependency (from_task_id, to_task_id, workspace_id, kind)
+         VALUES ($1,$2,$3,'BLOCKS')",
+    )
+    .bind(blocker)
+    .bind(blocked)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// A workflow, a project and one task, as the smallest thing a projection test
+/// can index.
+///
+/// Written out rather than driven through the API because the worker crate has
+/// no HTTP: `task.status_id` and `project.workflow_id` are both `NOT NULL`, so
+/// "one task" is unavoidably four rows.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_task_fixture(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    title: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let workflow = Uuid::now_v7();
+    let status = Uuid::now_v7();
+    let project = Uuid::now_v7();
+    let task = Uuid::now_v7();
+
+    sqlx::query(
+        "INSERT INTO workflow (id, workspace_id, name, is_default) VALUES ($1,$2,'D',true)",
+    )
+    .bind(workflow)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO workflow_status
+             (id, workflow_id, workspace_id, name, state, position, is_initial)
+         VALUES ($1,$2,$3,'Backlog','BACKLOG'::task_state,1,true)",
+    )
+    .bind(status)
+    .bind(workflow)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO project
+             (id, workspace_id, key, name, workflow_id, created_by, visibility)
+         VALUES ($1,$2,'WR','Work',$3,$4,'WORKSPACE'::visibility)",
+    )
+    .bind(project)
+    .bind(workspace_id)
+    .bind(workflow)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO task
+             (id, workspace_id, project_id, number, title, status_id, state,
+              reporter_id, position, created_by)
+         VALUES ($1,$2,$3,1,$4,$5,'BACKLOG'::task_state,$6,'a0',$6)",
+    )
+    .bind(task)
+    .bind(workspace_id)
+    .bind(project)
+    .bind(title)
+    .bind(status)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(task)
+}
+
+/// Rebuild one task's search document, as the projection consumer would.
+///
+/// The consumer itself lives in `casual-task-worker` and is exercised by its
+/// own test. This is for the API tests, whose subject is the *query* path: they
+/// need a populated `task_search` and should not have to run a dispatch loop to
+/// get one.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn index_task(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    task_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let scope = casual_task_model::WorkspaceScope::for_job(
+        casual_task_model::WorkspaceId::from_uuid(workspace_id),
+    );
+    let mut tx = pool.begin().await?;
+    let mut scoped = crate::Scoped::apply(&mut tx, &scope).await?;
+    let indexed = crate::search::refresh(&mut scoped, task_id).await?;
+    tx.commit().await?;
+    Ok(indexed)
+}
+
+/// How many rows the search projection holds for a workspace.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn indexed_count(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM task_search WHERE workspace_id = $1")
+        .bind(workspace_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Whether an attachment row exists at all, committed or not.
+///
+/// The invisibility gate needs to assert that the row IS there and that no read
+/// path returns it — an assertion that only checked the API would pass if the
+/// pre-sign had silently written nothing.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn attachment_exists(pool: &sqlx::PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM attachment WHERE id = $1)")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+}
+
+/// An attachment's object key, to assert it is built from ids alone.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn attachment_object_key(pool: &sqlx::PgPool, id: Uuid) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar("SELECT object_key FROM attachment WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Apply a scan verdict, as the scan worker will.
+///
+/// Goes through [`crate::attachment::mark_scanned`] rather than writing the
+/// columns directly, so a test cannot commit a row by a route the product does
+/// not have — which is the whole point of that function being the only writer
+/// of `committed_at`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn set_scan_verdict(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    id: Uuid,
+    verdict: &str,
+) -> Result<bool, sqlx::Error> {
+    let scope = casual_task_model::WorkspaceScope::for_job(
+        casual_task_model::WorkspaceId::from_uuid(workspace_id),
+    );
+    let mut tx = pool.begin().await?;
+    let mut scoped = crate::Scoped::apply(&mut tx, &scope).await?;
+    let applied = crate::attachment::mark_scanned(&mut scoped, id, verdict, None).await?;
+    tx.commit().await?;
+    Ok(applied)
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing
@@ -441,4 +1016,563 @@ pub async fn counts(pool: &sqlx::PgPool, consumer: &str) -> Result<Counts, sqlx:
         outstanding: row.2,
         dead_lettered: row.3,
     })
+}
+
+/// What the three streams recorded for one workspace (`docs/25`, ADR-006).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct History {
+    /// `activity_event.event_type`, oldest first.
+    pub activity: Vec<String>,
+    /// `audit_event.event_type`, oldest first.
+    pub audit: Vec<String>,
+    /// `outbox_event.event_type`, oldest first.
+    pub outbox: Vec<String>,
+    /// Rows in `outbox_delivery` for those events.
+    pub deliveries: i64,
+}
+
+/// The history a workspace accumulated.
+///
+/// The point of asserting on all four at once is ADR-006's guarantee: the
+/// domain change, the activity row, the audit row and the outbox event commit
+/// together. A test that checked only the audit row would pass while the outbox
+/// silently wrote nothing, and the missing events would surface months later as
+/// a consumer that never fired.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn history(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<History, sqlx::Error> {
+    let activity: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM activity_event WHERE workspace_id = $1 ORDER BY id",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let audit: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM audit_event WHERE workspace_id = $1 ORDER BY id",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let outbox: Vec<String> = sqlx::query_scalar(
+        "SELECT event_type FROM outbox_event WHERE workspace_id = $1 ORDER BY id",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await?;
+    let deliveries: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM outbox_delivery WHERE workspace_id = $1")
+            .bind(workspace_id)
+            .fetch_one(pool)
+            .await?;
+
+    Ok(History {
+        activity,
+        audit,
+        outbox,
+        deliveries,
+    })
+}
+
+/// A workspace's current `authz_epoch` (`docs/04` §Caching, ADR-012).
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn authz_epoch(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT authz_epoch FROM workspace WHERE id = $1")
+        .bind(workspace_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Membership rows read **without** the tenant setting, exactly as a repository
+/// that forgot to scope would read them.
+///
+/// Exists for the row-level-security assertion in `tests/workspace_seam.rs`: run
+/// as `taskforge_app` this must return nothing, which is what makes the
+/// `SECURITY DEFINER` seam in migration 0019 necessary rather than decorative.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn unscoped_membership_count(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM workspace_membership WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Age every live invitation in a workspace past its expiry.
+///
+/// `docs/40` gives an invitation seven days. Testing that by waiting a week
+/// means it is tested once and then disabled, so the clock is moved instead.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn expire_invitations(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query(
+        "UPDATE invitation SET expires_at = now() - interval '1 second'
+          WHERE workspace_id = $1 AND accepted_at IS NULL AND revoked_at IS NULL",
+    )
+    .bind(workspace_id)
+    .execute(pool)
+    .await?
+    .rows_affected())
+}
+
+/// How many invitations in a workspace are neither accepted, revoked nor
+/// expired.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn live_invitation_count(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM invitation
+          WHERE workspace_id = $1 AND accepted_at IS NULL
+            AND revoked_at IS NULL AND expires_at > now()",
+    )
+    .bind(workspace_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// Every stored invitation column that could conceivably hold the credential.
+///
+/// Returned as text so a test can assert `docs/40`'s token-hash gate against
+/// what is actually in the table rather than against what the writing code
+/// intended to put there.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn invitation_columns(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT selector || ' ' || verifier_hash FROM invitation WHERE workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Whether a user holds a workspace membership row.
+///
+/// Read unscoped, as the database owner, on purpose: the question is whether
+/// the row exists at all, and a scoped read would answer "no" for a row hidden
+/// by a policy just as it would for a row that was never written.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn is_member(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM workspace_membership
+                         WHERE workspace_id = $1 AND user_id = $2)",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// The id of the account for an address, if there is one.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn user_id_for_email(
+    pool: &sqlx::PgPool,
+    email: &str,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM user_account WHERE email = $1::citext")
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+}
+
+/// Insert a bare user account, with no credential.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_user(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+    email: &str,
+    display_name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT INTO user_account (id, email, display_name) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(email)
+        .bind(display_name)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// The workspace-scope grants held by ONE user, as `(role_id, granted_by)`.
+///
+/// Distinct from [`workspace_grants`], which lists every grant in the
+/// workspace. Two branches independently added a `workspace_grants` with
+/// different signatures; both are wanted, so this one says whose grants it
+/// returns.
+pub async fn workspace_grants_for_user(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+) -> Result<Vec<(Uuid, Uuid)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT role_id, granted_by FROM role_assignment
+          WHERE workspace_id = $1 AND principal_id = $2
+            AND principal_type = 'USER'::principal_type
+            AND scope_type = 'WORKSPACE'::scope_type",
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Give `taskforge_app` a password so a test can connect AS the role RLS
+/// applies to.
+///
+/// As the owner every tenant assertion passes with the predicates removed,
+/// which is why tests that mean to exercise isolation must not use it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn enable_app_login(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("ALTER ROLE taskforge_app WITH LOGIN PASSWORD 'apppw'")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// The highest TOTP step accepted for a user's factor.
+///
+/// The replay guard's whole state. A test asserts it moved forward, which is
+/// the thing RFC 6238 §5.2 depends on and the thing a refactor could silently
+/// stop doing.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn mfa_last_step(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT last_step FROM mfa_factor WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map(Option::flatten)
+}
+
+/// Whether the user has a factor, and whether it is confirmed.
+///
+/// Returns `(exists, confirmed)` so a test can tell "no factor" from "a factor
+/// nobody finished enrolling" — the distinction the whole unconfirmed-factor
+/// rule turns on.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn mfa_factor_state(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<(bool, bool), sqlx::Error> {
+    let row: Option<(bool,)> =
+        sqlx::query_as("SELECT confirmed_at IS NOT NULL FROM mfa_factor WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map_or((false, false), |(confirmed,)| (true, confirmed)))
+}
+
+/// How many recovery codes the user has, unused and used.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn recovery_code_counts(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<(i64, i64), sqlx::Error> {
+    sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE used_at IS NULL),
+                count(*) FILTER (WHERE used_at IS NOT NULL)
+           FROM recovery_code WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// Turn a workspace's MFA requirement on without going through the endpoint.
+///
+/// Used to set up the step-up tests, so they assert the *resolution* behaviour
+/// rather than re-testing the toggle that switched it on.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn require_workspace_mfa(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    required: bool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE workspace SET require_mfa = $2 WHERE id = $1")
+        .bind(workspace_id)
+        .bind(required)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Whether any live session for the user carries an MFA assertion.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn session_mfa_satisfied(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM session
+                         WHERE user_id = $1 AND revoked_at IS NULL
+                           AND mfa_satisfied_at IS NOT NULL)",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// Soft-delete a task, so a projection consumer can be tested against the
+/// removal path as well as the write path.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn soft_delete_task(pool: &sqlx::PgPool, task_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE task SET deleted_at = now() WHERE id = $1")
+        .bind(task_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// A workspace with one project and one task in it, for the notification
+/// fan-out tests (C-016).
+///
+/// Returned rather than assembled by the caller because the SQL has to live in
+/// this crate (`docs/19`, enforced by `casual-task-lint` including in tests) and
+/// the caller is `casual-task-worker`.
+#[derive(Debug, Clone, Copy)]
+pub struct TaskFixture {
+    pub workspace_id: Uuid,
+    pub project_id: Uuid,
+    pub task_id: Uuid,
+    pub status_id: Uuid,
+    pub reporter_id: Uuid,
+}
+
+/// Seed a workspace, a workflow, a project and one task.
+///
+/// `visibility` is a `visibility` enum value — `WORKSPACE`, `TEAM` or
+/// `PRIVATE`. The private case is what the permission test needs.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn seed_task(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    reporter_id: Uuid,
+    visibility: &str,
+    title: &str,
+) -> Result<TaskFixture, sqlx::Error> {
+    let workflow = Uuid::now_v7();
+    let status = Uuid::now_v7();
+    let project = Uuid::now_v7();
+    let task = Uuid::now_v7();
+
+    sqlx::query("INSERT INTO workflow (id, workspace_id, name) VALUES ($1,$2,'Default')")
+        .bind(workflow)
+        .bind(workspace_id)
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "INSERT INTO workflow_status
+             (id, workspace_id, workflow_id, name, state, position, is_initial)
+         VALUES ($1,$2,$3,'Backlog','BACKLOG',1,true)",
+    )
+    .bind(status)
+    .bind(workspace_id)
+    .bind(workflow)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO project
+             (id, workspace_id, key, name, visibility, workflow_id, created_by)
+         VALUES ($1,$2,'WR','Work',$3::visibility,$4,$5)",
+    )
+    .bind(project)
+    .bind(workspace_id)
+    .bind(visibility)
+    .bind(workflow)
+    .bind(reporter_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO task
+             (id, workspace_id, project_id, number, title, status_id, state,
+              reporter_id, position, created_by)
+         VALUES ($1,$2,$3,1,$4,$5,'BACKLOG',$6,'11111111',$6)",
+    )
+    .bind(task)
+    .bind(workspace_id)
+    .bind(project)
+    .bind(title)
+    .bind(status)
+    .bind(reporter_id)
+    .execute(pool)
+    .await?;
+
+    Ok(TaskFixture {
+        workspace_id,
+        project_id: project,
+        task_id: task,
+        status_id: status,
+        reporter_id,
+    })
+}
+
+/// Assign a user to a task, so `ASSIGNED` applies to them.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn assign_task(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    task_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO task_assignee (task_id, user_id, workspace_id) VALUES ($1,$2,$3)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(task_id)
+    .bind(user_id)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Add a comment, optionally mentioning people. Returns the comment id.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn seed_comment(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    task_id: Uuid,
+    author_id: Uuid,
+    mentions: &[Uuid],
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO comment (id, workspace_id, task_id, author_id, body, mentions)
+         VALUES ($1,$2,$3,$4,'a comment',$5)",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .bind(task_id)
+    .bind(author_id)
+    .bind(mentions)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+/// Add a project membership row, which confers visibility of a private project.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_project_member(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO project_membership (project_id, user_id, workspace_id)
+         VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Every notification a person has, as `(reason, event_type, aggregate_id)`,
+/// newest first.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn notifications_for(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<Vec<(String, String, Option<Uuid>)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT reason, event_type, aggregate_id
+           FROM notification
+          WHERE user_id = $1
+          ORDER BY created_at DESC, id DESC",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Age every notification so the coalescing window no longer covers it.
+///
+/// Simulates the passage of time rather than spending it — the same argument as
+/// `expire_all_claims`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn age_notifications(pool: &sqlx::PgPool, interval: &str) -> Result<u64, sqlx::Error> {
+    Ok(
+        sqlx::query("UPDATE notification SET created_at = created_at - $1::interval")
+            .bind(interval)
+            .execute(pool)
+            .await?
+            .rows_affected(),
+    )
 }

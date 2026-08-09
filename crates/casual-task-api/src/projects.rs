@@ -116,18 +116,7 @@ pub struct PatchRequest {
     pub key: Option<String>,
 }
 
-/// Distinguish "absent" from "present and null".
-///
-/// `Option<Option<T>>` with `#[serde(default)]` alone collapses both to `None`
-/// for a self-describing format; the field has to be *deserialized* for the
-/// outer `Some` to appear.
-fn double_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: serde::Deserialize<'de>,
-{
-    serde::Deserialize::deserialize(deserializer).map(Some)
-}
+use crate::wire::double_option;
 
 /// The visibility values `docs/22`'s `visibility` enum permits.
 const VISIBILITIES: &[&str] = &["PRIVATE", "TEAM", "WORKSPACE"];

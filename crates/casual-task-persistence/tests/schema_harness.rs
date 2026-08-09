@@ -83,6 +83,9 @@ impl TestDatabase {
     /// Tests that assert row-level security MUST connect as this role: RLS is
     /// inert for a superuser (migration 0012), so the same assertions run as
     /// the owner would pass while proving nothing.
+    // Each integration test is its own binary and compiles this module
+    // separately, so it is dead code in the ones that connect as the owner.
+    #[allow(dead_code)]
     pub fn app_url(&self) -> String {
         format!(
             "postgres://taskforge_app:apppw@127.0.0.1:{}/postgres",

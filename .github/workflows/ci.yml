@@ -173,6 +173,41 @@ jobs:
           name: bundle-report
           path: webapp/dist/bundle-report.json
 
+  # C-019. Its own job, not extra steps inside `bundle-size`: an accessibility
+  # failure reported as "bundle-size failed" is a failure nobody reads correctly,
+  # and the two gates answer different questions.
+  #
+  # Two layers, and the third is a human. `lint` reads the SOURCE — a control
+  # with no accessible name, a click handler on a div, an aria-* that does not
+  # exist. `test` runs axe over the RENDERED DOM, which is where a dangling
+  # aria-labelledby and a duplicate id live.
+  #
+  # Neither checks CONTRAST. jsdom has no layout, so axe's color-contrast rule
+  # cannot run, and docs/42's "4.5:1, verified in light and dark" is still a
+  # manual check. webapp/src/a11y.test.tsx says so in its own header rather than
+  # letting a green tick imply otherwise, and docs/15 keeps the Playwright row
+  # open.
+  frontend-a11y:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Source-level accessibility and hook rules
+        run: pnpm lint
+      - name: axe over rendered output
+        run: pnpm test
+
   docs:
     runs-on: ubuntu-latest
     env:

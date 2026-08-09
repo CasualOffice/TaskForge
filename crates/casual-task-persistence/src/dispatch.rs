@@ -143,7 +143,11 @@ impl<'t> Dispatcher<'t> {
         Ok(role.dispatcher(conn))
     }
 
-    fn conn(&mut self) -> &mut PgConnection {
+    /// `pub(crate)` for `crate::export`, which claims and updates export jobs
+    /// across tenants for the same reason `dispatch` does: a background runner
+    /// cannot know the set of workspace ids in advance. Still not public — the
+    /// bypass stays inside the crate that owns the SQL.
+    pub(crate) fn conn(&mut self) -> &mut PgConnection {
         self.conn
     }
 }
@@ -172,12 +176,45 @@ pub const BACKOFF: [time::Duration; 6] = [
 pub struct Claimed {
     pub delivery_id: Uuid,
     pub event_id: Uuid,
+    /// The tenant the event belongs to.
+    ///
+    /// Every consumer needs it and none can derive it: the dispatcher polls
+    /// across tenants by design (`docs/25`), so the workspace cannot come from
+    /// a session the way it does on a request. A consumer that writes anything
+    /// reconstructs its scope from here through
+    /// [`WorkspaceScope::for_job`](casual_task_model::WorkspaceScope::for_job),
+    /// which is the one constructor that exists for exactly this path.
+    pub workspace_id: Uuid,
     pub consumer: String,
     pub event_type: String,
     pub aggregate_id: Uuid,
+    /// The authorization scope (migration 0022). `None` for workspace-level
+    /// events, which no project-scoped subscriber may receive.
+    pub project_id: Option<Uuid>,
     pub payload: serde_json::Value,
     pub attempts: i32,
+    /// Who caused the event; `None` for system-generated (migration 0024).
+    ///
+    /// `docs/29` rule 1 — "you are never notified about your own action" — is
+    /// unimplementable without this, and it is not recoverable from anywhere
+    /// else on the row: the outbox carries no other trace of the actor.
+    pub actor_id: Option<Uuid>,
 }
+
+/// The tuple `claim` decodes. Named because it is nine wide and clippy is
+/// right that an anonymous nine-tuple in a signature is unreadable.
+type ClaimRow = (
+    Uuid,
+    Uuid,
+    String,
+    String,
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    serde_json::Value,
+    i32,
+    Option<Uuid>,
+);
 
 /// Take up to `limit` deliveries for `consumer`.
 ///
@@ -199,7 +236,7 @@ pub async fn claim(
     worker: &str,
     limit: i64,
 ) -> Result<Vec<Claimed>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, Uuid, serde_json::Value, i32)>(
+    let rows = sqlx::query_as::<_, ClaimRow>(
         "UPDATE outbox_delivery d
             SET claimed_at = now(), claimed_by = $2, attempts = d.attempts + 1
           WHERE d.id IN (
@@ -225,11 +262,19 @@ pub async fn claim(
                  ORDER BY e.created_at, e.id
                  LIMIT $3
                    FOR UPDATE OF c SKIP LOCKED)
+      -- `d.workspace_id` is deliberately NOT returned. A delivery and its event
+      -- are the same workspace by construction, and returning both put an
+      -- eleventh column in front of a ten-element tuple. sqlx reports that as a
+      -- type mismatch on column 2, which names neither the column that moved
+      -- nor the query that moved it.
       RETURNING d.id, d.event_id, d.consumer,
                 (SELECT event_type   FROM outbox_event WHERE id = d.event_id),
                 (SELECT aggregate_id FROM outbox_event WHERE id = d.event_id),
+                (SELECT workspace_id FROM outbox_event WHERE id = d.event_id),
+                (SELECT project_id   FROM outbox_event WHERE id = d.event_id),
                 (SELECT payload      FROM outbox_event WHERE id = d.event_id),
-                d.attempts",
+                d.attempts,
+                (SELECT actor_id     FROM outbox_event WHERE id = d.event_id)",
     )
     .bind(consumer)
     .bind(worker)
@@ -241,15 +286,29 @@ pub async fn claim(
     Ok(rows
         .into_iter()
         .map(
-            |(delivery_id, event_id, consumer, event_type, aggregate_id, payload, attempts)| {
+            |(
+                delivery_id,
+                event_id,
+                consumer,
+                event_type,
+                aggregate_id,
+                workspace_id,
+                project_id,
+                payload,
+                attempts,
+                actor_id,
+            )| {
                 Claimed {
                     delivery_id,
                     event_id,
                     consumer,
                     event_type,
                     aggregate_id,
+                    workspace_id,
+                    project_id,
                     payload,
                     attempts,
+                    actor_id,
                 }
             },
         )

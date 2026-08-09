@@ -131,7 +131,25 @@ function bundleReport(): Plugin {
 const floorEntry = process.env['FLOOR_ENTRY']
 const outDir = floorEntry === undefined ? 'dist' : `dist-floor/${floorEntry}`
 
+/**
+ * Where `pnpm dev` forwards `/api` to.
+ *
+ * `scripts/dev-up.sh` sets `VITE_API_URL` to the API it just started. The
+ * browser still talks to the Vite origin, and Vite forwards — deliberately, not
+ * for convenience: the session cookie is `HttpOnly` and `SameSite=Lax`, and the
+ * API registers no CORS layer, so a client pointed straight at `:8080` from
+ * `:5173` would have every authenticated request refused before it arrived. A
+ * same-origin proxy is the only shape that works, and it is also the shape
+ * production has (one origin, `/api` behind it).
+ */
+const apiTarget = process.env['VITE_API_URL'] ?? 'http://127.0.0.1:8080'
+
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api': { target: apiTarget, changeOrigin: false },
+    },
+  },
   plugins: [
     react(),
     bundleReport(),

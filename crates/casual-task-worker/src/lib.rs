@@ -19,4 +19,7 @@
 //! Embedding on the single-node profile needs the same thing: the API process
 //! calls [`dispatcher::run`] directly rather than shelling out to a binary.
 
+pub mod consumers;
 pub mod dispatcher;
+pub mod export;
+pub mod projection;

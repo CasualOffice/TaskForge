@@ -58,7 +58,13 @@ cd "$(dirname "$0")/.."
 ERRLOG=$(mktemp "${TMPDIR:-/tmp}/tf-explain.XXXXXX")
 trap 'rm -f "$ERRLOG"' EXIT
 
-CONTAINER=tf-query-verify
+# Unique per run. A fixed name meant two concurrent runs shared one container:
+# the second one's `docker rm -f` destroyed the first one's database mid-gate,
+# and the first then reported "sequential scan" and `role does not exist` for
+# every remaining probe. That reads as a real plan regression, which is the
+# worst possible way for a race to present itself. $$ is the pid; the random
+# suffix covers the case where a container outlives the pid that made it.
+CONTAINER="tf-query-verify-$$-${RANDOM}"
 OWNER_DSN="${TF_VERIFY_DSN:-}"
 OWNED_CONTAINER=0
 DATA_LOADED=0

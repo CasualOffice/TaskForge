@@ -71,10 +71,30 @@ struct Args {
     /// every generated timestamp and identifier — deliberately.
     #[arg(long, default_value = DEFAULT_NOW)]
     now: String,
+
+    /// Print an Argon2id hash of this password and exit, generating no corpus.
+    ///
+    /// `scripts/dev-up.sh` needs one account it can log in as, and the hash
+    /// parameters are a security decision (`docs/40`: 64 MiB, t=3, p=4) that
+    /// belongs in `casual-task-identity` and nowhere else. A script that
+    /// shelled out to a generic Argon2 tool would pick its own parameters, and
+    /// the demo login would then be protected differently from every real one.
+    #[arg(long)]
+    hash_password: Option<String>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+
+    if let Some(password) = args.hash_password.as_deref() {
+        // `hash_chosen`, not `hash_generated`: this is a password a person
+        // types, so it must meet the same minimum length every real chosen
+        // password does. A demo account exempt from the policy is a demo of a
+        // different system.
+        println!("{}", casual_task_identity::password::hash_chosen(password)?);
+        return Ok(());
+    }
+
     let now_ms = parse_now(&args.now)?;
     let plan = Plan::for_scale(args.scale);
 

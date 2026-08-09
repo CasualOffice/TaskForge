@@ -26,7 +26,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use casual_task_identity::credential;
 use casual_task_model::{ActorType, AuthContext, UserId, WorkspaceId};
-use casual_task_persistence::{auth as token_auth, identity};
+use casual_task_persistence::{auth as token_auth, identity, workspace as workspace_repo};
 
 use crate::auth::session_selector;
 use crate::csrf;
@@ -56,6 +56,13 @@ pub struct Authenticated {
     /// this field did not exist and `WorkspaceMember` trusted the header alone.
     /// A session has no workspace — a person spans them — so it is `None`.
     pub token_workspace: Option<uuid::Uuid>,
+    /// When this **session** last satisfied MFA, if it has.
+    ///
+    /// `docs/40` §Workspace-level SSO and MFA step-up puts the assertion on the
+    /// session rather than the user, so a step-up performed in one browser is
+    /// not inherited by another. `None` for a bearer token, which has no
+    /// session to carry one.
+    pub mfa_satisfied_at: Option<time::OffsetDateTime>,
 }
 
 /// A caller who is a member of a specific workspace.
@@ -76,6 +83,13 @@ impl FromRequestParts<AppState> for Authenticated {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // The rate limiter authenticates first (`docs/21` §Enforcement order
+        // puts step 3 before step 4) and leaves the answer here. Reusing it is
+        // what keeps keying per principal from doubling the auth query on every
+        // request in the system.
+        if let Some(cached) = parts.extensions.get::<Self>() {
+            return Ok(*cached);
+        }
         let request_id = RequestId::of(parts);
         let mut conn = state
             .pool
@@ -86,6 +100,46 @@ impl FromRequestParts<AppState> for Authenticated {
     }
 }
 
+/// The workspace a request claims, from the header. Never trusted — it is
+/// validated against membership by [`WorkspaceMember`] before it means
+/// anything.
+///
+/// Exposed for the rate limiter, which needs the claimed pair to key on and
+/// runs before the extractor does. Keying on an unvalidated workspace is safe
+/// in the direction that matters: a caller who lies about it gets their *own*
+/// bucket for a workspace they cannot enter, and is refused a moment later.
+#[must_use]
+pub fn claimed_workspace(headers: &HeaderMap) -> Option<uuid::Uuid> {
+    headers
+        .get(WORKSPACE_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<uuid::Uuid>().ok())
+}
+
+/// Authenticate a request outside the extractor, for the rate limiter.
+///
+/// `Err(())` for "no usable credential, or the lookup failed" — deliberately
+/// not an [`ApiError`]. The limiter has no business answering a request; the
+/// extractor that runs after it produces the documented 401 or 503, once, with
+/// the request id in it.
+///
+/// # Errors
+///
+/// `Err(())` when the credential is absent, invalid, or unverifiable.
+/// Takes the headers rather than the request: `&Request<Body>` is not `Sync`,
+/// so holding one across the `acquire().await` below makes this future
+/// non-`Send` and `from_fn_with_state` then refuses the middleware with an
+/// error that names only a `Service` bound.
+pub async fn authenticate_request(
+    pool: &sqlx::PgPool,
+    headers: &HeaderMap,
+) -> Result<Authenticated, ()> {
+    let mut conn = pool.acquire().await.map_err(|_| ())?;
+    authenticate(&mut conn, headers, "rate-limit")
+        .await
+        .map_err(|_| ())
+}
+
 /// The authentication itself, taking a connection rather than acquiring one.
 ///
 /// Split out so a request needs **one** connection, not two. `WorkspaceMember`
@@ -93,7 +147,11 @@ impl FromRequestParts<AppState> for Authenticated {
 /// the membership check: sequential, so never a deadlock, but twice the pool
 /// churn and twice the exposure to the acquire timeout D-039 bounds — on every
 /// workspace-scoped request, which is eventually all of them.
-async fn authenticate(
+/// `pub(crate)` for one caller beyond the extractors: the SSE revalidation tick
+/// (`crate::sse::revalidate`) has to ask this exact question again, minutes
+/// after the stream opened. A second implementation of "is this credential
+/// still live" is how a revoked session keeps one door open.
+pub(crate) async fn authenticate(
     conn: &mut sqlx::PgConnection,
     headers: &HeaderMap,
     request_id: &str,
@@ -124,6 +182,7 @@ async fn authenticate(
                         actor_type: ActorType::User,
                         session_id: Some(session.id),
                         token_workspace: None,
+                        mfa_satisfied_at: session.mfa_satisfied_at,
                     });
                 }
             }
@@ -172,6 +231,11 @@ async fn authenticate(
                         actor_type,
                         session_id: None,
                         token_workspace: Some(token.workspace_id),
+                        // A token has no session, so it carries no MFA
+                        // assertion. `docs/40` scopes MFA to browser sessions;
+                        // a machine credential is not the actor a second factor
+                        // is about.
+                        mfa_satisfied_at: None,
                     });
                 }
             }
@@ -196,15 +260,32 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             .map_err(|_| ApiError::unavailable(&request_id, 5))?;
         let actor = authenticate(&mut conn, &parts.headers, &request_id).await?;
 
-        let workspace = parts
+        // `docs/05` §Authentication: "Workspace is determined by the path or an
+        // `X-Workspace-Id` header". The path wins where it exists, because a
+        // route like `/api/v1/workspaces/{workspace_id}/members` names the
+        // tenant unambiguously and a header beside it could only disagree.
+        //
+        // When both are present they must agree. Preferring one silently would
+        // mean a request that reads `/workspaces/A/members` while carrying
+        // `X-Workspace-Id: B` gets an answer about one of them, and the caller
+        // cannot tell which.
+        let from_path = workspace_from_path(parts).await;
+        let from_header = parts
             .headers
             .get(WORKSPACE_HEADER)
             .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<uuid::Uuid>().ok())
+            .and_then(|value| value.parse::<uuid::Uuid>().ok());
+
+        let workspace = match (from_path, from_header) {
+            (Some(path), Some(header)) if path != header => {
+                return Err(ApiError::not_found(&request_id));
+            }
+            (Some(id), _) | (None, Some(id)) => id,
             // A missing or malformed workspace is 404, not 400: docs/04
             // requires "absent" and "invisible" to be indistinguishable, and a
-            // 400 here would confirm the header is the way in.
-            .ok_or_else(|| ApiError::not_found(&request_id))?;
+            // 400 here would confirm what shape of value opens the door.
+            (None, None) => return Err(ApiError::not_found(&request_id)),
+        };
 
         // A token is bound to the workspace it was issued for. Without this the
         // client's X-Workspace-Id header decided, so a token for A worked in B
@@ -230,7 +311,7 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             });
         }
 
-        let member = identity::is_workspace_member(&mut conn, actor.actor_id.as_uuid(), workspace)
+        let member = workspace_repo::is_member(&mut conn, actor.actor_id.as_uuid(), workspace)
             .await
             .map_err(|error| {
                 tracing::error!(%error, "membership check failed");
@@ -244,6 +325,28 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             return Err(ApiError::not_found(&request_id));
         }
 
+        // STEP-UP, HERE AND NOT AT LOGIN (`docs/40` §Workspace-level SSO and
+        // MFA step-up). The session is user-scoped; MFA enforcement is per
+        // workspace, so a login has no single policy to apply. This is the
+        // second of the two questions that section describes, and every
+        // workspace-scoped entry point asks it because they all come through
+        // here.
+        //
+        // AFTER the membership check, deliberately: a stranger probing
+        // workspace ids must get the same 404 whether or not the workspace
+        // demands MFA, or this refusal becomes the enumeration oracle the check
+        // above exists to prevent.
+        let requires_mfa =
+            casual_task_persistence::mfa::workspace_requires_mfa(&mut conn, workspace)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "reading the workspace MFA policy failed");
+                    ApiError::internal(&request_id)
+                })?;
+        if crate::mfa::step_up_required(requires_mfa, actor.mfa_satisfied_at) {
+            return Err(crate::mfa::step_up_refusal(&request_id));
+        }
+
         Ok(Self {
             context: AuthContext::authenticated(
                 actor.actor_id,
@@ -253,6 +356,32 @@ impl FromRequestParts<AppState> for WorkspaceMember {
         })
     }
 }
+
+/// The path segment naming a workspace, on the routes that have one.
+///
+/// The parameter is `{workspace_id}` on every such route. Read from the matched
+/// path rather than by splitting the URI, so a request to a path that merely
+/// *looks* like a workspace route — `/api/v1/workspacesX/...` — captures
+/// nothing and falls back to the header.
+///
+/// `None` when the route captured no parameters at all, which is the ordinary
+/// case for `/api/v1/teams/{team_id}/members` and for every route outside this
+/// family.
+async fn workspace_from_path(parts: &mut Parts) -> Option<uuid::Uuid> {
+    let params = axum::extract::RawPathParams::from_request_parts(parts, &())
+        .await
+        .ok()?;
+    params
+        .iter()
+        .find(|(name, _)| *name == WORKSPACE_PATH_PARAM)
+        .and_then(|(_, value)| value.parse::<uuid::Uuid>().ok())
+}
+
+/// The name every workspace-scoped route gives its tenant segment.
+///
+/// A route that spells it differently silently falls back to the header, so it
+/// is a constant rather than a literal repeated per route.
+pub const WORKSPACE_PATH_PARAM: &str = "workspace_id";
 
 /// Reject unsafe methods without a valid CSRF token (`docs/05`, `docs/40`).
 ///
@@ -290,7 +419,7 @@ pub async fn csrf_guard(
 
     // 403 rather than 401: the caller IS authenticated. Retrying with the same
     // credential and a correct token succeeds, which a 401 would not suggest.
-    ApiError::forbidden(request_id).into_response()
+    ApiError::forbidden(crate::error::codes::CSRF, request_id).into_response()
 }
 
 /// The whole presented session credential, not just the selector.

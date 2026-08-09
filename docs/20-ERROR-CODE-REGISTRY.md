@@ -45,6 +45,13 @@ code is part of the public contract once shipped.
 | `TF-AUT-0010` | Token revoked | 401 |
 | `TF-AUT-0011` | SSO required for this workspace | 403 |
 | `TF-AUT-0012` | Account locked — too many attempts | 429 |
+| `TF-AUT-0013` | Credential type not permitted for this endpoint | 403 |
+| `TF-AUT-0014` | MFA already enrolled for this account | 409 |
+
+`TF-AUT-0013` is not `TF-AZN-0001`. It is a fact about the *credential*, not
+about a grant: a workspace-scoped bearer token cannot create a different
+workspace no matter what its principal holds, and the fix is a different
+credential rather than a different role.
 
 ### Authorization — `AZN`
 
@@ -57,6 +64,14 @@ code is part of the public contract once shipped.
 | `TF-AZN-0005` | Cannot remove the last workspace owner | 422 |
 | `TF-AZN-0006` | Self-elevation rejected | 422 |
 | `TF-AZN-0007` | Not a member of the target workspace | 403 |
+| `TF-AZN-0008` | Not found, or not visible to you | 404 |
+
+`TF-AZN-0008` is the generic form of `TF-PRJ-0001` and `TF-TSK-0001`, for the
+resources that have no code of their own. It sits in `AZN` and not in `VAL`
+because it is a **visibility** answer, not a validation one: `docs/04` requires
+absent and invisible to be indistinguishable, so one code has to cover both and
+the body must never say which. Anything that can be seen and may not be touched
+is `TF-AZN-0001` or `-0002` instead.
 
 `TF-AZN-0001` and `-0002` are distinct on purpose: the first means "you were never
 given this," the second means "you have it, but not for this object." They lead a
@@ -123,6 +138,15 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-PRJ-0003` | Project key is immutable | 422 |
 | `TF-PRJ-0004` | Project key format invalid | 400 |
 | `TF-PRJ-0005` | Cannot delete an environment in use — supply a migration target | 422 |
+| `TF-PRJ-0006` | Cannot remove the last member of a workspace | 422 |
+| `TF-PRJ-0007` | Workspace slug already in use | 409 |
+| `TF-PRJ-0008` | Team name already in use in this workspace | 409 |
+
+`TF-PRJ-0006` is not `TF-AZN-0005`. That one protects the last *owner* — a
+grant — and this one protects the last *member*, which is a different fact: a
+workspace with no members is unreachable forever, because nothing can see it and
+therefore nothing can add a member back to it. Both survive; neither implies the
+other.
 
 ### Concurrency & idempotency — `CNC`, `IDM`
 
@@ -131,6 +155,7 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-CNC-0001` | Version conflict | 409 |
 | `TF-CNC-0002` | `If-Match` required | 428 |
 | `TF-CNC-0003` | Malformed `If-Match` | 400 |
+| `TF-CNC-0004` | Export not ready for download | 409 |
 | `TF-IDM-0001` | Request with this idempotency key is in progress | 409 |
 | `TF-IDM-0002` | Idempotency key reused with a different body | 422 |
 | `TF-IDM-0003` | Idempotency key required | 400 |
@@ -147,6 +172,15 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-ATT-0006` | Malware detected | 422 |
 | `TF-ATT-0007` | Scan pending — not yet available | 409 |
 | `TF-ATT-0008` | Workspace storage quota exceeded | 507 |
+| `TF-ATT-0009` | Uploaded object does not match the declared size | 422 |
+| `TF-ATT-0010` | Scan did not complete; the file will not be served | 422 |
+| `TF-ATT-0011` | Task attachment limit reached | 422 |
+
+`TF-ATT-0009` is not `TF-ATT-0001`: "larger than you are allowed" is a rule the
+caller can fix by uploading something smaller, and "the object is not the size
+you told us it would be" means the upload and the declaration disagree — which
+is a broken client or a tampered upload. `TF-ATT-0010` is not `TF-ATT-0007`
+either: pending is a wait, and failed is a refusal (**D-061**).
 
 ### Plugins — `PLG`
 

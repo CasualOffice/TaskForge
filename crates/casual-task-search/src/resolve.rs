@@ -85,6 +85,21 @@ fn try_all(children: &[Node], ctx: &Context) -> Result<Vec<Node>, ResolveError> 
 }
 
 fn resolve_clause(c: &Clause, ctx: &Context) -> Result<Node, ResolveError> {
+    // `between` carries two values, and each may be a symbol: docs/27's own
+    // built-in view "Upcoming" is `due_at between @tomorrow..+14d`. Resolving
+    // only `Value::Symbol` left a range's bounds untouched, so `@tomorrow`
+    // reached Postgres as a literal string cast to timestamptz and the request
+    // 500'd — the very failure this module's docs call "a worse place to find
+    // out". Handled before the Symbol arm so a range is never mistaken for an
+    // already-resolved value.
+    if let Value::Range(low, high) = &c.value {
+        return Ok(Node::Clause(Clause {
+            field: c.field,
+            op: c.op,
+            value: Value::Range(resolve_bound(low, ctx)?, resolve_bound(high, ctx)?),
+        }));
+    }
+
     let Value::Symbol(sym) = &c.value else {
         return Ok(Node::Clause(c.clone()));
     };
@@ -132,6 +147,37 @@ fn resolve_clause(c: &Clause, ctx: &Context) -> Result<Node, ResolveError> {
     }))
 }
 
+/// One end of a `between`, resolved if it is a symbol and passed through if not.
+///
+/// A literal bound is returned unchanged rather than validated: the compiler
+/// and the database already reject a malformed date, and re-checking it here
+/// would be a second, subtly different definition of what a date is.
+///
+/// `@unassigned` is deliberately unreachable here — it rewrites a clause's
+/// *shape*, and a range bound has no shape to rewrite. It falls through to
+/// `UnknownSymbol`, which is the honest answer for `due between @unassigned..`.
+fn resolve_bound(raw: &str, ctx: &Context) -> Result<String, ResolveError> {
+    if !raw.starts_with('@') && !raw.starts_with('+') && !raw.starts_with('-') {
+        return Ok(raw.to_owned());
+    }
+    let clause = Clause {
+        field: Field::DueAt,
+        op: Operator::Eq,
+        value: Value::Symbol(raw.to_owned()),
+    };
+    match resolve_clause(&clause, ctx)? {
+        Node::Clause(Clause {
+            value: Value::Literal(resolved),
+            ..
+        }) => Ok(resolved),
+        // Every symbol that is not `@unassigned` resolves to a literal, and
+        // `@unassigned` cannot reach here because it is refused on a DueAt
+        // field above. A shape other than a literal means a symbol was added
+        // without deciding what it means inside a range.
+        _ => Err(ResolveError::UnknownSymbol(raw.to_owned())),
+    }
+}
+
 fn instant(t: OffsetDateTime) -> Value {
     // RFC 3339, so the database receives an unambiguous instant rather than a
     // local wall-clock reading whose meaning depends on the server.
@@ -169,6 +215,76 @@ fn relative(s: &str) -> Option<Duration> {
 mod tests {
     use super::*;
     use time::macros::datetime;
+
+    #[test]
+    fn a_range_resolves_both_of_its_bounds() {
+        // docs/27 ships "Upcoming" as `due_at between @tomorrow..+14d`. Before
+        // this, both bounds reached Postgres as literal strings and the view
+        // 500'd.
+        let ctx = ctx_at(datetime!(2026-06-01 09:00 UTC), 0);
+        let clause = Clause {
+            field: Field::DueAt,
+            op: Operator::Between,
+            value: Value::Range("@tomorrow".into(), "+14d".into()),
+        };
+        let Node::Clause(resolved) = resolve_clause(&clause, &ctx).expect("resolves") else {
+            panic!("a clause resolves to a clause");
+        };
+        let Value::Range(low, high) = resolved.value else {
+            panic!("a range stays a range");
+        };
+        assert!(low.starts_with("2026-06-02"), "low was {low}");
+        assert!(high.starts_with("2026-06-15"), "high was {high}");
+    }
+
+    #[test]
+    fn a_literal_bound_is_passed_through_untouched() {
+        let ctx = ctx_at(datetime!(2026-06-01 09:00 UTC), 0);
+        let clause = Clause {
+            field: Field::CreatedAt,
+            op: Operator::Between,
+            value: Value::Range("2026-01-01".into(), "2026-12-31".into()),
+        };
+        let Node::Clause(resolved) = resolve_clause(&clause, &ctx).expect("resolves") else {
+            panic!("a clause resolves to a clause");
+        };
+        assert_eq!(
+            resolved.value,
+            Value::Range("2026-01-01".into(), "2026-12-31".into())
+        );
+    }
+
+    #[test]
+    fn an_unknown_symbol_in_a_bound_is_refused_rather_than_passed_to_the_database() {
+        let ctx = ctx_at(datetime!(2026-06-01 09:00 UTC), 0);
+        let clause = Clause {
+            field: Field::DueAt,
+            op: Operator::Between,
+            value: Value::Range("@yesterdayish".into(), "+7d".into()),
+        };
+        assert!(matches!(
+            resolve_clause(&clause, &ctx),
+            Err(ResolveError::UnknownSymbol(_))
+        ));
+    }
+
+    #[test]
+    fn one_symbolic_bound_and_one_literal_both_survive() {
+        let ctx = ctx_at(datetime!(2026-06-01 09:00 UTC), 0);
+        let clause = Clause {
+            field: Field::DueAt,
+            op: Operator::Between,
+            value: Value::Range("2026-01-01".into(), "@today".into()),
+        };
+        let Node::Clause(resolved) = resolve_clause(&clause, &ctx).expect("resolves") else {
+            panic!("a clause resolves to a clause");
+        };
+        let Value::Range(low, high) = resolved.value else {
+            panic!("a range stays a range");
+        };
+        assert_eq!(low, "2026-01-01");
+        assert!(high.starts_with("2026-06-01"), "high was {high}");
+    }
 
     fn ctx_at(now: OffsetDateTime, hours: i8) -> Context {
         Context::new(

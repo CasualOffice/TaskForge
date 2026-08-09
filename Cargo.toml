@@ -76,6 +76,7 @@ casual-task-search           = { path = "crates/casual-task-search" }
 casual-task-infra            = { path = "crates/casual-task-infra" }
 casual-task-observability    = { path = "crates/casual-task-observability" }
 casual-task-plugin-contract  = { path = "crates/casual-task-plugin-contract" }
+casual-task-worker           = { path = "crates/casual-task-worker" }
 
 # Third-party — one version per concern, declared once (docs/42 applies the same
 # rule to the client: no duplicate libraries for the same job).
@@ -103,6 +104,7 @@ subtle     = "2.6"
 base32     = "0.5"
 clap       = { version = "4", features = ["derive"] }
 tokio      = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures-core = { version = "0.3", default-features = false }
 # HTTP. Only casual-task-api may depend on these — casual-task-lint enforces it
 # (docs/19 §Boundary invariants), which is why they are declared once here and
 # named in exactly one crate's manifest.
@@ -115,6 +117,20 @@ tower      = { version = "0.5", default-features = false }
 # feature goes back on when the API needs it, with the licence decided then.
 sqlx       = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "uuid", "time"] }
 testcontainers = "0.24"
+# Outbound SMTP (D-046). rustls, NOT native-tls: the workspace already avoids a
+# system OpenSSL, and `tokio1-rustls` + `rustls-native-certs` reaches the
+# platform trust store WITHOUT `webpki-roots`, whose CDLA-Permissive-2.0 licence
+# `deny.toml` does not allow and which is what D-050 turned the database TLS
+# feature off over. The licence question is therefore answered by feature
+# selection rather than by widening the allow-list.
+#
+# Default features are off deliberately: they enable `native-tls`, which would
+# put an OpenSSL build and a runtime `libssl` into the distroless image for a
+# capability rustls already provides — and `builder`, which pulls
+# `quoted_printable` (0BSD, also not allowed). casual-task-infra composes the
+# twelve header lines this system's only outbound mail needs; lettre supplies
+# the protocol. The cost is stated where the code is.
+lettre = { version = "0.11", default-features = false, features = ["hostname", "smtp-transport", "tokio1", "tokio1-rustls", "rustls-native-certs", "ring"] }
 testcontainers-modules = { version = "0.12", features = ["postgres"] }
 tracing    = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

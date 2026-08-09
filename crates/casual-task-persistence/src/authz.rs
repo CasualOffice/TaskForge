@@ -140,3 +140,48 @@ pub async fn grants_for(
         })
         .collect())
 }
+
+/// The visibility inputs for `project::VISIBLE`, resolved once.
+///
+/// # Why this is here and not assembled by each caller
+///
+/// `docs/04` §The list problem resolves the actor's accessible project set once
+/// per request. Two callers now need that resolution — the list endpoints, and
+/// the export runner, which repeats it per batch because an export outlives its
+/// own authorization (`docs/38`).
+///
+/// AGENTS.md §Module size and shape puts the weight on exactly this case: a
+/// `guard` exists "so that 'may this actor do this' cannot be assembled two
+/// different ways in two handlers, which is how one endpoint ends up more
+/// permissive than the one beside it". A background job that derived visibility
+/// slightly differently from the endpoint it mirrors would export rows the list
+/// would not show, and nothing would compare the two.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn viewer_for(
+    scoped: &mut Scoped<'_>,
+    actor: Uuid,
+    principal_type: &str,
+) -> Result<crate::project::Viewer, sqlx::Error> {
+    let teams = teams_of(scoped, actor).await?;
+    let grants = grants_for(scoped, actor, principal_type, &teams).await?;
+
+    // A PROJECT-scoped grant confers visibility; a workspace-scoped one
+    // deliberately does not (see `project::VISIBLE`). The same rule
+    // `Authority::granted_projects` applies, kept here so the two cannot drift.
+    let mut granted_projects: Vec<Uuid> = grants
+        .iter()
+        .filter(|g| g.scope_type == "PROJECT")
+        .map(|g| g.scope_id)
+        .collect();
+    granted_projects.sort_unstable();
+    granted_projects.dedup();
+
+    Ok(crate::project::Viewer {
+        actor,
+        teams,
+        granted_projects,
+    })
+}

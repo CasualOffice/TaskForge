@@ -57,6 +57,24 @@ scanning, `Content-Disposition`) is defence in depth behind this one
 ([28](28-ATTACHMENT-PIPELINE.md)). The application refuses to start if they
 match.
 
+### The schema is applied on first start, and only on first start
+
+`deploy/apply-migrations.sh` runs `migrations/*.sql` as the owner from
+PostgreSQL's `docker-entrypoint-initdb.d`, numbered `20` so it lands after the
+`10` that creates the roles — migrations 0012 and 0014 `GRANT` to roles that
+must therefore already exist.
+
+Until this existed **nothing applied the schema at all**. A stack brought up
+from this guide had an empty database, an API that passed `/health/ready`
+(which is `SELECT 1`, and succeeds against no schema), and a 500 on the first
+real request.
+
+**It runs only on an empty data directory.** That is what
+`docker-entrypoint-initdb.d` is; it brings a new deployment up fully migrated
+and does nothing on an upgrade. §Upgrades below describes expand → migrate →
+contract for that case and **the tooling for it does not exist** — an operator
+upgrading an existing volume applies migrations by hand today.
+
 ### `TASKFORGE_DB_PASSWORD` — the application is not the database owner
 
 Two roles exist deliberately:
@@ -64,6 +82,7 @@ Two roles exist deliberately:
 | Role | Used by | Why |
 | --- | --- | --- |
 | `POSTGRES_USER` (owner) | migrations, retention worker | needs DDL |
+| `taskforge_dispatcher` | the outbox dispatcher | must see across tenants, so it bypasses RLS; granted on the two outbox tables and nothing else (migration 0014) |
 | `taskforge_app` | **the application** | ordinary, non-superuser |
 
 **A superuser bypasses row-level security unconditionally.** `FORCE ROW LEVEL

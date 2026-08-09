@@ -3,6 +3,47 @@
 This file is the entry contract for **every** coding agent that works in this
 repository. Read it in full before doing anything else.
 
+## Module size and shape
+
+**No file over ~500 lines.** Not a style preference — a measured failure mode in
+this repository. `tasks.rs` reached 1,757 lines with nine handlers and twelve
+helpers, and two of those handlers had already grown slightly different ways of
+deciding visibility. Nobody reads a file that size; they grep it, land in the
+middle, and change what they find.
+
+**Split by reason to change, not by size.** Cutting a long file in half at the
+midpoint produces two files that still change together. The question is what
+makes each part change:
+
+| Module | Changes when |
+| --- | --- |
+| `wire` | the API contract does (`docs/05`) |
+| `validate` | a field rule does |
+| `guard` | authority or visibility does (`docs/04`) |
+| handlers | the behaviour does |
+
+The `guard` split carries most of the weight: it exists so "may this actor do
+this" cannot be assembled two different ways in two handlers, which is how one
+endpoint ends up more permissive than the one beside it.
+
+**Single responsibility, applied to the failure.** A module earns its existence
+by naming a failure it prevents, and its doc comment says which. A module whose
+doc comment can only describe what it contains — "helpers", "utils", "common" —
+has not been given a responsibility, it has been given a leftovers drawer.
+
+**Dependency inversion where a boundary is real.** `Mailer` is a trait in
+`casual-task-infra` with an SMTP implementation and a logging one, because
+`docs/48` makes email optional and the single-node profile must work without a
+relay. `Consumer` in the worker is a trait so the dispatch loop can be tested
+without a network. Both exist because the seam is genuine — not because
+indirection is virtuous.
+
+**Interface segregation over convenience.** `Authenticated` and
+`WorkspaceMember` are separate extractors precisely so a handler that only needs
+to know *who* cannot reach tenant data: it has no `AuthContext` to build a scope
+from. One combined type would have made that a matter of discipline.
+
+
 ## Repository boundary
 
 - **This repository (`tasks/`, product name TaskForge) is the target.** All work

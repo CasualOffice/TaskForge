@@ -99,7 +99,10 @@ def render_landed() -> str:
     bullets = [f"- **{name}** ({item}) — `{status}`" for item, name, status in items]
     gated = sum(1 for _, _, s in items if s == "Gated")
     lead = (
-        f"**Phase 1 is under way, and all of it is engine.** {len(items)} items "
+        # Was "and all of it is engine", which stopped being true the moment
+        # C-018 landed a web client. A sentence generated into the README is
+        # still a claim, and this one had a shelf life.
+        f"**Phase 1 is under way.** {len(items)} items "
         f"started, {gated} gated:"
     )
     return lead + "\n\n" + "\n".join(bullets)
@@ -190,7 +193,12 @@ def main() -> int:
         print("README.md updated")
         return 0
 
-    print(block)
+    # No flag: preview what --write would splice in, without touching the file.
+    # This printed an undefined name until now — the branch nothing in CI takes,
+    # which is exactly the branch that reaches a person debugging by hand.
+    print(render())
+    print()
+    print(render_landed())
     return 0
 
 

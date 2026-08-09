@@ -47,5 +47,9 @@ SELECT
     '14000000-0000-7000-8000-000000000064'                        AS cursor_id,
     -- A term seeded into one task per project: the selective full-text probe.
     'zylophage'                                                   AS probe_term,
-    'Task 42'                                                     AS probe_title_prefix
+    'Task 42'                                                     AS probe_title_prefix,
+    -- The C-013 grammar's ordered-enum probe. HIGH sits above MEDIUM in the
+    -- enum's declared order, which is what `priority >= HIGH` compares against
+    -- — alphabetically it would sort below it.
+    'HIGH'                                                        AS probe_priority
 \gset

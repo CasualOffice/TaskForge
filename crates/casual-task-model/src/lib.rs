@@ -27,6 +27,7 @@ pub mod ids;
 pub mod permission;
 pub mod scope;
 pub mod state;
+pub mod template;
 
 pub use cursor::Cursor;
 pub use error::{Error, ErrorCode, Result};
@@ -34,3 +35,4 @@ pub use ids::*;
 pub use permission::{Permission, PrincipalType, ScopeType};
 pub use scope::{ActorType, AuthContext, WorkspaceScope};
 pub use state::{Priority, TaskState, TaskType, Visibility};
+pub use template::Template;

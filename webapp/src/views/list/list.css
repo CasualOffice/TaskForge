@@ -1,0 +1,80 @@
+/* Styles for the grouped list, co-located with the components that need them.
+ *
+ * # Why these are not in `styles/app.css`
+ *
+ * `styles/*` is another agent's surface while the design system is adopted, and
+ * these rules were twice lost to a concurrent rewrite of that file. They also
+ * pass the reason-to-change test on their own: every rule here changes when
+ * `TaskGroup` changes and for no other reason, which is exactly the boundary a
+ * module is supposed to draw.
+ *
+ * Colours and spacing still come from the foundation's tokens
+ * (`design/DESIGN-FOUNDATION.md` §5, §2) with the legacy names as a fallback, so
+ * this file introduces no palette of its own.
+ */
+
+/* The list's rows are `display: grid` — that is what lets the virtualized body
+ * position them absolutely while keeping columns aligned. A group header and a
+ * group note are single-cell rows inside that same table, so without opting out
+ * they inherit the column grid and render as one narrow centred cell. */
+.group__head,
+.group__note {
+  display: grid;
+  grid-template-columns: 1fr;
+  padding: 0;
+}
+.group__head th,
+.group__note td {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.group__head th {
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+  border-top: 1px solid var(--tf-border, var(--color-border));
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+}
+
+.group__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+.group__chevron {
+  width: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+
+.group__count {
+  margin-left: auto;
+  padding-right: 4px;
+  font-weight: 400;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+
+.group__note td,
+.group__more {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+
+/* Grouped bodies are ordinary flow content; only the ungrouped body is the
+ * absolutely-positioned virtualized one. */
+.group .list__row {
+  position: static;
+  transform: none;
+}

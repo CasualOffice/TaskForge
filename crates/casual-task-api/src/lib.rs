@@ -17,18 +17,33 @@
 //! database. Those need a router, and a router cannot be reached from inside
 //! `main`.
 
+pub mod activity;
+pub mod attachments;
 pub mod auth;
+pub mod comments;
 pub mod config;
 pub mod context;
 pub mod csrf;
+pub mod dependencies;
 pub mod error;
 pub mod etag;
+pub mod exports;
+pub mod invitations;
+pub mod json;
+pub mod mfa;
 pub mod middleware;
+pub mod notifications;
+pub mod password_reset;
+pub mod permissions;
 pub mod projects;
+pub mod rate_limit;
 pub mod server;
+pub mod sse;
 pub mod tasks;
 pub mod unit;
 pub mod wire;
+pub mod workflows;
+pub mod workspaces;
 
 pub use config::{Config, ConfigError};
 pub use error::ApiError;

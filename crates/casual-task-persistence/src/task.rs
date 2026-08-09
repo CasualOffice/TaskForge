@@ -50,6 +50,23 @@ pub struct TaskRow {
     pub updated_by: Option<Uuid>,
     pub version: i64,
     pub archived_at: Option<OffsetDateTime>,
+    /// Whether an unresolved `BLOCKS` edge points at this task.
+    ///
+    /// Computed in the SAME query as the row rather than fetched per task.
+    /// `docs/04` §The list problem: a 200-card board must not issue 200 reads,
+    /// and "is this card draggable?" is exactly a per-card question. The
+    /// `task_dependency_rev_ix` index on `to_task_id` makes it an index probe.
+    ///
+    /// It counts blockers the viewer **cannot see**, deliberately: a task is
+    /// blocked whether or not you are allowed to know by what (`docs/03`).
+    pub is_blocked: bool,
+    /// The full-text relevance of this row, when the query ranked one.
+    ///
+    /// `None` for every structured list — there is no query to rank against.
+    /// It is not a column of `task`: it is computed per query, and it is here
+    /// because a cursor that resumes on rank has to carry the value it
+    /// resumed from (`docs/26` §Cursor pagination).
+    pub rank: Option<f32>,
 }
 
 /// The columns [`TaskRow`] decodes, qualified as `t`.
@@ -65,7 +82,14 @@ pub(crate) const COLUMNS: &str =
                        t.state::text AS state,
                        t.reporter_id, t.environment_id, t.milestone_id, t.parent_id,
                        t.start_at, t.due_at, t.position, t.created_at, t.created_by,
-                       t.updated_at, t.updated_by, t.version, t.archived_at";
+                       t.updated_at, t.updated_by, t.version, t.archived_at,
+                       EXISTS (SELECT 1 FROM task_dependency d
+                                WHERE d.to_task_id = t.id
+                                  AND d.kind = 'BLOCKS'
+                                  AND EXISTS (SELECT 1 FROM task b
+                                               WHERE b.id = d.from_task_id
+                                                 AND b.deleted_at IS NULL
+                                                 AND b.state NOT IN ('COMPLETED','CANCELED'))) AS is_blocked";
 
 fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
     use sqlx::Row as _;
@@ -93,6 +117,15 @@ fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
         updated_by: row.try_get("updated_by")?,
         version: row.try_get("version")?,
         archived_at: row.try_get("archived_at")?,
+        // Defaults to false rather than erroring: a projection that does not
+        // select it (the search ranker builds its own) still decodes, and "not
+        // known to be blocked" is the safe render — the board enables a drop
+        // target it would otherwise have wrongly disabled, and the transition
+        // gate refuses it authoritatively anyway.
+        is_blocked: row.try_get("is_blocked").unwrap_or(false),
+        // Absent from every projection but the ranked search one, so a missing
+        // column is the ordinary case rather than a decode failure.
+        rank: row.try_get("rank").ok(),
     })
 }
 
@@ -202,6 +235,435 @@ pub async fn read_visible(
     Ok(Some((row_of(&row)?, key)))
 }
 
+/// The fields `PATCH /tasks/{id}` may change.
+///
+/// # Two levels of `Option`, and why both are needed
+///
+/// `docs/05` §Conventions: "absent = leave unchanged; `null` = clear". A single
+/// `Option` cannot say both, so a nullable column takes `Option<Option<T>>` —
+/// `None` is absent, `Some(None)` is an explicit clear. The non-nullable columns
+/// keep one level because "clear the title" is not expressible.
+///
+/// `status_id` and `state` are deliberately absent. `docs/23`: "Status is
+/// **never** written through `PATCH /tasks/{id}`" — there is no field here to
+/// write it with, so the rule is a property of the type rather than a check
+/// somebody remembers.
+#[derive(Debug, Clone, Default)]
+pub struct TaskPatch {
+    pub title: Option<String>,
+    pub description: Option<Option<String>>,
+    pub task_type: Option<String>,
+    pub priority: Option<String>,
+    pub start_at: Option<Option<OffsetDateTime>>,
+    pub due_at: Option<Option<OffsetDateTime>>,
+}
+
+/// Apply a patch, conditional on `expected_version`.
+///
+/// `None` means the compare-and-set matched nothing: the row moved on, was
+/// deleted, or never existed. `docs/24`: "0 rows affected ⇒ someone else wrote
+/// first ⇒ 409".
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn update(
+    scoped: &mut Scoped<'_>,
+    id: Uuid,
+    expected_version: i64,
+    patch: &TaskPatch,
+    actor: Uuid,
+) -> Result<Option<TaskRow>, sqlx::Error> {
+    let workspace = scoped.workspace_id().as_uuid();
+    // COALESCE against a NULL parameter is what makes "absent = unchanged" one
+    // statement. The nullable columns need the extra boolean because NULL is a
+    // meaningful *value* there, not only "unchanged".
+    let sql = format!(
+        "WITH updated AS (
+             UPDATE task t
+                SET title       = COALESCE($4::text, t.title),
+                    description = CASE WHEN $5 THEN $6::text ELSE t.description END,
+                    type        = COALESCE($7::task_type, t.type),
+                    priority    = COALESCE($8::task_priority, t.priority),
+                    start_at    = CASE WHEN $9  THEN $10::timestamptz ELSE t.start_at END,
+                    due_at      = CASE WHEN $11 THEN $12::timestamptz ELSE t.due_at END,
+                    updated_at  = now(),
+                    updated_by  = $13,
+                    version     = t.version + 1
+              WHERE t.id = $1
+                AND t.workspace_id = $2
+                AND t.deleted_at IS NULL
+                AND t.version = $3
+          RETURNING *
+         )
+         SELECT {COLUMNS} FROM updated t"
+    );
+    let row = sqlx::query(&sql)
+        .bind(id)
+        .bind(workspace)
+        .bind(expected_version)
+        .bind(patch.title.as_deref())
+        .bind(patch.description.is_some())
+        .bind(patch.description.clone().flatten())
+        .bind(patch.task_type.as_deref())
+        .bind(patch.priority.as_deref())
+        .bind(patch.start_at.is_some())
+        .bind(patch.start_at.flatten())
+        .bind(patch.due_at.is_some())
+        .bind(patch.due_at.flatten())
+        .bind(actor)
+        .fetch_optional(scoped.conn())
+        .await?;
+    row.as_ref().map(row_of).transpose()
+}
+
+/// Soft-delete, conditional on `expected_version`.
+///
+/// `docs/03`: a delete is a tombstone, not a `DELETE`. Every index that matters
+/// is partial on `deleted_at IS NULL` (migration 0005), so the row leaves every
+/// read path without leaving the table — and the activity trail that references
+/// it stays readable.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn soft_delete(
+    scoped: &mut Scoped<'_>,
+    id: Uuid,
+    expected_version: i64,
+    actor: Uuid,
+) -> Result<Option<TaskRow>, sqlx::Error> {
+    let workspace = scoped.workspace_id().as_uuid();
+    let sql = format!(
+        "WITH deleted AS (
+             UPDATE task t
+                SET deleted_at = now(),
+                    updated_at = now(),
+                    updated_by = $4,
+                    version    = t.version + 1
+              WHERE t.id = $1
+                AND t.workspace_id = $2
+                AND t.deleted_at IS NULL
+                AND t.version = $3
+          RETURNING *
+         )
+         SELECT {COLUMNS} FROM deleted t"
+    );
+    let row = sqlx::query(&sql)
+        .bind(id)
+        .bind(workspace)
+        .bind(expected_version)
+        .bind(actor)
+        .fetch_optional(scoped.conn())
+        .await?;
+    row.as_ref().map(row_of).transpose()
+}
+
+/// Move a task to a new status, conditional on `expected_version`.
+///
+/// `status_id` and `state` are written in **one** statement, which is the
+/// invariant `docs/23` §What commits rests on — the derived column cannot drift
+/// from its source because there is no interval in which one is written and the
+/// other is not. The caller obtains the pair from
+/// `casual_task_workflow::ValidTransition`, which likewise carries both.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn transition(
+    scoped: &mut Scoped<'_>,
+    id: Uuid,
+    expected_version: i64,
+    status_id: Uuid,
+    state: &str,
+    actor: Uuid,
+) -> Result<Option<TaskRow>, sqlx::Error> {
+    let workspace = scoped.workspace_id().as_uuid();
+    let sql = format!(
+        "WITH moved AS (
+             UPDATE task t
+                SET status_id  = $4,
+                    state      = $5::task_state,
+                    updated_at = now(),
+                    updated_by = $6,
+                    version    = t.version + 1
+              WHERE t.id = $1
+                AND t.workspace_id = $2
+                AND t.deleted_at IS NULL
+                AND t.version = $3
+          RETURNING *
+         )
+         SELECT {COLUMNS} FROM moved t"
+    );
+    let row = sqlx::query(&sql)
+        .bind(id)
+        .bind(workspace)
+        .bind(expected_version)
+        .bind(status_id)
+        .bind(state)
+        .bind(actor)
+        .fetch_optional(scoped.conn())
+        .await?;
+    row.as_ref().map(row_of).transpose()
+}
+
+/// The unresolved blockers of a task, restricted to the ones the actor can see.
+///
+/// `docs/23` step 7 gates a transition on blocking dependencies and requires the
+/// error to name "the blockers the actor can see" — so the visibility predicate
+/// is part of this query rather than a filter applied afterwards. A blocker in a
+/// project the actor cannot see still blocks; it is simply not named, which is
+/// the only answer that neither leaks it nor lies about why the transition
+/// failed.
+///
+/// A blocker is unresolved when it is not in a terminal state. `docs/23`:
+/// `COMPLETED` and `CANCELED` are the two terminal states, and a canceled
+/// blocker must stop blocking or abandoned work would wedge its dependents
+/// forever.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn unresolved_blockers(
+    scoped: &mut Scoped<'_>,
+    viewer: &crate::project::Viewer,
+    task_id: Uuid,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    let workspace = scoped.workspace_id().as_uuid();
+    let sql = format!(
+        "SELECT b.id
+           FROM task_dependency d
+           JOIN task b    ON b.id = d.from_task_id
+           JOIN project p ON p.id = b.project_id
+          WHERE d.to_task_id = $5
+            AND d.workspace_id = $1
+            AND d.kind = 'BLOCKS'
+            AND b.deleted_at IS NULL
+            AND p.deleted_at IS NULL
+            AND b.state NOT IN ('COMPLETED','CANCELED')
+            AND {visible}
+          ORDER BY b.id",
+        visible = crate::project::VISIBLE
+    );
+    sqlx::query_scalar(&sql)
+        .bind(workspace)
+        .bind(&viewer.teams)
+        .bind(viewer.actor)
+        .bind(&viewer.granted_projects)
+        .bind(task_id)
+        .fetch_all(scoped.conn())
+        .await
+}
+
+/// Whether `user` is in this workspace **and** can see `project`.
+///
+/// This is the check behind `TF-TSK-0005` ("assignee is not a member of the
+/// project"), and it is deliberately the *visibility* rule from `docs/04`
+/// §Visibility vs permission rather than a `project_membership` lookup. On a
+/// `WORKSPACE`-visible project — the default — there are usually no membership
+/// rows at all, so requiring one would make assignment impossible in the common
+/// case while claiming to enforce a rule nobody could satisfy.
+///
+/// What it does enforce is the invariant that actually matters: **work is never
+/// assigned to someone who cannot see it**. A stranger, a member of another
+/// tenant, or a colleague who cannot open the project are all refused, and for
+/// the same reason.
+///
+/// The clauses mirror `crate::project::VISIBLE` with `user` in the viewer's
+/// place. They are written out rather than reusing that constant because this
+/// query resolves the user's teams and project grants inline — the caller has a
+/// `Viewer` for the *actor*, and the question here is about somebody else.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn may_be_assigned(
+    scoped: &mut Scoped<'_>,
+    user: Uuid,
+    project_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1
+              FROM project p
+             WHERE p.id = $1
+               AND p.workspace_id = $2
+               AND p.deleted_at IS NULL
+               AND EXISTS (SELECT 1 FROM workspace_membership wm
+                            WHERE wm.workspace_id = $2 AND wm.user_id = $3)
+               AND (   p.visibility = 'WORKSPACE'
+                    OR (p.visibility = 'TEAM' AND p.team_id IN (
+                            SELECT tm.team_id FROM team_membership tm
+                             WHERE tm.user_id = $3))
+                    OR EXISTS (SELECT 1 FROM project_membership pm
+                                WHERE pm.project_id = p.id AND pm.user_id = $3)
+                    OR EXISTS (SELECT 1 FROM role_assignment ra
+                                WHERE ra.workspace_id = $2
+                                  AND ra.scope_type = 'PROJECT'
+                                  AND ra.scope_id = p.id
+                                  AND ra.principal_type = 'USER'
+                                  AND ra.principal_id = $3)))",
+    )
+    .bind(project_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .bind(user)
+    .fetch_one(scoped.conn())
+    .await
+}
+
+/// The users assigned to a task, oldest assignment first.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn assignees(scoped: &mut Scoped<'_>, task_id: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT user_id FROM task_assignee
+          WHERE task_id = $1 AND workspace_id = $2
+          ORDER BY assigned_at, user_id",
+    )
+    .bind(task_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .fetch_all(scoped.conn())
+    .await
+}
+
+/// Assign a user. `false` if they were already assigned.
+///
+/// The `workspace_id` is taken from the scope rather than from a parameter:
+/// `task_assignee` carries the column but no foreign key to `workspace`, so the
+/// scope is the only thing that keeps the denormalized value honest.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_assignee(
+    scoped: &mut Scoped<'_>,
+    task_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let affected = sqlx::query(
+        "INSERT INTO task_assignee (task_id, user_id, workspace_id)
+         SELECT t.id, $2, t.workspace_id
+           FROM task t
+          WHERE t.id = $1 AND t.workspace_id = $3 AND t.deleted_at IS NULL
+         ON CONFLICT (task_id, user_id) DO NOTHING",
+    )
+    .bind(task_id)
+    .bind(user_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .execute(scoped.conn())
+    .await?
+    .rows_affected();
+    Ok(affected > 0)
+}
+
+/// Unassign a user. `false` if they were not assigned.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn remove_assignee(
+    scoped: &mut Scoped<'_>,
+    task_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let affected = sqlx::query(
+        "DELETE FROM task_assignee
+          WHERE task_id = $1 AND user_id = $2 AND workspace_id = $3",
+    )
+    .bind(task_id)
+    .bind(user_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .execute(scoped.conn())
+    .await?
+    .rows_affected();
+    Ok(affected > 0)
+}
+
+/// A tag's name, when it exists and is usable on tasks in `project`.
+///
+/// `tag.project_id` of `NULL` is a workspace-scoped tag (migration 0005), usable
+/// anywhere in the workspace; a project-scoped one is usable only on tasks in
+/// that project. Returning the name rather than a bare boolean is what lets the
+/// activity record hold a display value instead of an id (`docs/25`).
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn usable_tag(
+    scoped: &mut Scoped<'_>,
+    tag_id: Uuid,
+    project_id: Uuid,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT name::text FROM tag
+          WHERE id = $1
+            AND workspace_id = $2
+            AND (project_id IS NULL OR project_id = $3)",
+    )
+    .bind(tag_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .bind(project_id)
+    .fetch_optional(scoped.conn())
+    .await
+}
+
+/// Tag a task. `false` if it already carried the tag.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_tag(
+    scoped: &mut Scoped<'_>,
+    task_id: Uuid,
+    tag_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let affected = sqlx::query(
+        "INSERT INTO task_tag (task_id, tag_id, workspace_id)
+         SELECT t.id, $2, t.workspace_id
+           FROM task t
+          WHERE t.id = $1 AND t.workspace_id = $3 AND t.deleted_at IS NULL
+         ON CONFLICT (task_id, tag_id) DO NOTHING",
+    )
+    .bind(task_id)
+    .bind(tag_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .execute(scoped.conn())
+    .await?
+    .rows_affected();
+    Ok(affected > 0)
+}
+
+/// Write the comment a transition carried (`docs/23` §What commits).
+///
+/// In the transition's own transaction, so a move that was explained and a move
+/// that was not are never confused: either both rows commit or neither does.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_comment(
+    scoped: &mut Scoped<'_>,
+    task_id: Uuid,
+    author: Uuid,
+    body: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO comment (id, workspace_id, task_id, author_id, body)
+         VALUES ($1,$2,$3,$4,$5)",
+    )
+    .bind(id)
+    .bind(scoped.workspace_id().as_uuid())
+    .bind(task_id)
+    .bind(author)
+    .bind(body)
+    .execute(scoped.conn())
+    .await?;
+    Ok(id)
+}
+
 /// Execute a query the filter compiler produced.
 ///
 /// # Errors
@@ -257,9 +719,42 @@ mod tests {
 
     #[test]
     fn the_column_list_matches_the_decoded_fields() {
-        // 23 columns, decoded by name. A column added to COLUMNS without a
-        // field lands nowhere; a field added without a column fails at runtime
-        // with "no column found", which is a worse place to learn it.
-        assert_eq!(COLUMNS.split(',').count(), 23);
+        // Every column the projection selects is decoded by name in `row_of`,
+        // and vice versa. Counting commas stopped working when `is_blocked`
+        // arrived as a nested EXISTS — the expression contains its own — so
+        // this checks the names instead, which is what actually has to agree.
+        for name in [
+            "id",
+            "workspace_id",
+            "project_id",
+            "number",
+            "title",
+            "description",
+            "status_id",
+            "reporter_id",
+            "environment_id",
+            "milestone_id",
+            "parent_id",
+            "start_at",
+            "due_at",
+            "position",
+            "created_at",
+            "created_by",
+            "updated_at",
+            "updated_by",
+            "version",
+            "archived_at",
+            "is_blocked",
+        ] {
+            assert!(
+                COLUMNS.contains(name),
+                "`{name}` is decoded by row_of and absent from the projection"
+            );
+        }
+        // The three enum columns arrive as text under an explicit alias, or no
+        // String decoder accepts them.
+        for aliased in ["AS \"type\"", "AS priority", "AS state"] {
+            assert!(COLUMNS.contains(aliased), "{aliased} is missing");
+        }
     }
 }

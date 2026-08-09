@@ -3,7 +3,7 @@ import { StrictMode, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 
-import { fetchTasks, type Task } from '../api'
+import { fetchTasks, type Task } from './fixtures/tasks'
 
 function App(): ReactElement {
   const { data } = useQuery<Task[]>({ queryKey: ['tasks'], queryFn: () => fetchTasks(50) })

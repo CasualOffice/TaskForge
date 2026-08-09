@@ -74,13 +74,28 @@ else
   skip "explain-no-seq-scan" "Docker is not running"
 fi
 
-# ── the bundle budget ─────────────────────────────────────────────────────────
+# ── the frontend gates ────────────────────────────────────────────────────────
+# Four of them, and they catch different things — a run that only measured the
+# bundle would pass on a shell nobody can operate with a keyboard.
+#
+#   typecheck   the wire types still match docs/05
+#   lint        jsx-a11y over the SOURCE: no accessible name, a click handler on
+#               a div, an aria-* that does not exist (C-019)
+#   a11y        axe over the RENDERED DOM: what only exists after render
+#               (C-019). It runs in jsdom, so contrast is NOT checked — see the
+#               header of webapp/src/a11y.test.tsx, which says so rather than
+#               letting the suite's name imply otherwise.
+#   size-check  ADR-024's 200 KiB initial budget
 if command -v pnpm >/dev/null 2>&1; then
   run pnpm --dir webapp install --frozen-lockfile
   run pnpm --dir webapp typecheck
+  run pnpm --dir webapp lint
+  run pnpm --dir webapp test
   run pnpm --dir webapp build
   run pnpm --dir webapp size-check
 else
+  skip "frontend-lint" "pnpm not installed"
+  skip "frontend-a11y" "pnpm not installed"
   skip "bundle-size" "pnpm not installed"
 fi
 

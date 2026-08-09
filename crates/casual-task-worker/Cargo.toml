@@ -18,6 +18,9 @@ tracing = { workspace = true }
 casual-task-plugin-contract = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 sqlx = { workspace = true }
+uuid = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
 
 [dev-dependencies]
 casual-task-model = { workspace = true }
@@ -30,6 +33,7 @@ serde_json = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 anyhow = { workspace = true }
+casual-task-infra = { workspace = true }
 
 [lints]
 workspace = true

@@ -24,6 +24,16 @@ use std::time::Duration;
 /// through, because this text is the entire diagnostic an operator gets.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfigError {
+    /// `TF_STORAGE_BACKEND` names a backend that is not built.
+    #[error(
+        "TF_STORAGE_BACKEND={0} is not a backend this build has. `fs` is \
+         implemented; `s3` is documented in docs/48 and not yet built, and \
+         starting with it would silently store files on local disk."
+    )]
+    UnsupportedStorageBackend(String),
+    /// `TF_STORAGE_PATH` is empty with the filesystem backend selected.
+    #[error("TF_STORAGE_PATH must be set when TF_STORAGE_BACKEND is `fs`")]
+    MissingStoragePath,
     #[error("{0} is required and not set")]
     Missing(&'static str),
     #[error("{name} is not valid: {reason}")]
@@ -57,6 +67,58 @@ pub struct Config {
     pub attachment_origin: String,
     pub secret_key: String,
     pub pool: PoolConfig,
+    /// `TF_SMTP_*`. An empty host disables email (`docs/48`, D-046).
+    pub smtp: casual_task_infra::SmtpConfig,
+    /// `TF_STORAGE_*`. Where attachment bytes live (`docs/48`, `docs/28`).
+    pub storage: StorageConfig,
+    /// `DISPATCHER_DATABASE_URL` — the outbox dispatcher's connection (D-060).
+    ///
+    /// A **second DSN**, and it has to be: `dispatch::claim` polls across every
+    /// tenant, so it runs as a role that bypasses row-level security
+    /// (migration 0014), and `DispatcherRole::verify` refuses anything else.
+    /// The role serving requests is deliberately not that role — that is the
+    /// whole point of migration 0012.
+    ///
+    /// `None` disables the embedded worker, and the process says so at startup
+    /// rather than polling an empty table forever. `deploy/docker-compose.yml`
+    /// has set this variable since it was written; nothing read it until now,
+    /// which is why the dispatch loop had never run outside a test.
+    pub dispatcher_database_url: Option<String>,
+    /// `TF_WORKER_EMBEDDED` (`docs/48`, default **true**).
+    ///
+    /// Profile 1 is one binary: the API process runs the dispatch loop itself.
+    /// Setting it false is how Profile 2 moves the loop into its own container
+    /// without the API also running one — two dispatchers are not wrong (the
+    /// claim is `FOR UPDATE SKIP LOCKED`), but they are twice the polling for
+    /// no gain.
+    pub worker_embedded: bool,
+}
+
+/// Object storage selection (`docs/48` §Configuration).
+///
+/// Both keys were documented in `docs/48` and `docs/52` and set in
+/// `deploy/docker-compose.yml` from the beginning, and **nothing read them** —
+/// so a deployment could set `TF_STORAGE_BACKEND=s3`, see it accepted, and get
+/// the filesystem. Configuration that is documented and unread is worse than
+/// undocumented: it reports success.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageConfig {
+    /// `fs` or `s3`. `docs/48` defaults it to `fs`.
+    pub backend: StorageBackend,
+    /// `TF_STORAGE_PATH`, the filesystem root. Meaningful only for `fs`.
+    pub path: String,
+}
+
+/// The backends `TF_STORAGE_BACKEND` names.
+///
+/// A closed enum rather than a string: `s3` is **not implemented**, and an
+/// operator who asks for it must be refused at startup rather than silently
+/// served the filesystem. That is the whole reason this parses instead of
+/// defaulting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageBackend {
+    Filesystem,
+    S3,
 }
 
 /// Connection pool bounds (D-039).
@@ -141,6 +203,48 @@ impl Config {
             )?)),
         };
 
+        // `docs/48` §Configuration: "TF_SMTP_HOST/PORT/USER/PASS/FROM — empty
+        // host disables email (D-046)". Absent and empty are the same thing
+        // here, so a compose file with `TF_SMTP_HOST=` behaves as the operator
+        // reading that line expects.
+        let smtp = casual_task_infra::SmtpConfig {
+            host: get("TF_SMTP_HOST").unwrap_or_default(),
+            port: u16::try_from(parse_or(
+                "TF_SMTP_PORT",
+                &get,
+                u32::from(casual_task_infra::SmtpConfig::DEFAULT_PORT),
+            )?)
+            .map_err(|_| ConfigError::Invalid {
+                name: "TF_SMTP_PORT",
+                reason: "a TCP port is at most 65535".to_owned(),
+            })?,
+            user: get("TF_SMTP_USER").unwrap_or_default(),
+            password: get("TF_SMTP_PASS").unwrap_or_default(),
+            from: get("TF_SMTP_FROM").unwrap_or_default(),
+        };
+        // A relay with nothing to send *from* is a deployment where the first
+        // person to forget their password discovers the misconfiguration.
+        // `docs/48`: "A misconfigured deployment must not start."
+        if smtp.enabled() && smtp.from.trim().is_empty() {
+            return Err(ConfigError::Missing("TF_SMTP_FROM"));
+        }
+
+        // `docs/48` defaults the backend to `fs`. An unrecognised value is a
+        // refusal, not a fallback: "TF_STORAGE_BACKEND=s4" quietly writing to
+        // local disk is the failure this parse exists to prevent.
+        let storage = {
+            let raw = get("TF_STORAGE_BACKEND").unwrap_or_else(|| "fs".to_owned());
+            let backend = match raw.trim().to_ascii_lowercase().as_str() {
+                "fs" => StorageBackend::Filesystem,
+                other => return Err(ConfigError::UnsupportedStorageBackend(other.to_owned())),
+            };
+            let path = get("TF_STORAGE_PATH").unwrap_or_else(|| "./data/attachments".to_owned());
+            if backend == StorageBackend::Filesystem && path.trim().is_empty() {
+                return Err(ConfigError::MissingStoragePath);
+            }
+            StorageConfig { backend, path }
+        };
+
         Ok(Self {
             bind_addr,
             database_url: required("DATABASE_URL")?,
@@ -148,7 +252,74 @@ impl Config {
             attachment_origin,
             secret_key,
             pool,
+            smtp,
+            storage,
+            // Absent is a supported deployment, not a misconfiguration: an
+            // operator who has not created the dispatcher role yet gets an API
+            // that serves requests and says the loop is off, rather than one
+            // that refuses to start.
+            dispatcher_database_url: get("DISPATCHER_DATABASE_URL")
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty()),
+            // docs/48 §Configuration: "true | false (default true)".
+            worker_embedded: get("TF_WORKER_EMBEDDED")
+                .is_none_or(|v| !v.trim().eq_ignore_ascii_case("false")),
         })
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+
+    fn with(extra: &[(&'static str, &'static str)]) -> Result<Config, ConfigError> {
+        let base: Vec<(&'static str, &'static str)> = vec![
+            ("DATABASE_URL", "postgres://localhost/tf"),
+            ("TF_SECRET_KEY", "a-secret-key-long-enough-for-the-check"),
+            ("TF_PUBLIC_URL", "https://tasks.example.com"),
+            ("TF_ATTACHMENT_ORIGIN", "https://files.example.com"),
+        ];
+        Config::from_source(move |name| {
+            extra
+                .iter()
+                .chain(base.iter())
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_owned())
+        })
+    }
+
+    #[test]
+    fn the_backend_defaults_to_the_filesystem() {
+        // docs/48: "TF_STORAGE_BACKEND fs | s3 (default fs)".
+        let config = with(&[]).expect("defaults are valid");
+        assert_eq!(config.storage.backend, StorageBackend::Filesystem);
+        assert_eq!(config.storage.path, "./data/attachments");
+    }
+
+    #[test]
+    fn a_backend_this_build_does_not_have_refuses_to_start() {
+        // The failure this parse exists for: `s3` is documented and not built,
+        // so accepting it would store files on local disk while the operator
+        // believed they were in a bucket.
+        assert!(matches!(
+            with(&[("TF_STORAGE_BACKEND", "s3")]).err(),
+            Some(ConfigError::UnsupportedStorageBackend(_))
+        ));
+        assert!(with(&[("TF_STORAGE_BACKEND", "nonsense")]).is_err());
+    }
+
+    #[test]
+    fn an_empty_path_with_the_filesystem_backend_refuses_to_start() {
+        assert!(matches!(
+            with(&[("TF_STORAGE_PATH", "   ")]).err(),
+            Some(ConfigError::MissingStoragePath)
+        ));
+    }
+
+    #[test]
+    fn the_documented_spelling_is_accepted_case_insensitively() {
+        assert!(with(&[("TF_STORAGE_BACKEND", "FS")]).is_ok());
+        assert!(with(&[("TF_STORAGE_BACKEND", " fs ")]).is_ok());
     }
 }
 
@@ -306,6 +477,46 @@ mod tests {
         .expect("valid");
         assert_eq!(config.pool.max_connections, 8);
         assert_eq!(config.pool.acquire_timeout, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn email_is_disabled_by_default_and_that_is_not_an_error() {
+        // docs/48: an empty host disables email. Profile 1 is a single node
+        // with no relay, and it has to start.
+        let config = with(&[]).expect("valid");
+        assert!(!config.smtp.enabled());
+        assert_eq!(config.smtp.port, 587, "the STARTTLS submission port");
+    }
+
+    #[test]
+    fn a_relay_without_a_sender_refuses_to_start() {
+        // The alternative is a deployment that looks configured and fails on
+        // the first password reset — found by the user, not by the operator.
+        assert_eq!(
+            with(&[("TF_SMTP_HOST", "smtp.example.com")]).err(),
+            Some(ConfigError::Missing("TF_SMTP_FROM"))
+        );
+        assert!(
+            with(&[
+                ("TF_SMTP_HOST", "smtp.example.com"),
+                ("TF_SMTP_FROM", "noreply@example.com"),
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_port_outside_the_tcp_range_is_refused() {
+        // 70000 parses as a u32 and truncates to 4464 as a u16. A relay quietly
+        // contacted on the wrong port is worse than a refusal to start.
+        let error = with(&[("TF_SMTP_PORT", "70000")]).expect_err("rejected");
+        assert!(matches!(
+            error,
+            ConfigError::Invalid {
+                name: "TF_SMTP_PORT",
+                ..
+            }
+        ));
     }
 
     #[test]

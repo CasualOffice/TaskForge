@@ -12,7 +12,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CONTAINER=tf-schema-verify
+# Unique per run — see the same comment in verify-queries.sh. A fixed name let
+# one run's `docker rm -f` destroy another run's database mid-gate, and the
+# victim reported it as a schema failure rather than as a collision.
+CONTAINER="tf-schema-verify-$$-${RANDOM}"
 OWNER_DSN="${TF_VERIFY_DSN:-}"
 OWNED_CONTAINER=0
 
@@ -29,7 +32,7 @@ if [[ -z "$OWNER_DSN" ]]; then
   docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
   docker run -d --name "$CONTAINER" \
     -e POSTGRES_USER=tf -e POSTGRES_PASSWORD=tf -e POSTGRES_DB=tf \
-    -p 55432:5432 postgres:16-alpine >/dev/null
+    postgres:16-alpine >/dev/null
   OWNED_CONTAINER=1
   trap 'docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true' EXIT
   # -h 127.0.0.1 is load-bearing. During initdb the entrypoint runs a temporary
@@ -39,7 +42,10 @@ if [[ -z "$OWNER_DSN" ]]; then
   # already guards this; verify-deployment.sh did not, and CI caught it as an
   # intermittent "server closed the connection unexpectedly".
   until docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U tf -q 2>/dev/null; do sleep 1; done
-  OWNER_DSN="postgres://tf:tf@127.0.0.1:55432/tf"
+  # No published host port, and so no owner DSN: every query below goes through
+  # `docker exec`, so the port only ever produced a bind conflict with a
+  # concurrent run — and a bind conflict looks nothing like a schema failure
+  # when it lands. `psql_owner` covers this branch already.
 fi
 
 # psql is not assumed to be installed on the host; route through the container

@@ -78,16 +78,25 @@ The documentation phase. All complete unless noted.
 | D-043 | **Full-text search under RLS sequentially scans at reference scale** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Accepted** — keep RLS; try a tenant-filtered projection first |
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Accepted** — ADR-031 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
-| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Accepted** — STARTTLS + certificate/hostname verification |
+| D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Consumed** — STARTTLS + certificate/hostname verification, in `casual-task-infra::mail` with C-001's reset endpoints |
 | D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** (lag half) — gauge, age of oldest actionable pending delivery, C-011. The cache-hit ratio half stays open until C-003's cache exists. |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Consumed** — yes, distinct: `role.assign` vs `role.manage`, migration 0015 |
 | D-053 | A closed event-type registry, as the permission set has | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Open** — surfaced by F-009 |
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
-| D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-006. Accept before C-002 closes |
-| D-055 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI |
-| D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
+| D-058 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI. (Was numbered D-055 by one branch while another used that number for the error-code drift; renumbered on integration.) |
+| D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — was due before C-013 and is still open; C-013 ships the grammar with `key` compiling to `FALSE` and says so |
+| D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Accepted** — `docs/04`'s five templates are materialized per workspace and its creator is granted `Owner` at `WORKSPACE` scope, in the creating transaction |
+| D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Consumed** — retired in favour of registry codes; the gate is now total |
+| D-056 | The template permission sets `docs/04`'s prose does not decide | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by D-054. Accept with C-004's golden matrix |
+| D-057 | Which permission governs workspace membership, team management **and invitations** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002, widened by C-001's invitations; Accept before C-002 is `Gated` |
+| D-059 | Notification preferences, subscriptions, quiet hours and digests — the tables `docs/29` assumes and the schema does not have | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Open** — surfaced by C-016. Accept before C-016 is `Gated` |
+| D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Consumed** — `DISPATCHER_DATABASE_URL`, a second DSN as `taskforge_dispatcher`. It was already in `deploy/docker-compose.yml` and read by nothing; now documented in [48](48-DEPLOYMENT-PROFILES.md) and wired into both binaries |
+| D-061 | **What a board column is: a permanent state or a workflow status** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [42](42-FRONTEND-ARCHITECTURE.md) | **Open** — surfaced by C-018. Shipped as the five permanent states, with the cost stated; see below |
+| D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Proposed — fail closed. Needs the user's countersign.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
+| D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
+| D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -335,7 +344,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | ID | Item | Status |
 | --- | --- | --- |
 | C-001 | Identity, sessions, MFA, invitations | `Building` |
-| C-002 | Workspace, membership, teams | Accepted |
+| C-002 | Workspace, membership, teams | `Built` |
 | C-003 | **Permission resolver + `/explain`** | `Building` |
 | C-004 | Permission matrix + escalation suites | `Building` |
 | C-005 | Cross-tenant property suite | `Building` |
@@ -343,16 +352,18 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-007 | Default workflow + transitions | `Building` |
 | C-008 | Task CRUD, assignees, tags | `Building` |
 | C-009 | Comments | Accepted |
-| C-010 | Attachment pipeline | Accepted |
+| C-010 | Attachment pipeline | `Built` |
 | C-011 | Activity + audit + **outbox** | `Building` |
 | C-012 | Filter grammar + compiler | `Building` |
-| C-013 | Search projection + full-text | Accepted |
+| C-013 | Search projection + full-text | `Built` |
 | C-014 | Cursor pagination | `Building` |
-| C-015 | SSE + fan-out | Accepted |
-| C-016 | Notifications (in-app + email) | Accepted |
-| C-017 | Extension point registry (core panels only) | Accepted |
-| C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
-| C-019 | Bundle + a11y gates wired | Accepted |
+| C-015 | SSE + fan-out | **Gated** |
+| C-016 | Notifications (in-app + email) | `Building` |
+| C-017 | Extension point registry (core panels only) | `Built` |
+| C-018 | Web shell, board, list, My Work, drawer, palette | `Building` |
+| C-019 | Bundle + a11y gates wired | `Built` |
+| C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
+| C-020 | Rate limiting at the edge | `Building` |
 
 - **D-050** was opened by a failing gate rather than by reading anything.
   Adding `sqlx` with `tls-rustls` pulled in `webpki-roots` — Mozilla's CA bundle,
@@ -713,6 +724,329 @@ API server that does not exist yet, and the remaining acceptance gates in
 [40](40-IDENTITY-AUTH-AND-SESSION.md) that are end-to-end by nature (enumeration
 timing envelope, CSRF, break-glass). SSO is **Phase 2**, not here.
 
+**C-002 is `Built`.** Eleven routes — create, list, read and rename a workspace;
+list, add and remove its members; list and create its teams; add and remove team
+members — plus the migration that makes two of them expressible. This is the row
+that unblocks the product: before it, a signed-in user had no workspace, and
+every other endpoint in Phase 1 is inside one.
+
+**The membership check was returning `false` for everyone in production.**
+`workspace_membership` carries `workspace_id`, so migration 0010 gave it a
+policy; the check that mints an `AuthContext` runs before any workspace is set,
+because that check is what decides the value. Read directly as `taskforge_app`,
+the policy hid every row. Every test passed, because a test harness connects as
+the database owner and RLS is inert for a superuser. Migration 0019 gives it the
+ADR-032 treatment the credential lookup already had — `SECURITY DEFINER`, pinned
+`search_path`, `EXECUTE` to `taskforge_app` alone, definition asserted by the
+F-015 gate — and `tests/workspace_seam.rs` reproduces the original failure as
+the application role so it cannot come back quietly.
+
+**`workspace` and `team` had no `version` column**, so the two aggregates C-002
+makes mutable were the two that could not express
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)'s "every mutable aggregate carries
+`version`" or [05](05-API-SPEC.md)'s `If-Match`. Added in the same migration
+rather than when a rename first needs it, because the direction is one-way:
+shipping `PATCH /workspaces/{id}` unconditional and requiring `If-Match` later
+is a breaking API change. A schema assertion now lists the seven aggregates that
+must carry it.
+
+**Tenant predicates are written out, not left to the policy.**
+[32](32-TENANCY-AND-ISOLATION.md) requires two independent mechanisms that must
+both fail before data crosses a boundary. The first version of the team read
+carried only `WHERE id = $1` and leaned on RLS — and the cross-tenant test
+caught it by returning `201` where it expected `404`, precisely because the
+harness runs as the owner. Every scoped statement now names `workspace_id`, and
+the two `team_membership` writes select through `team` so a team id from another
+tenant affects zero rows however it was obtained.
+
+**What C-002 does NOT do, stated plainly: membership is the only authority it
+enforces.** Any member of a workspace can rename it, add and remove members, and
+create teams. [04](04-RBAC-AND-AUTHORIZATION.md) gives Member "no config", so
+that is not the end state — but `role_assignment` is the only source of
+authority (migration 0003), no built-in role template has been authored, and the
+golden matrix that fixes each template's permission set is the C-004 work listed
+above as still missing. Inventing a mapping here would settle it in an
+implementation, which AGENTS.md forbids. **D-054** is the open question, and it
+has two halves: which permission governs membership and team management — the
+closed registry has `workspace.manage` and no `workspace.member.manage` — and
+whether workspace creation should seed the built-in role templates and grant the
+creator Owner.
+
+Two rules that *are* enforced, because both are decidable without a grant. A
+workspace cannot lose its last member: nothing can see a memberless workspace,
+so nothing can add a member back to it, and the check is made under the
+workspace row's write lock so two concurrent removals cannot each believe they
+are not the last. And a user added to a team must already be a member of the
+workspace — `team_membership` has no policy of its own, so that check is its
+tenant boundary.
+
+**Still to come before C-002 is `Gated`:** D-057, and two gates that exist as
+tests here but not yet as CI-enforced suites — the cross-tenant property test
+[32](32-TENANCY-AND-ISOLATION.md) says must be *generated from the route table*
+(C-005), and the 404-not-403 sweep across every endpoint (C-004). This PR's
+version of both is hand-written and covers this route family only.
+
+**Deferred, with the reason.** `Idempotency-Key` is not implemented on the three
+`POST` creates, though [05](05-API-SPEC.md) §Idempotency requires it: the
+`idempotency_key` table exists (migration 0008) and nothing reads or writes it,
+and building that layer is a unit of work in its own right with no tracker row.
+It is a gap in the contract, not an oversight, and it applies to every `POST`
+create Phase 1 will add.
+
+**D-055 is consumed.** Four codes this API emitted — `TF-REQ-0001`,
+`TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` — were not in
+[20](20-ERROR-CODE-REGISTRY.md), which has no `REQ` or `SRV` area at all, so the
+`docs` URL in those error bodies pointed at nothing. C-002 added the gate that
+found them and named them as exceptions; the exceptions are now gone:
+
+| was | is | why |
+| --- | --- | --- |
+| `TF-REQ-0001` | *removed* | unused, and a duplicate of `TF-VAL-0001` |
+| `TF-REQ-0004` | `TF-AZN-0008` | a new registry row: the generic form of `TF-PRJ-0001`/`TF-TSK-0001`, in `AZN` because it is a **visibility** answer |
+| `TF-SRV-0001` | `TF-SYS-0001` | "Internal error", already in the registry |
+| `TF-SRV-0003` | `TF-SYS-0002` | "Service temporarily unavailable", already in the registry |
+| `TF-AUT-0002` on every 403 | `TF-AUT-0008` / `TF-AUT-0013` | `-0002` is "Session expired". A CSRF failure and a wrong credential type are different answers leading to different actions, and one code sent both to the wrong page |
+
+Renaming a code is a public-contract change ([20](20-ERROR-CODE-REGISTRY.md)
+§Rules: append-only) — which is why this was its own change and not a line in
+C-002. It is safe here for a reason that will not be true again: **none of the
+four has ever been released.** After the first release the same drift would have
+to be carried, not corrected.
+
+The exception list is deleted rather than emptied, so the next code cannot be
+added to it, and two assertions were added beside the containment check: the
+gate is shown failing against a retired code, and every emitted code's **area**
+must be one of the fourteen the registry declares — `TF-XYZ-0001` would pass a
+substring check if the string happened to appear in prose, which is exactly the
+shape of the bug being fixed.
+
+**Password reset is in, and D-046 is `Consumed` with it.** A user who forgot
+their password had no way back into the product; `POST
+/api/v1/auth/password-reset` and `.../confirm` are that way, built to the four
+words [40](40-IDENTITY-AUTH-AND-SESSION.md) §Local authentication spends on
+them: "single-use, 1 h, hashed at rest, invalidated by password change".
+
+**Delivery is off the request path, and that is the enumeration control rather
+than a performance one.** [40](40-IDENTITY-AUTH-AND-SESSION.md) §Acceptance
+gates requires reset responses to be indistinguishable for existing and
+non-existing accounts "in body, status, and timing envelope". Body and status
+are one constant; the timing half is what an inline send destroys, because an
+SMTP handshake is tens to hundreds of milliseconds and the unknown-address
+branch skips it entirely. That gap is readable with a stopwatch and is a
+complete account oracle. The handler mints, stores and answers; a spawned task
+talks to the relay. The cost is stated: a delivery failure reaches the log, not
+the caller — which is correct here, since the caller must not learn whether an
+address was deliverable either.
+
+**Single use is a `WHERE` clause, not a read followed by a write.**
+`consume_reset_token` updates only a row that is still unused and reports
+whether *this* call was the one that burned it, so two concurrent confirmations
+both find a live token and exactly one proceeds. Checking first and updating
+second is the same code with a race in it.
+
+**A rejected password does not spend the link.** The twelve-character minimum is
+enforced by `hash_chosen_async` — the only function that can hash a chosen
+password — and it runs *before* the token is burned. Sending someone back to
+their inbox because they typed eleven characters is a reset flow people abandon.
+
+**A successful reset revokes every session, twice over.** `set_password` moves
+`changed_at`, which `live_session` already refuses sessions older than, and
+`revoke_all_sessions` — dead code until now — marks the rows so a user reading
+their session list sees them gone. One closes the door for any path that
+forgets; the other makes the closure visible.
+
+**D-046, settled in code.** `casual-task-infra::mail` is the first thing in that
+crate: a `Mailer` trait, an SMTP implementation, and a no-op that logs when
+`TF_SMTP_HOST` is empty — which [48](48-DEPLOYMENT-PROFILES.md) makes a
+supported deployment, not a degraded one. STARTTLS is the **constructor**, not a
+setting: `starttls_relay` refuses to send when the relay does not offer it, and
+verifies the certificate chain and hostname. There is no key that weakens
+either.
+
+**The licence gate shaped the dependency, exactly as it did for D-050.**
+`lettre`'s `builder` feature pulls `quoted_printable`, which is `0BSD` and not
+on `deny.toml`'s allow-list; its `rustls-tls` feature pulls `webpki-roots`,
+which is the `CDLA-Permissive-2.0` crate that turned the database TLS feature
+off. Both were answered by feature selection rather than by widening the
+allow-list: `tokio1-rustls` + `rustls-native-certs` reaches the platform trust
+store, and the twelve header lines this system's only outbound mail needs are
+composed in `casual-task-infra`. `cargo deny check licenses` passes unchanged.
+The cost is stated where the code is — no MIME encoder, so a subject must be
+ASCII and `TF_SMTP_FROM` must be a bare address, and both are **refused** rather
+than mangled.
+
+**The reset link never reaches a log and never reaches the table.** `Message`
+keeps its body private and prints `<redacted>` from `Debug` — the same mechanism
+as [46](46-OBSERVABILITY-AND-OPERATIONS.md)'s `Redacted<T>`, written in
+miniature because importing it would add a DAG edge ADR-003 makes an ADR. The
+row stores a selector and a salted hash, and an integration test reads the
+stored columns back and searches them for the token, which is
+[40](40-IDENTITY-AUTH-AND-SESSION.md)'s token-hash gate applied to reset links.
+
+Nine integration tests, against a real PostgreSQL. Every one fails without its
+code: the unknown-address response is compared byte for byte against the real
+one, a token works once and the second use is 401, an expired token is 401, a
+forged verifier against a real selector is 401, a successful reset kills a live
+session *and* the cookie stops authenticating, a short password is 400 with the
+link still working, asking twice leaves only the newest link live, and a request
+for an address with no account still writes its `auth_event` row.
+
+**Not `Gated` at the time this landed, and the reason:** the enumeration
+acceptance gate in [40](40-IDENTITY-AUTH-AND-SESSION.md) covers login, reset
+**and invite**, and invitations did not exist yet. *That third leg has since
+landed — see below.* The timing assertion here is an order-of-magnitude envelope
+rather than a statistical one, because a tight bound on a shared CI runner is a
+flaky test rather than a stronger one. The reset mail is plain text only —
+[29](29-NOTIFICATIONS-AND-DELIVERY.md) §Email content asks for "plain text and
+HTML, both readable" of *notification* mail, and an HTML part here would add a
+rendering surface without adding information to a message whose entire content
+is one URL.
+
+**Invitations are in, and the enumeration gate is closed.**
+[40](40-IDENTITY-AUTH-AND-SESSION.md) §Acceptance gates names three endpoints —
+"login, reset, and invite responses are indistinguishable for existing and
+non-existing accounts, in body, status, and timing envelope". Login closed the
+first, password reset the second, and this closes the third. All three legs now
+have a test that compares the two responses **byte for byte** plus a timing
+envelope, so the gate is a suite rather than a sentence.
+
+`docs/40` §Invitations states the rule this endpoint had to satisfy: "The
+response is identical whether or not the address has an account — only the
+delivered email differs." `POST .../invitations` therefore returns `202` with a
+**constant** body on every path: new address, existing account, already invited.
+The cost is stated and it is real — an inviter does not get the invitation id
+back and must `GET` the list to find it. It was taken because returning the
+created row makes the response a function of the state the caller is otherwise
+probing, and every future edit to that body becomes a chance to reintroduce the
+oracle. A constant cannot drift into one.
+
+**Tied to the address.** An invitation is not a bearer token for whoever holds
+the link: accepting while signed in as an account whose email differs from the
+invited address is refused, and a test forwards a link to a signed-in bystander
+to prove it. Without that, forwarding the email — which people do, in good
+faith — hands membership to the wrong person and the trail records it as the
+invitation working correctly.
+
+**Migration 0022 is the seam ADR-032 named this table for.** Accepting is the
+strongest form of the pre-workspace problem: the caller may have no account at
+all, so there is no `WorkspaceScope` and there cannot be one until the
+invitation says which workspace. This is the failure C-002 shipped and fixed in
+migration 0020 — read unscoped as `taskforge_app` the policy hides every row and
+every acceptance fails, while every test passes because the harness connects as
+the owner and RLS is inert for a superuser. Three functions, each `SECURITY
+DEFINER` with a pinned `search_path`, a fixed projection and `EXECUTE` to
+`taskforge_app` alone, all keyed on the **selector** — never a workspace id or
+an email — so none can enumerate a workspace's invitations or answer whether an
+address was invited. Single use lives in `consume_invitation`'s `WHERE` clause
+rather than in the application, so the predicate cannot be separated from the
+write.
+
+**Inviting with a role is gated; inviting is not — and neither half is
+invented.** An invitation carrying a `role_id` is a **deferred grant** at
+workspace scope, and [04](04-RBAC-AND-AUTHORIZATION.md) says `role.assign`
+"grants an existing role at workspace scope". So the endpoint requires
+`role.assign` and applies control 1 — "you cannot grant what you do not hold" —
+permission by permission against the closed registry, with an unrecognised
+permission string failing closed. Without it, inviting would hand out a role the
+inviter does not hold, which is the escalation hole D-049 split `role.assign`
+from `role.manage` to prevent.
+
+Issuing a **bare** invitation requires workspace membership and nothing more,
+exactly as adding a member directly already does, and for the same recorded
+reason: **D-054** is `Open`, the closed registry has no invitation permission,
+and [04](04-RBAC-AND-AUTHORIZATION.md) names none. Inviting is adding a member
+by another route, so it inherits that decision rather than pre-empting it.
+D-054's row is extended to say so — when it is Accepted, one mapping change
+covers membership, teams **and** invitations rather than three.
+
+Acceptance issues **no session**. It proves control of a mailbox, not of a
+password, and signing the caller in would turn a forwarded email into an
+authenticated session — the attack the address check exists to stop. An account
+created by acceptance gets no credential row; the invitee sets a password
+through the reset flow above, which is the same journey someone who forgot
+theirs takes.
+
+Fourteen integration tests, every one failing without its code. Still to come
+before C-001 is `Gated` at the time this landed: MFA enrolment and the
+break-glass path. *Both have since landed — see below.*
+
+**MFA is in: enrolment, step-up, recovery codes, replay refusal and
+break-glass.** `casual-task-identity::mfa` had the primitives from the start and
+nothing consumed them; `session.mfa_satisfied_at` and `auth_method` had been
+columns nothing wrote. This is the layer that uses all of it.
+
+**Replay refusal is a `WHERE` clause, and it is the reason `Totp::verify`
+returns a step.** RFC 6238 §5.2: a code is valid for a whole 30-second window,
+so an attacker who observes one — over a shoulder, through a phishing proxy —
+can present it inside that window. `Totp::verify` was written returning the
+matched **time step** rather than a bool precisely so a caller could refuse a
+step it had already accepted, and its doc comment said so; nothing could,
+because there was nowhere to remember one. Migration 0026 adds
+`mfa_factor.last_step`, and `mfa::accept_step` is an `UPDATE ... WHERE last_step
+IS NULL OR last_step < $2`. In the predicate, not a read-then-write: two
+requests carrying the same observed code would both pass a read-side check
+before either wrote, which is exactly the race the attacker is in.
+
+**Monotonic, not a set.** Refusing every *earlier* step as well as the exact one
+closes the window on a code captured seconds ago and presented after the clock
+ticks on. A per-step set would be bigger, need sweeping, and permit the replay
+it exists to stop.
+
+**An unconfirmed factor satisfies nothing.** `confirmed_at IS NOT NULL` lives in
+`mfa::confirmed_factor`'s query, not at its call sites, so no handler can forget
+it. Migration 0016's own comment named this failure two phases ago: "a user who
+lost the enrolment halfway would otherwise be locked out by a factor they do not
+have." A test enrols, abandons, and asserts both halves — entry is refused *and*
+a code from the unconfirmed factor does not satisfy the step-up.
+
+**Step-up is at workspace resolution, not at login** ([40](40-IDENTITY-AUTH-AND-SESSION.md)
+§Workspace-level SSO and MFA step-up). The session is user-scoped —
+`user_account` is the only table without a `workspace_id` — while enforcement is
+per workspace, so a login has no single policy to apply. The check sits in
+`WorkspaceMember`, **after** the membership check: a stranger probing workspace
+ids must get the same 404 whether or not the workspace demands MFA, or the
+refusal becomes the enumeration oracle the membership check exists to prevent. A
+test compares a real requiring workspace against an imaginary one.
+
+**The anti-lockout rule is enforced, not documented.** `docs/40`: "the enforcing
+admin must already have MFA enrolled, so nobody can lock themselves out while
+locking others in." Enabling the requirement without a confirmed factor is
+refused; disabling it carries no such check, because it can only widen access
+and demanding a factor there would be the same lockout with the opposite sign.
+
+**Break-glass is a command, not a route** (`--break-glass-clear-mfa <email>`,
+[50](50-RUNBOOKS.md) RB-08). An HTTP endpoint that removes a second factor is a
+backdoor with a URL: whatever it demanded would be either something the
+locked-out owner cannot produce, which defeats the purpose, or something an
+attacker could, which defeats the factor. There is no third option, so the
+authority is one the network cannot reach — possession of `DATABASE_URL`. It
+writes the `auth_event` **before** the delete, so the failure mode is a recorded
+attempt rather than an unrecorded removal, and it creates no session, resets no
+password and grants nothing. The integration test runs the **real binary**,
+because a documented recovery path nobody executes has rotted by the time it is
+needed and the argument parsing is the part that rots first.
+
+**The secret never reaches a log.** It is the one recoverable plaintext in the
+schema (migration 0016 says so, because TOTP recomputes codes from it). It is
+returned once, by `begin`, and wrapped in
+[46](46-OBSERVABILITY-AND-OPERATIONS.md)'s `Redacted<T>` everywhere else.
+`EnrolmentStarted` and `RecoveryCodesIssued` carry hand-written `Debug` impls
+that print `<redacted>` — the workspace lint requires a `Debug`, and a type with
+none invites the next person to add the derive.
+
+`TF-AUT-0014` was added to [20](20-ERROR-CODE-REGISTRY.md) through the process
+that document defines for adding one. `TF-AUT-0005` and `TF-AUT-0006` were
+already registered and unused, and are now what the step-up and the code refusal
+return — 401 for both, which is the registry's assignment and the right shape: a
+statement about the credential being incomplete, not about missing authority.
+
+Eleven integration tests. **Not `Gated`:** the remaining `docs/40` acceptance
+gates for C-001 are the SSO suite against a Keycloak container — SSO is Phase 2 —
+and the lockout test, which the login backoff has but no CI job asserts.
+**D-064** records the one thing `docs/40` does not decide: how long a step-up
+lasts. None is applied, and the instant is stored so a lifetime is one
+comparison away.
+
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.
 
@@ -879,8 +1213,9 @@ The step's own comment argued for "every ignored test in the crate, not one
 named file"; the same argument applies a level up, and the C-011 gate lives in a
 different crate.
 
-Still missing before `Gated`: the six consumers themselves (C-013, C-015,
-C-016), the sweep's scheduling under a leader lease, and metric *emission* —
+Still missing before `Gated`: five of the six consumers (C-013, C-016 and the
+Phase 3 pair — `sse_fanout` landed with C-015), the sweep's scheduling under a
+leader lease, and metric *emission* —
 the registry declares the series and `dispatch` computes the readings, but
 nothing exports them yet (F-009 is `Built`, not `Gated`).
 
@@ -977,6 +1312,166 @@ and was. Still missing before it can be `Gated`: the `authz_epoch` cache, the
 grant and scope ceilings, and the C-004 matrix and escalation suites that are
 its acceptance gates.
 
+**C-020 is `Building`, and it is the auth class only.** `POST /api/v1/auth/login`
+had no limit of any kind. The per-account backoff in `casual-task-identity`
+slows an attacker guessing one password repeatedly and does nothing against
+credential stuffing — one attempt each against ten thousand accounts never
+increments any single account's counter — so
+[40](40-IDENTITY-AUTH-AND-SESSION.md)'s "rate limited per account **and** per
+IP" was half true.
+
+What landed is the per-IP half of the auth class:
+[21](21-API-LIMITS-AND-QUOTAS.md)'s 10/min with a burst of 5, as a token bucket,
+over `/api/v1/auth/login`, with `TF-LIM-0001` and a `Retry-After` the constructor
+will not let a call site omit. `rate_limit_hits_total` now has something behind
+it for the first time, labelled `scope_kind` only.
+
+What did **not** land, stated so it is not mistaken for finished:
+
+- **The other five classes.** Reads, writes, search, bulk and invites are keyed
+  per `(workspace, actor)`, which needs an authenticated actor. The limiter runs
+  before authentication, so those are a separate piece of work, and
+  [21](21-API-LIMITS-AND-QUOTAS.md)'s "Rate-limit isolation" acceptance gate —
+  exhausting one workspace's bucket does not affect another's — cannot be
+  written until they exist. That gate is why this row is `Building` and not
+  `Gated`.
+- **Shared state.** The limiter is in-process, because
+  [48](48-DEPLOYMENT-PROFILES.md) Profile 1 has no Redis and must work. With more
+  than one API instance the limit is per instance and the deployment admits N
+  times the configured rate. Profile 2 already says Redis is required at ≥ 2
+  instances; nothing enforces it, and nothing warns at runtime.
+- **`D-042` stays open.** The metric carries no tenant label at all here, not
+  because the contradiction in [46](46-OBSERVABILITY-AND-OPERATIONS.md) §Domain
+  metrics was resolved, but because an endpoint whose entire purpose is that the
+  caller has no identity yet has no tenant to attribute. Attaching a bucket would
+  have meant inventing one.
+
+Two things were found while building it. The first version kept `tokens: f64` and
+refilled by `elapsed × rate`; `6 s × (10/60)` is `0.999999999999999`, so the
+token [21](21-API-LIMITS-AND-QUOTAS.md) says arrives after six seconds did not,
+and the limit was quietly stricter than the document in a way no reading of the
+code would show. It is integer duration arithmetic now, and two tests pin the
+published numbers. The second is that `client_ip` is duplicated from
+`casual-task-api/src/auth.rs`, where it is private; the copy is marked as
+temporary in both directions and the follow-up is to delete the one in `auth.rs`.
+
+**C-015 is `Gated`.** Two people on the same board now see each other's
+changes. The path is the one [25](25-EVENTS-OUTBOX-AND-AUDIT.md) was built for:
+`UnitOfWork::record` writes the event, the dispatcher claims it, and
+`sse_fanout` — the first of the six consumers to exist — publishes it to an
+in-process hub that `GET /api/v1/stream?project_id=` subscribes to.
+
+Three things are worth reading before the code:
+
+- **The event now carries its project.** Migration
+  [0023](../migrations/0023_outbox_event_project.sql) adds `outbox_event.project_id`.
+  Without it a fan-out consumer cannot answer "who may see this?" — readability
+  is decided at the project, and the alternatives were re-reading the aggregate
+  (a round trip per event, and wrong for a delete) or trusting a JSON field no
+  schema enforces. NULL means workspace-level and is **not** a wildcard: an
+  event that cannot prove which project it belongs to reaches no project stream.
+- **A constrained reader is refused, not filtered.** `GET /tasks/{id}` evaluates
+  a permission against the task in front of it; a stream has no task in front of
+  it, and an outbox event does not carry assignees or an environment. So
+  `sse::authorize` asks the permission twice — once for the best-case task and
+  once for the worst — and admits the subscriber only if they may read *every*
+  task in the project. An actor with an `assignee_is_actor` grant gets `403` and
+  polls. That is fail-closed, and it needs no list of constraint kinds to stay
+  correct as `casual-task-authz` grows.
+- **The per-subscriber queue is 64 with a stated overflow policy** (D-040): the
+  slow subscriber is disconnected and *told* it was, so it reconnects with
+  `Last-Event-ID` instead of silently carrying a hole. The first version could
+  not deliver that notice — it was sent on the channel that had just proved to
+  be full — so the client saw a clean end-of-stream and had no reason to resume.
+  One reserved slot fixes it; a test asserts the notice arrives.
+
+**Revocation now reaches an open stream.** The shortfall this row declared —
+a revoked session's stream stayed open — is closed, in the shape the declaration
+predicted: a per-subscription cancel handle plus a tick that re-asks both
+questions.
+
+- **Is the credential still live?** Every tick, through
+  `middleware::authenticate` — the same function the extractors use, because a
+  second implementation of "is this credential still live" is how one door stays
+  open after the others close.
+- **Is the authority still sufficient?** Only when `workspace.authz_epoch` has
+  moved. [04](04-RBAC-AND-AUTHORIZATION.md) defines that counter as bumped by any
+  grant, role, team or project membership change *in the same transaction as the
+  change*, so an unchanged epoch is proof — not a guess — that re-resolving would
+  give the same answer. That makes [05](05-API-SPEC.md)'s "membership is
+  revalidated on every `authz_epoch` change" literally true, and it is why the
+  expensive check can be rare.
+
+**The window is 15 seconds and the cost is stated where the constant is:** a
+session destroyed just after a tick keeps receiving events for up to that long,
+and every open stream costs one session read plus one epoch read per tick —
+roughly 133 queries a second per 1,000 streams, and ~1,330 at the hub's
+10,000-subscriber cap. That is the dominant database cost of live updates, it
+scales with connections rather than events, and the way out is a shared
+invalidation signal (`LISTEN`/`NOTIFY`) rather than a smaller number.
+
+A tick that cannot reach the database does **not** cancel: a blip would otherwise
+drop every stream in the deployment at once, which is a self-inflicted outage
+arriving exactly when the system is already unwell. It fails closed on every
+answer that is an answer.
+
+`sse_connections_active` no longer counts a stream that has been cancelled but
+not yet dropped — the release is idempotent and runs at cancellation, so the
+gauge does not read high during precisely the incident an operator is watching it
+for.
+
+**`Last-Event-ID` replay and the 100 ms window are now built**, which was the
+last of what [05](05-API-SPEC.md) §Live updates specifies.
+
+Replay matters more than it looks. Every "reconnect with `Last-Event-ID`"
+message this feature emits — the lag policy, the revocation notice, a dropped
+socket — was advice that did not work, because nothing stood behind the header.
+A recovery instruction that does not recover is worse than none, because the
+client stops looking. It is bounded to 5 minutes / 1,000 events per
+[05](05-API-SPEC.md), **and to 1,024 topics**, which that document does not
+mention: a per-project history is a map a user can grow by opening projects, and
+1,000 events each is only bounded memory if the number of histories is bounded
+too. All three overflow into the same answer — "you lost events, refetch" —
+because a client past the window must never be handed the tail of a history and
+left to assume it was the whole of it.
+
+Coalescing collapses per **(aggregate, event type)** rather than per aggregate.
+Narrower than [05](05-API-SPEC.md)'s wording, deliberately: collapsing
+`task.created` into the `task.updated` 20 ms behind it hands a subscriber an
+update for a task it has never heard of, which is
+[25](25-EVENTS-OUTBOX-AND-AUDIT.md)'s ordering guarantee undone at the last hop.
+A drag emits one event type repeatedly, so the case that document is about is
+fully covered. Flagged rather than settled silently — if the intent was to
+collapse across types, one line changes it.
+
+**C-015 is `Gated`.** The gap this row declared — nothing drove
+`GET /api/v1/stream` over HTTP and read frames off the body — is closed by
+`crates/casual-task-api/tests/sse_stream.rs`, which CI runs with every other
+Docker-backed suite. It asserts the *assembly* the per-mechanism tests could not
+see:
+
+- a subscriber receives a live frame, carrying the event's own id as `id:` —
+  which is what a client sends back as `Last-Event-ID`;
+- a forty-event drag on one task arrives as **one** frame with the final
+  payload, and no second frame follows;
+- a reconnect with `Last-Event-ID` replays exactly what was missed, in order,
+  **before** any live frame, and the stream then keeps delivering;
+- a stream is fed its own project and nothing else — asserted against both a
+  same-project-different-workspace topic and a same-workspace-different-project
+  one, which is the pair a comparison that dropped either half would leak
+  through.
+
+Each of those is a bounded wait on bytes rather than a status code, because the
+interesting half of "one frame" is the frame that must **not** arrive. Two of the
+four carry a counterweight publish afterwards, so an assertion about silence
+cannot pass against a stream that is simply dead.
+
+The fixture shares **one** `AppState` between the router and the publisher. Every
+other test file in this crate builds a router per caller, which here would mean
+publishing into a hub nobody is subscribed to and asserting that no frames
+arrive — a false pass, and the reason that choice is commented at the fixture
+rather than left to be re-derived.
+
 **C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
 `Accepted` requires — "design final **and** its ADRs Accepted". It carries two
 schema changes into C-001's first migration: `api_token.token_hash` becomes
@@ -1057,20 +1552,630 @@ since migration 0008; and lexicographic board ranks (ADR-013), append-only, with
 the minimum character reserved so a midpoint always exists for the drag path
 that arrives with C-018.
 
-**Not in C-008 yet:** update, delete, transitions, assignees, tags,
-dependencies, and the filter grammar on `GET /tasks` beyond `project_id`.
-`GET /tasks` compiles through the C-012 compiler, so adding the grammar is
-supplying a richer AST rather than a second query path.
+**The rest of C-008 is in: update, delete, transitions, assignees and tags.**
+A task could be created and then never changed; now it is a work item.
 
-**One pre-existing divergence, reported rather than fixed.** `ApiError`'s
+`PATCH` and `DELETE` require `If-Match` (428 absent, 409 stale, and the `409`
+body carries the current representation so the loser can merge). `PATCH`
+**declares** `status_id` and `state` in order to refuse them with
+`TF-WFL-0001`: leaving them out would make `deny_unknown_fields` call them
+fields nobody has heard of, when the truth is that they exist and have their own
+door ([23](23-WORKFLOW-AND-STATE-MACHINE.md) §The transition command).
+
+**The transition handler does not re-derive the state machine.** Steps 1–3 of
+[23](23-WORKFLOW-AND-STATE-MACHINE.md) §Validation order are the handler's
+(readable → 404, version → 409, `task.transition` → 403); steps 4–7 are
+`casual-task-workflow`'s `validate`, which was already implemented and tested
+and already returns the **first** failure in the fixed order. The handler
+supplies the facts — the actor's held permissions on the project, the blockers
+they can see — and maps each `Rejection` onto its documented code. The order is
+covered by a test that violates several rules at once per request and asserts
+which one is reported; a handler checking permission before version, or version
+before visibility, passes every single-violation test and fails that one.
+
+Two behaviours from [23](23-WORKFLOW-AND-STATE-MACHINE.md) that are easy to miss
+and are both tested: a move to the status the task already occupies is a `200`
+no-op that writes **no** event, which is what makes retries safe without an
+idempotency key; and leaving a terminal state writes `task.reopened` rather than
+`task.status.changed`, because "how often does work come back?" cannot be
+answered from a generic status-change event.
+
+**Step 8 — plugin `validation.transition` hooks — is not implemented**, and
+nothing fakes it. It needs the plugin runtime (Phase 3,
+[34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)).
+
+**`fields` validates and is then discarded.** It satisfies step 6, and storing
+the values needs custom-field value storage — **D-033**, deliberately deferred
+to before Phase 3. The default workflow requires no fields, so no path in the
+product reaches the gap today; a custom workflow that required one would
+validate correctly and record nothing.
+
+**`TF-TSK-0005` is read as visibility, not as a membership row.** "Assignee is
+not a member of the project" cannot mean `project_membership` for a
+`WORKSPACE`-visible project — the default — because such projects usually have
+no membership rows at all, so the rule would be unsatisfiable in the common
+case. What is enforced is [04](04-RBAC-AND-AUTHORIZATION.md) §Visibility's own
+predicate: **work is never assigned to someone who cannot see it**. A stranger,
+another tenant's member, and a colleague who cannot open the project are refused
+identically.
+
+**Tags are applied by id, not created by name.** Authoring the tag vocabulary is
+`tag.manage` and belongs to a tags endpoint that does not exist yet; accepting a
+name here would make every typo a new tag. Applying an existing tag is a change
+to the *task*, so the permission is `task.update` rather than `tag.manage`.
+
+**Not in C-008 yet:** dependencies (`POST /tasks/{id}/dependencies`, which needs
+the cycle check under an advisory lock from
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)), bulk operations, and the filter grammar
+on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
+compiler, so adding the grammar is supplying a richer AST rather than a second
+query path.
+
+**Still to come before C-008 is `Gated`:** the derived-state property test
+[23](23-WORKFLOW-AND-STATE-MACHINE.md) §Acceptance gates names — a property test
+over *random* transitions asserting `task.state == status.state` always. The
+invariant is covered here by example rather than by generation, and it is
+asserted from the stored row rather than from the response so a handler that
+returned the right JSON and wrote the wrong column would fail.
+
+**One pre-existing divergence, reported rather than fixed here.** `ApiError`'s
 original codes — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` —
 use areas that [20](20-ERROR-CODE-REGISTRY.md) does not define, and
-`ApiError::forbidden` uses `TF-AUT-0002`, which the registry assigns to "session
+`ApiError::forbidden` used `TF-AUT-0002`, which the registry assigns to "session
 expired". Every code added by C-006 and C-008 is copied from the registry, so
-the two sets now disagree in one direction only. Fixing the originals changes
-responses C-001 already ships and is a separate change; there is also no gate
-asserting that an emitted code exists in the registry, which is why it was
-possible.
+the two sets disagreed in one direction only. **Corrected under D-055** below,
+together with the gate whose absence allowed it.
+
+**D-054 is Accepted, and the product is usable end to end.** It was not a design
+question at heart; it was a hole that only looked like one. `role_assignment` is
+the only source of authority in the system (migration 0003: "No permission is
+granted anywhere else — not by a boolean column, not by an `is_admin` flag, and
+not by project membership"), and **nothing created one**. A person could sign up,
+create a workspace, create a project in it, and be refused every write to their
+own tenant with `403 TF-AZN-0001`, permanently — because the only way to get a
+grant is to hold one.
+
+The resolution is `docs/04` §Built-in role templates, executed rather than
+invented:
+
+- The five templates are materialized into each workspace when it is created.
+  They are **per workspace, not seeded by a migration**, and that is forced by
+  the schema rather than chosen: `role.workspace_id` is `NOT NULL REFERENCES
+  workspace(id)` and the table carries a row-level-security policy keyed on it,
+  so a global template row has no workspace to belong to and would be invisible
+  to everyone under the policy.
+- The creator is granted **Owner at `WORKSPACE` scope**, in the same transaction
+  as the workspace row, its membership row, and the `UnitOfWork::record` history
+  (ADR-006). The grant is in the audit record's `after`, which is `docs/04`
+  control 7.
+
+**Two of the five sets are literal; three are judgement calls, and they are
+listed rather than buried.** `docs/04` gives each template a one-line *shape*,
+not a set of keys. Owner is "Everything" — asserted against
+`permission::ALL` itself, so a permission added to the closed registry is
+carried by Owner without anyone remembering. Administrator is that minus
+`workspace.delete` and `workspace.owner`, asserted as a *difference* for the
+same reason. Project Manager, Member and Guest are prose, and the cells prose
+does not decide are **withheld** — AGENTS.md priority 1, and widening a template
+later is additive where narrowing one takes away authority somebody is using.
+They are data in `template::UNDECIDED`, with a test asserting each names a real
+template and a real key, and another asserting every one of them actually fails
+closed. **D-056**, settled by C-004's golden matrix.
+
+The sharpest is Member and `task.close`: `docs/04` says "transition tasks", and
+`docs/23` makes closing require `task.close` **in addition to** a valid edge — so
+a Member who may transition still cannot finish work. Nothing blocks on it
+today, because no endpoint assigns a role yet.
+
+**The state is made unreachable in two directions, by two different
+mechanisms.**
+
+- *Creation* — in the type system. `workspace::insert` no longer returns a
+  workspace; it returns an `Unowned` whose inner record is `pub(crate)`, and the
+  only thing that opens it is `role::bootstrap`. A handler that creates a
+  workspace and skips the grant has nothing to build a response from and **does
+  not compile**.
+- *Removal* — in the database. Migration 0021 implements `docs/04` control 4
+  ("the final grant carrying `workspace.owner` cannot be removed or downgraded.
+  Enforced as a database constraint check inside the transaction"), as a
+  `BEFORE DELETE OR UPDATE` trigger on `role_assignment`. It covers the `CASCADE`
+  from `role` too, and it refuses a *downgrade* — moving the last owner onto a
+  role without `workspace.owner` — while still permitting a *transfer*, which is
+  neither removal nor downgrade and which a naive rule would have made
+  impossible.
+
+**The symmetric database constraint was considered and not taken, deliberately.**
+"No `workspace` row exists without an owner grant" would be a `DEFERRABLE
+INITIALLY DEFERRED` constraint trigger firing at `COMMIT`. Nine call sites insert
+workspaces directly — the `EXPLAIN` corpus's 100 workspaces, the 2M-row reference
+corpus, the schema gate's own fixtures, four persistence tests — and every one
+would have to mint an owner grant. That changes the corpus the
+`explain-no-seq-scan` gate plans against, and that gate's value comes from the
+corpus being stable. Recorded in migration 0021 so the stronger option stays
+visible rather than being forgotten.
+
+**Ten tests, and each fails without the code it covers.** Seven in
+`casual-task-persistence` and three through the HTTP route. The persistence ones
+hand the written rows to `casual_task_authz::allows` rather than counting them:
+rows in a table are not authority, and the claim being made is that the resolver
+accepts them. They assert the owner may exercise every permission in the
+registry at workspace *and* project scope (the scope chain is what carries the
+grant down), that a stranger gets nothing, and that a grant in one workspace does
+not reach another.
+
+**C-013 is `Built`.** A user can now find a task by typing words from its
+title. Three parts: the projection that makes it possible, the query that reads
+it, and the grammar that reaches the rest of the closed field set.
+
+**The projection is an outbox consumer, and it recomputes rather than patches.**
+[26](26-SEARCH-INDEXING-AND-QUERY.md) puts the refresh after commit so a task
+write never waits on GIN maintenance, whose pending-list flushes are bursty —
+the latency spike a drag-and-drop board must not have. The cost is the one that
+document already states: search is eventually consistent, structured filters are
+not. Recomputation is what makes it safe behind at-least-once delivery: deliver
+twice, late, or out of order and the row still converges, which a delta would
+not. Asserted by delivering the same event three times and counting rows.
+
+It carries **its own pool as `taskforge_app`**. The dispatch loop runs as
+`taskforge_dispatcher`, which bypasses row-level security and is granted on the
+two outbox tables and nothing else (migration 0014) — granting it the task
+tables would hand a `BYPASSRLS` role every tenant's task text. `Claimed` gained
+`workspace_id` so a consumer can rebuild its scope through
+`WorkspaceScope::for_job`; every consumer will need it and none can derive it.
+
+**The URL grammar lives in `casual-task-search`, beside the AST.**
+[27](27-FILTER-AND-SAVED-VIEW-DSL.md) §Compilation draws one pipeline with two
+entry points meeting at the same AST, and a handler that re-derived what `<`
+means would be the second one. `<` on a date is `before`, on `priority` it is
+`lt`, and the field's own type decides. `status`, `assignee`, `priority`,
+`state`, `type`, dates and tags all reach the compiler now; `project_id` is kept
+as an alias for the grammar's `project` because it shipped in C-006.
+
+**C-017 is `Built`.** The extension point registry ships in Phase 1 for the
+reason [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) opens with: a seam only
+plugins use is a seam nobody has tested, "and we find that out in Phase 1, not
+Phase 3". So the core's own drawer panels, card badges, project tabs, palette
+commands and settings sections are registered as ordinary `Provider::Core`
+contributions and travel the same path a vendor's will. A test asserts every
+frontend point has at least one core contribution, so a point that nothing
+exercises fails the build rather than waiting for the first third party to find
+it.
+
+**The closed set is checked against the design record in both directions.**
+Adding a row to either of [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)'s two
+tables is an ADR trigger (ADR-009), and a table that drifts from the code is
+worse than no table — it is a contract two teams read differently. The tables
+are parsed at test time: a variant with no documented row fails, and a
+documented row with no variant fails. The surface (backend or frontend) is read
+from *which* table a point is in rather than restated in code, so a point that
+moves between them cannot keep the old surface.
+
+**What it deliberately does not ship is the payload.** A panel's load URL, an
+action's handler — none of it. Phase 1 has no third party to learn the shape
+from, and a compatibility contract guessed a phase early is worse than one
+written a phase late. What is fixed now is the part later phases cannot change:
+who contributed, to which point, under what name, and what the host does when
+the contribution fails.
+
+**ADR-017's fail-open default is a type, not a convention.** `Bounds::for_point`
+is the only constructor, so no call site can pick its own timeout and drift from
+the 500 ms the document fixes; opting a plugin into fail-closed is spelled
+`failing_closed_at_the_cost_of_blocking_work`, because the cost belongs at the
+call site and not in a comment. A test asserts every point defaults to open —
+if that ever inverts, one broken integration stops every team.
+
+**Registration is build-once-then-frozen.** `RegistryBuilder::build` consumes
+the builder, so there is no path from a live `Registry` back to a mutable one: a
+contribution cannot appear halfway through a render, and nothing holds a `&mut`
+across an `await`. Per point the registry is bounded at 64, and the overflow
+policy is named per [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) §D-040 — the
+newcomer is refused, because dropping an existing contribution to make room
+silently disables a feature a workspace was relying on. A duplicate key is
+refused for the same reason rather than overwriting.
+
+**Still to come before C-017 is `Gated`:** the frontend half. C-018 renders the
+drawer's panels and the palette's entries *from* this registry rather than from
+a hard-coded list; until it does, the core exercises the contract in Rust only,
+which proves the shape but not the rendering.
+
+### D-043: not closed, and the honest answer
+
+**The accepted direction was already tried, and it is not sufficient.** D-043
+says "keep RLS; try a tenant-filtered projection first". The query C-013 emits
+*is* that shape — `s.workspace_id` and `s.project_id = ANY(...)` applied to
+`task_search` itself so `task_search_scope_ix` can combine with
+`task_search_gin` — and it is the same shape
+`tests/explain/queries/11` has been probing since Phase 0, where the measurement
+that opened D-043 was taken.
+
+The blocker is not the predicate. Under row-level security `@@` resolves to
+`ts_match_vq`, which is not `LEAKPROOF`, so PostgreSQL will not evaluate it
+before the row-security qual and **cannot use the GIN index as an index qual at
+all**. No arrangement of tenant predicates changes that; the previously recorded
+measurement is `Parallel Seq Scan` as `taskforge_app` against `Bitmap Index Scan`
+as the owner, on the same 2M-row corpus, with RLS the only difference.
+
+So, plainly: **`GET /api/v1/tasks?q=` is index-served at the gate's corpus and is
+not expected to be at reference scale.** The `explain-no-seq-scan` job will pass
+and does not prove the rule holds. Every remaining option — a `LEAKPROOF`
+wrapper, a `SECURITY DEFINER` projection reader, dropping RLS on `task_search`
+in favour of an explicit predicate, or ADR-014's external engine — trades
+tenant-isolation guarantees against query plans, which is what D-043 already
+identifies as an ADR decision touching ADR-011, ADR-014 and ADR-020. C-013 does
+not settle it in an implementation.
+
+**Still to come before C-013 is `Gated`:** D-043, and three of
+[26](26-SEARCH-INDEXING-AND-QUERY.md) §Acceptance gates — the cursor property
+test over random interleavings, the latency gate (which needs the reference
+corpus and a reference machine, F-007), and an `EXPLAIN` case per sortable field
+rather than per endpoint. The permission-filter gate that document names **is**
+here: a task whose text matches harder than the visible one, in a project the
+caller cannot see, and the assertion is that it never appears.
+
+**Gaps this opened, reported rather than quietly absorbed:**
+
+- **Symbol resolution uses UTC.** [27](27-FILTER-AND-SAVED-VIEW-DSL.md)
+  §Timezone requires the actor's — "`due before @today` must mean the same thing
+  to someone in Auckland and someone in Los Angeles" — and `user_account` has
+  nowhere to store one. `resolve::Context` demands an offset, so UTC is passed
+  and named here rather than a header being invented.
+- **One sort key only.** [27](27-FILTER-AND-SAVED-VIEW-DSL.md) documents
+  `sort=-due_at,key`; the cursor carries one key plus the id tiebreaker and the
+  compiler emits one keyset comparison. A second key is **refused**, not
+  silently dropped — honouring only the first would make the order
+  non-deterministic across pages, which is the bug the mandatory tiebreaker
+  exists to prevent.
+- **`sort=status.position` cannot execute.** It maps to `ws.position`, which has
+  no `FROM` entry; it needs a join to `workflow_status`. Pre-existing, now
+  reachable from a URL, and refused at the edge.
+- **No `IN`-list bound.** [26](26-SEARCH-INDEXING-AND-QUERY.md) §Query limits
+  caps it at 100 and `casual-task-search::validate` counts clauses and depth
+  only, so `?state=` with ten thousand values is accepted. Clause count, depth,
+  page size and search-term length are all enforced.
+- **An unknown symbol reports `TF-QRY-0003`.** [20](20-ERROR-CODE-REGISTRY.md)
+  has no code for it; the operator/value code is the closest true statement, and
+  a new one should be registered rather than guessed at here.
+
+**One error code moved, and it is a contract change.** Before the grammar was
+wired, every unknown query parameter on `GET /tasks` went through a generic
+`reject_unknown` and reported `TF-VAL-0002`. The query string of that endpoint is
+now the grammar plus its reserved pagination keys, so an unrecognised key is an
+unknown *filter field* — `TF-QRY-0001`, which is what
+[26](26-SEARCH-INDEXING-AND-QUERY.md) requires for an unlisted field. The status
+stays `400`, so a client switching on status is unaffected; a client switching on
+the code sees a different one. It was caught by a C-006 test that asserted the
+old code, and it is written down here rather than absorbed into that test
+silently.
+
+**One pre-existing defect fixed in passing.** `archived` is `BOOLEAN` in the
+grammar and a nullable timestamp in the schema, and compiled to
+`'true'::timestamptz` — a filter that returned a 500 rather than an answer. It
+now compares `archived_at IS NOT NULL`. It was unreachable before C-013 because
+no caller could express it.
+**C-016 is `Building`. Notifications exist, and the worker still cannot be
+started.**
+
+Before this, a task could be assigned, commented on and transitioned and nobody
+was ever told. Now the fan-out turns an outbox event into an in-app record and,
+for ranks 1–3, an email — through the `Mailer` C-001 already built.
+
+Four modules, four reasons to change, none over 300 lines:
+`casual-task-notification::{reason, audience, email}` are pure — no I/O, no SQL,
+no clock — and `casual-task-persistence::{notification, audience}` holds every
+statement. The consumer in `casual-task-worker::notify` composes them.
+
+**Two schema gaps had to be closed before the headline rule was even
+expressible.** `docs/29` rule 1 is "you are never notified about your own
+action", and `outbox_event` carried **no actor** — so a consumer could not tell
+who caused an event, and the one rule every tracker is complained about for
+getting wrong was the one the schema made impossible. `docs/25`'s event envelope
+had specified `actor` all along; migration 0024 stores it. `Claimed` carries it alongside the `workspace_id` and `project_id` C-015
+added, because the dispatcher's role is granted on the two outbox tables and
+nothing else (migration 0014, deliberately) and a consumer that reads assignees
+needs a scope of its own.
+
+**Two bugs in the mail path, both found by composing the first subject that
+carries customer content:**
+
+- `format_rfc5322` **refused** any non-ASCII subject, with a note that an RFC
+  2047 encoder was a dependency the module deliberately did without. Correct
+  while the only mail was a password reset with a fixed English subject. With
+  `[WR-125] Task title`, every notification about a task titled `Café` would
+  have failed to send, silently, per tenant. `casual-task-infra::header` is that
+  encoder — 30 lines and no dependency, because widening `deny.toml` is the
+  decision D-050 already refused.
+- `Message`'s `Debug` printed the **subject**, and `LoggingMailer` logged it.
+  Both were right until the subject became a task title, which `docs/46` forbids
+  in a log line at any level. The file's own comment had predicted this — "when
+  one is, the subject becomes tenant content and this impl is where that is
+  noticed" — and this is that change.
+
+**What is not in, and why it is a table rather than effort.** Preferences,
+subscriptions (`SUBSCRIBED` and one-click unsubscribe), quiet hours and digests
+all need tables `docs/29` assumes and migration 0008 does not provide. The
+documented defaults are therefore the *whole* policy rather than its fallback —
+narrower than the document, in the safe direction. **D-059**.
+
+**C-016 cannot be `Gated` until the worker runs it.** `dispatch::claim` requires
+a `BYPASSRLS` role and the consumer's reads require `taskforge_app` — two DSNs —
+and `docs/48` names one `DATABASE_URL`. So `main` still starts nothing, and says
+which decision is missing rather than restart-looping against a `verify` that
+would refuse the application role. **D-060**. Ten integration tests drive the
+consumer directly, which is exactly how the loop calls it; what is untested is
+the process wiring, not the fan-out.
+
+**One corpus defect, not fixed here.** `tests/explain/seed.sql` writes
+`reason = 'ASSIGNEE'`, which is not one of the six reasons `docs/29` defines —
+`ASSIGNED` is. It affects only the planning corpus, and changing seed data
+changes the plans the `explain-no-seq-scan` gate compares against, so it belongs
+in a change that can re-baseline that gate.
+
+**D-060 is consumed, and the dispatch loop runs for the first time outside a
+test.** The answer was already in the repository: `deploy/docker-compose.yml` has
+set `DISPATCHER_DATABASE_URL` since it was written, and **nothing read it** — the
+same failure mode `StorageConfig` was added for, which
+[48](48-DEPLOYMENT-PROFILES.md) calls out as "configuration that is documented
+and unread is worse than undocumented: it reports success". So no variable was
+invented; the existing one is now declared in [48](48-DEPLOYMENT-PROFILES.md)
+§Configuration and read by `Config`.
+
+Two DSNs, because the two roles are deliberately different and neither can do the
+other's job: `dispatch::claim` polls across every tenant and must bypass
+row-level security (migration 0014, and `DispatcherRole::verify` refuses anything
+else), while the consumers read tenant data and must **not**. A notification
+fan-out reading assignees as the dispatcher would be reading them with RLS
+switched off.
+
+Both binaries now start it:
+
+- **The API process** (Profile 1, `TF_WORKER_EMBEDDED` default true) spawns one
+  loop per consumer on a small pool of its own, after verifying the role. Every
+  refusal to start the loop is logged with what is off and what it costs —
+  "notifications and live updates will not be delivered" — rather than leaving an
+  operator to infer it from silence.
+- **The worker binary** (Profile 2) requires both DSNs and **refuses to start**
+  without them, per [48](48-DEPLOYMENT-PROFILES.md): "a misconfigured deployment
+  must not start". It previously started successfully and did nothing.
+
+**One thing that profile still cannot do, said plainly:** run SSE fan-out
+usefully. A separate worker publishes into its own in-process hub, and the
+browsers are connected to the API process. [48](48-DEPLOYMENT-PROFILES.md)
+already requires Redis at more than one process for exactly this reason; the
+worker now warns at startup rather than appearing to work.
+### C-018 and C-019: the web client, and what it cannot do yet
+**C-018 is `Building`. C-019 is `Built`.** `webapp/` stops being a bundle-floor
+harness and becomes the product: sign-in, a workspace switcher, a board, a list,
+My Work, a task drawer, and a command palette — all against the real API, with
+no mock and no fixture anywhere in `src/` outside `src/floor/`.
+**One transport carries every obligation.** `docs/05` §Authentication and
+`docs/40` put four requirements on a browser call — the session cookie, the
+double-submit CSRF token, the workspace header, and `If-Match`/`Idempotency-Key`
+on writes. All four live in `api/http.ts`, and no view calls `fetch`. That is a
+mechanism rather than a rule: a call site *cannot* forget the CSRF header
+because it never sets one.
+**Refusals are rendered from the registry, never from a body.** `docs/20`'s
+codes map to a sentence and a remedy in `api/problem.ts`, and a test asserts the
+server's own message never reaches the screen. `ApiError` also records whether a
+response carried the error envelope at all — which is how a 404 from the router
+(the route is not served) is told apart from a 404 from the application (absent
+or invisible). The two look identical on the wire and mean opposite things to a
+client.
+**Affordances come from `/permissions/effective`, not from a role check.** A
+`conditional` grant counts as permission: only the server can evaluate a
+constraint for a given task, and hiding it would hide the reporter's own edit on
+the task they reported — the exact case the constraint exists to allow. Hiding a
+control stays presentation; the server re-authorizes every mutation.
+**The drawer's panels and the palette's entries come from the extension point
+registry** (`docs/34`, C-017), so the core's own contributions go through the
+seam a plugin will. A registered contribution with nothing behind it renders
+with its declared title and the reason rather than being skipped — skipping is
+what makes a registry decorative.
+**The registry table is mirrored in TypeScript, and that is a known defect.**
+`crates/casual-task-plugin-contract/src/core_contributions.rs` has no HTTP
+surface, so a browser cannot read it. `webapp/src/extensions/coreContributions.ts`
+copies the rows and says so at the top. The two will drift the first time
+someone edits one side; the fix is C-017's remaining half, an endpoint.
+#### D-061: a board column is a permanent state, and the cost of that
+`docs/23` fixes five permanent states, and every `TaskView` carries the one it is
+in, derived from its status in the same statement so the two cannot disagree.
+Statuses are workspace-authored, and today a browser cannot read them at all —
+see below. Columns keyed on the closed set are the only grouping that is correct
+for every workspace *and* stable when the endpoint lands, so status columns
+become a refinement rather than a rewrite.
+**The losing side, stated:** a workspace with three statuses inside `ACTIVE` sees
+all three in one column, and the board cannot show the distinction its author
+created. That is real, and it is why the decision is `Open` rather than settled —
+it should be re-decided once statuses are readable.
+#### What blocks drag-and-drop, and it is not the client
+`GET /api/v1/workflows/{id}` is specified in [05](05-API-SPEC.md) §Other
+resources and **no route is registered for it**. `POST /tasks/{id}/transitions`
+requires a `to_status_id`, and there is no other way for a browser to learn one:
+`TaskView` carries the current `status_id` and the derived `state`, never the
+workflow's status set.
+So cards render and cannot be dragged, and the board says exactly that on screen
+rather than sending a move that would be refused with a code the user cannot act
+on. `webapp/src/api/workflow.ts` is already written against the documented
+contract, so registering the route makes the board work with **no client
+change**. It is C-007's remaining half.
+#### The gaps C-018 could not close, each with its owner
+| Not built | Why | Row |
+| --- | --- | --- |
+| Drag-and-drop on the board | `GET /api/v1/workflows/{id}` is not served | C-007 |
+| A task's assignees, anywhere | `TaskView` has no `assignees` field and there is no `GET /tasks/{id}/assignees` — the set is write-only, though `assignee=@me` filters correctly | C-008 |
+| Relations and dependencies | `POST /tasks/{id}/dependencies` is specified and not routed | C-008 |
+| Activity in the drawer | Every change writes an activity record already; `GET /tasks/{id}/activity` is not served | C-011 |
+| Attachments in the drawer | The pipeline exists in `casual-task-attachment`; no route is registered | C-010 |
+| Watched tasks in My Work | `watcher` is not in the filter grammar's closed field set and no endpoint exposes watchers | C-008 |
+| Live updates | The SSE endpoint exists; the client does not subscribe, and `docs/42`'s `BroadcastChannel` sharing and `Last-Event-ID` replay are unwritten | C-015 |
+| Permission invalidation within a second | `docs/42` invalidates the permission set on an `authz_epoch` bump over SSE; the stream carries no such event, so the window is the five-minute stale time | C-003 |
+| Saved views, the filter builder, bulk operations, the rich-text editor, offline drafts and the retry queue | Not started | C-018 |
+| The design system | AGENTS.md forbids depending on `../design-system`, and `docs/42` requires re-measuring the budget when it is wired in. Tokens are declared locally under the design system's own names, so adopting it is a changed import in one file | C-018 |
+**C-019 is `Built`, not `Gated`, and the reason is contrast.** Two layers run on
+every push: `eslint` with `jsx-a11y` over the source, and `axe-core` over
+rendered DOM under jsdom. jsdom has no layout, so axe's `color-contrast` rule
+cannot run — it is disabled explicitly in the helper rather than left to report
+"incomplete", which fails nothing and appears in no report. `docs/42` requires
+4.5:1 verified in light and dark; that verification is **not** in this suite, nor
+is focus order, nor anything measured. Those need the Playwright row
+[15](15-CI-AND-RELEASE-GATES.md) still lists as open. A suite called "the
+accessibility gate" that silently skips contrast is worse than no suite, because
+it retires the question.
+A third gate runs beside them and is not about accessibility: `boot.test.tsx`
+mounts every route. `tsc` proves the types agree and proves nothing about a
+provider in the wrong order or an import cycle — both of which are a blank page
+that passes `typecheck` and `build`. `scripts/dev-up.sh` exists because "the
+tests pass" and "you can open it" turned out to be different claims; this is the
+cheap half of that lesson.
+**C-010 is `Built`.** The whole handshake `docs/28` draws: pre-sign, direct
+upload, commit, and a download that refuses anything the scanner has not
+cleared.
+
+**Files never pass through the API process.** `ObjectStore` has no method that
+takes a body — the only way to write an object is for the client to `PUT` the
+URL `presign_put` mints — and the only method that returns content returns a
+bounded **prefix**, for the magic-byte sniff. A test asserts the absence of a
+`put`, because the guarantee is the absence.
+
+**The type is decided by the bytes, twice over.** `sniff` takes no declared type
+at all, so it cannot be called with the client's; markup is checked *before*
+signatures, because a GIF/HTML polyglot must be a refusal and a signature-first
+sniffer stores it as an image; and commit separately rejects a declaration that
+contradicts the bytes (`TF-ATT-0003`), which is the case `docs/28` §Validation
+names. Anything unrecognised is `application/octet-stream`, which is inert.
+
+**The invisibility invariant is structural, not remembered.** Every
+client-facing read in the repository writes `committed_at IS NOT NULL`; the one
+read that must see an uncommitted row is called `find_for_commit`; and
+`mark_scanned` is the only statement that assigns `committed_at`. Two unit tests
+count those occurrences in the source, because the invariant is a property of
+*how many places* can write it.
+
+**Two documented-but-unread configuration keys are now read.**
+`TF_STORAGE_BACKEND` and `TF_STORAGE_PATH` appear in
+[48](48-DEPLOYMENT-PROFILES.md), [52](52-DEPLOYMENT-GUIDE.md) and
+`deploy/docker-compose.yml`, and nothing consumed them — so a deployment could
+set `TF_STORAGE_BACKEND=s3`, have it accepted, and get local disk. `s3` is not
+built, so it now refuses to start rather than pretending.
+
+### D-062: the scan default, proposed and not settled
+
+`docs/28` says "ClamAV by default; pluggable"; [48](48-DEPLOYMENT-PROFILES.md)
+lists `scan` among the worker's jobs and gives it **no configuration key** and no
+statement about a deployment without one. That is a real gap with two opposite
+answers, and both are bad in different directions:
+
+- **Fail closed** — no scanner means the attachment stays `PENDING` and is never
+  downloadable. Uploads work and downloads do not, out of the box.
+- **Fail open** — mark it `CLEAN` and serve it. The product's own stated
+  invariant, that nothing is downloadable before it is scanned, becomes untrue
+  and nothing says so.
+
+C-010 implements **fail closed**, because it is the only default that does not
+quietly make a security claim false, and because `AGENTS.md` puts correctness
+above UX. It is recorded as **D-062 and flagged as needing the user's
+countersign** rather than treated as settled: the cost — a single-node
+deployment where every download 409s until an operator configures a scanner — is
+a product decision, not an implementation detail.
+
+The seam is in place: `guard::scanned_clean` matches on the verdict with no
+catch-all arm, so a fifth scan state cannot be added without deciding whether it
+may be served, and an unrecognised verdict is refused.
+
+**Still to come before C-010 is `Gated`:** the scan worker itself (the consumer
+that turns `attachment.uploaded` into a verdict), the orphan sweeper
+`docs/28` §Orphan and lifecycle cleanup requires in **both** directions, the S3
+backend, inline preview, download auditing, and the per-workspace size and
+storage quota — `size_limit` takes the configured value and there is nowhere yet
+to configure one. Of `docs/28` §Acceptance gates, four are implemented
+(type-confusion, invisibility, cross-tenant, and the download-before-scan half
+of the infected-file gate); the streaming test needs a 2 GB fixture, the
+EICAR test needs the scanner, the orphan test needs the sweeper, and the
+separate-origin test needs a browser.
+
+**One gap in the checksum check, stated.** `docs/28` §Validation requires the
+client-supplied SHA-256 to match at commit. C-010 validates its *shape* and
+compares the **size**, and does not recompute the digest: doing so means reading
+the whole object, and `ObjectStore` deliberately exposes only a bounded prefix.
+Verifying it needs either a digest from the storage backend — S3 returns one,
+the filesystem backend would have to compute it during the upload handler — or a
+streaming read outside the API process. Tracked here rather than left as a
+passing test that checks nothing.
+
+**The task drawer's two empty panels are filled.** Both were the same shape of
+gap: the write side had existed for a while and nothing read it, so the data
+accumulated where nobody could see it.
+
+**`GET /api/v1/tasks/{id}/activity` (C-011).** Every change has written an
+`activity_event` in the same transaction as the change since C-011 (ADR-006).
+Nothing read them. It is keyset-paginated newest-first, and the cursor carries
+`(occurred_at, id)` rather than an id alone — `activity_event` is **partitioned
+by `occurred_at`** (migration 0007), so an id-only cursor could not be resumed
+without searching every partition. Actor names are resolved once per page, not
+once per row.
+
+The permission is **`task.history.read`**, which
+[25](25-EVENTS-OUTBOX-AND-AUDIT.md) §The three streams assigns explicitly —
+activity is the user-facing stream and "must be readable by anyone who can see
+the task", while `audit.read` governs the compliance stream with its IPs and
+before/after. Gating this on `audit.read` would have hidden a user's own task
+history behind an administrator's permission.
+
+**`GET`/`POST /api/v1/tasks/{id}/dependencies` (C-008).** No endpoint read a
+task's relations at all, so the Relations panel had nothing to call. The read
+shape is a choice — [05](05-API-SPEC.md) specifies only the write — and it is
+recorded there: two named lists, `blocked_by` and `blocks`, each carrying
+`key`, `title` and `state`, unpaginated because
+[21](21-API-LIMITS-AND-QUOTAS.md) bounds dependencies at 100 per task.
+
+**The cycle check is one statement, not a check above one.** `insert` is a
+single `INSERT ... SELECT ... WHERE NOT EXISTS (<recursive reachable>)` under a
+transaction-scoped advisory lock on the workspace. There is no separate "is this
+safe?" call to forget, and no window in which a concurrent request closes the
+loop from the other side — which is exactly what
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md) asks for and why the lock is there. The
+walk is bounded to [21](21-API-LIMITS-AND-QUOTAS.md)'s 64 hops, and **the cost
+is stated**: a cycle that closes only at hop 65 is not detected.
+
+**A live defect found on the way, and fixed.** The filter compiler's
+`is_blocked` clause selected `d.blocked_task_id` — a column `task_dependency`
+has never had; migration 0005 names the two ends `from_task_id` and
+`to_task_id`. Both `?is_blocked=true` and `?is_blocked=false` returned
+`TF-SYS-0001`, and it held back the built-in **My Work · Blocked** view
+[27](27-FILTER-AND-SAVED-VIEW-DSL.md) ships.
+
+The direction is a domain call, not a guess: [03](03-DOMAIN-MODEL.md) says
+"`from` blocks `to`" and gates a transition on an **incoming** `BLOCKS` edge, so
+a task is blocked when it is the `to` end — which is also the direction
+`task::unresolved_blockers` already read and what `task_dependency_rev_ix` on
+`to_task_id` indexes.
+
+Nothing caught it because the C-012 suite asserts the compiler's SQL *text*,
+which a wrong column name satisfies perfectly, and the `EXPLAIN` catalogue has
+no probe for that field — the same blind spot that hid the cursor cast bug in
+C-006. The test added with the fix reads `migrations/0005` and asserts that
+every `<alias>.<column>` the compiler emits is a column that migration
+declares, so the next wrong name fails in CI rather than in production.
+
+**The design spec's constraints are met.** A restricted edge is **returned**
+with its identity withheld rather than filtered out — [03](03-DOMAIN-MODEL.md):
+a blocking task "shows as 'restricted' if the viewer cannot see its project,
+never as its title", and dropping the row would show a task as blocked by
+nothing. A cycle refusal **names the loop** (`ONB-4 → API-2 → ONB-4`) in both
+the message and `details.cycle`. And blocked-ness is on `TaskView` itself,
+computed in the same query as the row: the board disables a drop target rather
+than letting a card spring back, so it must know before the drag, and asking per
+card would be the N+1 [04](04-RBAC-AND-AUTHORIZATION.md) §The list problem
+exists to prevent. A bulk endpoint was the alternative and was rejected — it is
+a second round trip that can disagree with the first.
+
+**What is not covered:** removing a dependency (`DELETE`) is not implemented, so
+a relation added in the drawer cannot be undone through the API; the activity
+stream has no project-level feed (`activity_project_ix` exists and nothing reads
+it); `is_blocked` still has no `EXPLAIN` probe, so the fix above is covered by
+unit and integration tests rather than by the plan gate; and the subtask rollup
+and the `task.dependency.override` reason are **not** implemented here — the
+override lives on the transition endpoint (C-007), and its required-reason field
+is a change to that surface rather than to these two.
 
 ## Phases 2–4
 

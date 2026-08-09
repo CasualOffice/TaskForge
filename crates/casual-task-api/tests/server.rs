@@ -27,9 +27,17 @@ fn unreachable_database() -> (AppState, axum::Router) {
         .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/nothing")
         .expect("a lazy pool never connects at construction");
     let state = AppState {
+        storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
+        broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "test-key-long-enough-for-the-config-check".into(),
+        public_url: "https://tasks.example.test".into(),
+        mailer: std::sync::Arc::new(casual_task_infra::mail::LoggingMailer),
     };
     (state.clone(), router(state))
 }
@@ -72,9 +80,17 @@ fn stalled_database(acquire_timeout: Duration) -> (axum::Router, Arc<AtomicUsize
         ))
         .expect("a lazy pool never connects at construction");
     let state = AppState {
+        storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
+        broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "test-key-long-enough-for-the-config-check".into(),
+        public_url: "https://tasks.example.test".into(),
+        mailer: std::sync::Arc::new(casual_task_infra::mail::LoggingMailer),
     };
     (router(state), accepted)
 }
@@ -152,7 +168,7 @@ async fn readiness_reports_503_when_the_database_is_unreachable() {
 
     let body: serde_json::Value =
         serde_json::from_str(&body_string(response).await).expect("json envelope");
-    assert_eq!(body["error"]["code"], "TF-SRV-0003");
+    assert_eq!(body["error"]["code"], "TF-SYS-0002");
 }
 
 #[tokio::test]

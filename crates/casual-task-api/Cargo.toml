@@ -14,6 +14,10 @@ casual-task-persistence = { workspace = true }
 casual-task-search = { workspace = true }
 casual-task-infra = { workspace = true }
 casual-task-observability = { workspace = true }
+# Profile 1 runs the dispatch loop inside this process (`docs/48`,
+# TF_WORKER_EMBEDDED). The worker's lib docs already anticipated this: "the API
+# process calls dispatcher::run directly rather than shelling out to a binary."
+casual-task-worker = { workspace = true }
 tracing = { workspace = true }
 casual-task-plugin-contract = { workspace = true }
 casual-task-identity = { workspace = true }
@@ -29,6 +33,9 @@ thiserror = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
+# The Stream trait alone, to hand a subscription to axum's Sse. futures-util
+# would bring combinators this crate has no use for.
+futures-core = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
@@ -39,6 +46,7 @@ tower = { workspace = true, features = ["util"] }
 casual-task-observability = { workspace = true }
 casual-task-identity = { workspace = true }
 casual-task-persistence = { workspace = true, features = ["test-support"] }
+casual-task-infra = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 anyhow = { workspace = true }

@@ -1,0 +1,54 @@
+//! Live updates over server-sent events (C-015, `docs/05` §Live updates).
+//!
+//! # The failure this module exists to prevent
+//!
+//! Two people working the same board not seeing each other's changes — and, far
+//! more expensively, one of them seeing changes they were never allowed to see.
+//!
+//! The split here is by which of those a change would be about:
+//!
+//! - [`authorize`] decides **who may hear what**. It changes when the permission
+//!   model changes.
+//! - [`endpoint`] decides **what the wire looks like** — framing, heartbeat, how
+//!   a stream ends. It changes when `docs/05`'s protocol changes.
+//!
+//! The fan-out itself is not here at all. It is
+//! [`casual_task_infra::broadcast`], because `docs/48` makes it the same kind of
+//! thing as the mail adapter: in-process on the single-node profile, Redis above
+//! it, behind one trait so no caller learns which.
+//!
+//! # State of C-015, honestly
+//!
+//! Everything `docs/05` §Live updates specifies is now built: the endpoint, the
+//! event shape, `Last-Event-ID` replay bounded to 5 minutes / 1,000 events with
+//! a gap notice past it, the 100 ms coalescing window, the 30 s heartbeat, and
+//! revalidation on `authz_epoch` change.
+//!
+//! Each mechanism is asserted where it lives — authorization in [`authorize`],
+//! replay and fan-out in `casual_task_infra::broadcast`, coalescing in
+//! [`coalesce`], revocation in [`revalidate`] — and their **assembly** is
+//! asserted from outside, in `tests/sse_stream.rs`, which opens a real stream
+//! and reads frames off the body. That last one is what makes the ordering
+//! claims testable at all: that a replayed backlog precedes live frames, and
+//! that a burst collapses to one frame on the wire rather than merely in a
+//! buffer.
+
+pub mod authorize;
+pub mod coalesce;
+pub mod endpoint;
+pub mod revalidate;
+
+pub use endpoint::{HEARTBEAT, StreamQuery, stream};
+
+use std::sync::Arc;
+
+/// A fresh in-process hub, as `AppState::broadcast` wants it.
+///
+/// Exists so a caller building an [`crate::AppState`] does not need a direct
+/// dependency on `casual-task-infra` just to name the default implementation —
+/// and so that when `docs/48`'s Redis hub arrives, the choice is made in one
+/// place instead of at every construction site.
+#[must_use]
+pub fn local_hub() -> Arc<dyn casual_task_infra::broadcast::Broadcast> {
+    Arc::new(casual_task_infra::broadcast::LocalBroadcast::new())
+}
