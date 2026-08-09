@@ -13,7 +13,8 @@
 5. **White canvas, explicit hierarchy.** The primary application canvas is white. Hierarchy comes from typography, spacing, borders and structure—not washed-out surfaces.
 6. **Accessible by construction.** WCAG 2.2 AA is a component acceptance criterion, not a release cleanup task.
 7. **Stable geometry.** Loading, optimistic updates and live events should not cause avoidable layout shifts.
-8. **Asymmetric where useful.** Do not force all views into equal columns, equal cards or a universal dashboard grid.
+8. **Scrolling is a cost, not a layout tool.** A surface that scrolls to reveal a field has hidden that field. Use the width available and put what a user needs to *decide* something in one view; reserve scrolling for genuine tails — a long thread, a long list, a long description. Nested scroll regions inside a scrolling page are the worst case and are not permitted.
+9. **Asymmetric where useful.** Do not force all views into equal columns, equal cards or a universal dashboard grid.
 
 ## 2. Density and sizing
 
@@ -158,11 +159,13 @@ Primitives know nothing about TaskForge domain objects.
 
 ### Product patterns
 
-`AppRail`, `ContextNav`, `WorkToolbar`, `TaskCard`, `TaskRow`, `TaskDrawer`, `FilterBar`, `CommandPalette`, `PermissionExplanation`, `ActivityTimeline`, `EmptyState`, `RelationList`, `BlockedNotice`, `SubtaskList`, `OverrideDialog`.
+`AppRail`, `ContextNav`, `WorkToolbar`, `TaskCard`, `TaskRow`, `TaskDetail`, `TaskPeek`, `FilterBar`, `CommandPalette`, `PermissionExplanation`, `ActivityTimeline`, `EmptyState`, `RelationList`, `BlockedNotice`, `SubtaskList`, `OverrideDialog`.
 
 Product patterns may compose primitives and understand domain concepts.
 
-The last four exist because relationships are not decoration in this product:
+`TaskDetail` is the full route and `TaskPeek` the deliberately partial drawer;
+[`LAYOUT-AND-INTERACTION-GUIDELINES.md` §4](LAYOUT-AND-INTERACTION-GUIDELINES.md)
+says why the drawer stopped being the default. The last four exist because relationships are not decoration in this product:
 a blocking edge changes what a user is permitted to do, and
 [`LAYOUT-AND-INTERACTION-GUIDELINES.md` §12](LAYOUT-AND-INTERACTION-GUIDELINES.md)
 specifies how they behave.
@@ -192,4 +195,7 @@ Do not introduce:
 - arbitrary spacing/radius values;
 - color-only status;
 - full-screen loaders after shell initialization;
-- navigation entries for every feature or plugin.
+- navigation entries for every feature or plugin;
+- a scrollbar where the width to avoid one was available;
+- nested scroll regions — a scrolling panel inside a scrolling page;
+- essential fields below the fold on a detail surface.

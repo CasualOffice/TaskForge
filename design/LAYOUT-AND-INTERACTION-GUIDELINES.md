@@ -87,16 +87,41 @@ Do not repeat status when the column already communicates it.
 
 ### Task detail
 
-Open task detail in a right-side drawer by default to preserve board/list position.
+**A full route is the default, not the drawer.** The drawer was tried first and
+failed: a 420–560 px column cannot show what a task *is*, who owns it, what it
+blocks, and what people have said about it without scrolling, and everything
+below the fold is effectively invisible. A reader had to scroll to learn the
+assignee.
 
-Use a full route for:
+**Nothing essential may sit below the fold.** On a normal desktop viewport a
+task's identity, state, people, dates, relationships and the most recent
+conversation are all visible at once. Scrolling is for the tail of a long
+thread or a long description — never for a field.
 
-- direct/deep links;
-- new-tab behavior;
-- narrow screens;
-- unusually complex editing.
+That means **columns, not a single stack**:
 
-Drawer and full-page detail should use the same information architecture.
+```text
+┌────────────────────────────┬───────────────────┐
+│ Identity, description      │ Status, assignees │
+│ Subtasks, blockers         │ Priority, dates   │
+│ Comments (most recent      │ Project, reporter │
+│ first, tail scrolls)       │ Tags, milestone   │
+└────────────────────────────┴───────────────────┘
+```
+
+The right column is metadata and is short by construction; the left column
+carries the narrative. Only the comment thread scrolls, and it scrolls within
+itself rather than moving the page.
+
+Use the drawer only for a **peek** — a quick look from a board or list that
+preserves position, showing identity, state, assignee and description, with an
+obvious route to the full view. It is not a smaller version of the detail page;
+it is a different, deliberately partial thing.
+
+The full route is also what direct links, new tabs and narrow screens get.
+
+Both surfaces share one information architecture and one component set, so a
+field cannot exist in one and be forgotten in the other.
 
 ## 5. Toolbar behavior
 
