@@ -22,6 +22,7 @@ import { lazy, Suspense, type ReactElement } from 'react'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
 import { AppFrame } from './shell/AppFrame'
+import { TaskDetail } from './task/TaskDetail'
 import { BoardView } from './views/BoardView'
 import { MyWorkView } from './views/MyWorkView'
 import { TaskListView } from './views/TaskListView'
@@ -169,6 +170,25 @@ const boardRoute = createRoute({
   path: '/board',
   component: BoardView,
 })
+/**
+ * The full task surface.
+ *
+ * A path, not a search parameter, because `design/LAYOUT-AND-INTERACTION-GUIDELINES.md`
+ * §4 makes it the *default* detail surface rather than an overlay: it replaces
+ * the view rather than sitting over one, it is what a pasted link and a new tab
+ * get, and it is the only shape with the width the specification requires. The
+ * peek keeps `?task=` — that one is an overlay and must preserve the view under
+ * it.
+ */
+const taskRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/tasks/$taskId',
+  component: function TaskRoute(): ReactElement {
+    const { taskId } = taskRoute.useParams()
+    return <TaskDetail taskId={taskId} />
+  },
+})
+
 const myWorkRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/my-work',
@@ -193,7 +213,7 @@ const reportsRoute = createRoute({
  * whole app against; a test that reused it would share history between cases and
  * see the previous test's route.
  */
-export const routeTree = rootRoute.addChildren([listRoute, boardRoute, myWorkRoute, reportsRoute])
+export const routeTree = rootRoute.addChildren([listRoute, boardRoute, myWorkRoute, taskRoute, reportsRoute])
 
 export const router = createRouter({ routeTree })
 

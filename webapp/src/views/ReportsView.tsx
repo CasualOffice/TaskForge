@@ -23,14 +23,11 @@ export default function ReportsView(): ReactElement {
         </h1>
       </div>
       <div className="view__body reports">
-        <GapNotice what="Reports are not built yet." tracker="Phase 2">
-          <span>
-            ADR-027 fixes a report as a saved filter plus a closed measure set, and docs/38
-            designs the surface. This route exists now so it is a lazy chunk from the first
-            commit — moving it out of the shell later would be a budget regression disguised
-            as a refactor.
-          </span>
-        </GapNotice>
+        {/* One line, in the reader's language. The reason this route exists
+            before its contents do — it is a lazy chunk from the first commit, so
+            splitting it later is not a budget regression disguised as a refactor
+            — is an engineering fact and belongs in this comment, not on screen. */}
+        <GapNotice what="Reports are not built yet." />
       </div>
     </section>
   )

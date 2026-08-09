@@ -35,7 +35,7 @@ import { WorkToolbar } from './filters/WorkToolbar'
 import { TaskGroup } from './list/TaskGroup'
 import { TaskRow } from './list/TaskRow'
 import { groupsFor, type GroupKey } from './list/grouping'
-import { TaskDrawer } from '../drawer/TaskDrawer'
+import { TaskPeek } from '../task/TaskPeek'
 import { useSortPreference } from './sorting'
 
 const ROW_HEIGHT = 40
@@ -178,7 +178,7 @@ export function TaskListView(): ReactElement {
         ) : null}
       </div>
 
-      {search.task === undefined ? null : <TaskDrawer taskId={search.task} />}
+      {search.task === undefined ? null : <TaskPeek taskId={search.task} />}
     </section>
   )
 }

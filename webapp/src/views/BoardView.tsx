@@ -45,7 +45,7 @@ import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
 import { listProjects } from '../api/projects'
 import { TASK_STATES, type Task } from '../api/tasks'
-import { TaskDrawer } from '../drawer/TaskDrawer'
+import { TaskPeek } from '../task/TaskPeek'
 import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useAnnounce } from '../shell/announce'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
@@ -210,7 +210,7 @@ export function BoardView(): ReactElement {
         </div>
       </DndContext>
 
-      {search.task === undefined ? null : <TaskDrawer taskId={search.task} />}
+      {search.task === undefined ? null : <TaskPeek taskId={search.task} />}
     </section>
   )
 }

@@ -122,12 +122,14 @@ describe('refusals', () => {
 
   it('render a gap as a gap, not as an error', async () => {
     const { container, queryByRole } = render(
-      <GapNotice what="Relations are not readable yet." tracker="C-008" />,
+      <GapNotice what="Relations are not readable yet." />,
     )
     // An unbuilt capability is not something that went wrong. Rendering it as an
     // alert teaches users to ignore alert styling.
     expect(queryByRole('alert')).toBeNull()
-    expect(container.textContent).toContain('C-008')
+    // And it says it in the reader's language: no tracker id, no endpoint path.
+    expect(container.textContent).toContain('Relations are not readable yet.')
+    expect(container.textContent).not.toMatch(/C-0\d\d|\/api\/v1\//)
     expect(describeViolations(await violationsIn(container))).toBe('')
   })
 })

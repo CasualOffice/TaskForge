@@ -223,3 +223,362 @@
   padding: 0 8px;
   font-size: 12px;
 }
+
+/* ── Quiet gap line ────────────────────────────────────────────────────────
+ * One grey sentence, no box, no tint. It replaced three identical tinted
+ * panels quoting tracker ids and endpoint paths; see `shell/notice.tsx` for
+ * why. It must stay visibly *less* than the content around it — a gap is not
+ * an error and not a feature. */
+.gapline {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+
+/* ── Status control ────────────────────────────────────────────────────────
+ * One control that shows the current status and opens the moves out of it. */
+.statusctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 6px;
+  background: var(--tf-surface, var(--color-surface));
+  color: var(--tf-text, var(--color-text));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.statusctl--static {
+  cursor: default;
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+}
+.statusctl:hover:not(.statusctl--static) {
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+}
+.statusctl__caret {
+  color: var(--tf-text-muted, var(--color-text-muted));
+  font-size: 10px;
+}
+.statusctl__menu {
+  width: 240px;
+}
+.statusctl__note {
+  margin: 0;
+  padding: 4px 8px 8px;
+}
+
+/* The state's colour, never carrying the meaning alone (§7): the status name
+ * sits beside it in every use. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--tf-text-muted, var(--color-text-muted));
+  flex: none;
+}
+.dot--PLANNED {
+  background: var(--tf-info, var(--color-accent));
+}
+.dot--ACTIVE {
+  background: var(--tf-brand, var(--color-accent));
+}
+.dot--COMPLETED {
+  background: var(--tf-success, var(--color-success));
+}
+.dot--CANCELED {
+  background: var(--tf-border-strong, var(--color-border-strong));
+}
+
+/* ── Task detail: the full route ───────────────────────────────────────────
+ * design/LAYOUT §4. The page does not scroll; the columns are fixed and the
+ * conversation is the one region with a tail. */
+.detail {
+  display: grid;
+  grid-template-rows: 48px 1fr;
+  height: 100%;
+  min-height: 0;
+}
+.detail__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+}
+.detail__notice {
+  padding: 16px 20px;
+}
+.detail__cols {
+  display: grid;
+  /* Asymmetric on purpose (§1.9): the narrative owns the width, the metadata
+   * column is sized to its longest value and nothing more. */
+  grid-template-columns: minmax(0, 1fr) 300px;
+  min-height: 0;
+  height: 100%;
+}
+.detail__main {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  padding: 20px 24px;
+  gap: 16px;
+}
+.detail__side {
+  min-height: 0;
+  padding: 20px;
+  border-left: 1px solid var(--tf-border, var(--color-border));
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+  overflow: hidden;
+}
+/* A long description is a genuine tail (§1.8 names one). `auto` means no
+ * scrollbar exists unless the text actually exceeds the space — the
+ * anti-pattern is a scrollbar where the width to avoid one was available, not
+ * a bounded region for prose that genuinely runs long. */
+.detail__scrollable {
+  max-height: 34vh;
+  overflow: auto;
+}
+.detail__comments {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--tf-border, var(--color-border));
+  padding-top: 12px;
+  gap: 8px;
+}
+.detail__comments .thread-panel {
+  display: flex;
+  flex-direction: column-reverse;
+  min-height: 0;
+  overflow: auto;
+  gap: 8px;
+}
+/* The composer sits above the thread in the reading order after the reverse,
+ * so a reader never scrolls to find the box they came to type in. */
+.detail__comments .thread {
+  margin: 0;
+}
+
+@media (max-width: 1024px) {
+  .detail__cols {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .detail__side {
+    border-left: 0;
+    border-bottom: 1px solid var(--tf-border, var(--color-border));
+    order: -1;
+  }
+}
+
+/* ── Narrative: title and description ──────────────────────────────────── */
+.narr__titlerow,
+.narr__sectionhead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.narr__title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.narr__titleinput {
+  font-size: 20px;
+  font-weight: 600;
+}
+.narr__titleedit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Present but recessive: an action that is available without competing with
+ * the thing it acts on. It does not appear on hover only — LAYOUT §3, a
+ * discoverable action may not be hidden behind a gesture. */
+.narr__edit {
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.narr__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.narr__heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.narr__body {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 21px;
+}
+.narr__none {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.narr__textarea {
+  min-height: 140px;
+}
+
+/* ── Metadata column ───────────────────────────────────────────────────────
+ * One line per field, no headings, nothing behind a disclosure. If this needs
+ * to scroll, something belongs in the left column instead. */
+.meta2 {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.meta2__row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+.meta2__label {
+  font-size: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.meta2__value {
+  margin: 0;
+  font-size: 13px;
+  min-width: 0;
+}
+/* A value that reads as text and acts as a control. The border appears on
+ * hover/focus so the column is legible at rest and obviously interactive the
+ * moment a pointer or the keyboard reaches it. */
+.meta2__button {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.meta2__button:hover {
+  border-color: var(--tf-border-strong, var(--color-border-strong));
+  background: var(--tf-surface, var(--color-surface));
+}
+.meta2__button--late {
+  color: var(--tf-danger, var(--color-danger));
+  font-weight: 600;
+}
+.meta2__unset {
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.meta2__date {
+  width: 200px;
+  margin: 0;
+  padding: 4px;
+}
+.prio {
+  font-weight: 600;
+}
+.prio--URGENT,
+.prio--HIGH {
+  color: var(--tf-danger, var(--color-danger));
+}
+.prio--MEDIUM {
+  color: var(--tf-warning, var(--color-warning));
+}
+
+/* ── Peek: the deliberately partial drawer ─────────────────────────────────
+ * It does not scroll. If a field would not fit, it belongs on the full route
+ * and not here (design/LAYOUT §4). */
+.peek {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.peek__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 28%);
+}
+.peek__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 12px 0 0 12px;
+  background: var(--tf-surface, var(--color-surface));
+  box-shadow: -12px 0 32px rgb(0 0 0 / 12%);
+}
+.peek__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+  flex: none;
+}
+.peek__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  min-height: 0;
+}
+.peek__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.peek__signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.peek__due {
+  font-size: 12px;
+  color: var(--tf-text-secondary, var(--color-text-muted));
+}
+.peek__due--late {
+  color: var(--tf-danger, var(--color-danger));
+  font-weight: 600;
+}
+/* Clipped by the component, not by CSS: an ellipsis painted over text a
+ * reader cannot reach is the same hiding this surface is meant to stop. The
+ * snippet ends on a character count and the full view is one click away. */
+.peek__desc {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--tf-text-secondary, var(--color-text));
+}
+.peek__open {
+  align-self: flex-start;
+}

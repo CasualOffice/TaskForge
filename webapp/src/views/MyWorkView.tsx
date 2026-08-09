@@ -29,7 +29,7 @@
 import { useMemo, type ReactElement } from 'react'
 
 import type { TaskQuery } from '../api/tasks'
-import { TaskDrawer } from '../drawer/TaskDrawer'
+import { TaskPeek } from '../task/TaskPeek'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
 import { ErrorNotice, GapNotice } from '../shell/notice'
 import { useWorkspaceId } from '../shell/session'
@@ -173,16 +173,14 @@ export function MyWorkView(): ReactElement {
         ) : null}
 
         <footer className="mywork__footnote">
-          <GapNotice what="Watched tasks are not included." tracker="C-008">
-            <span>
-              <code>watcher</code> is not in the filter grammar’s closed field set and no endpoint
-              exposes watchers, so there is nothing to query yet.
-            </span>
-          </GapNotice>
+          {/* `watcher` is not in the filter grammar's closed field set and no
+              endpoint exposes watchers — which is why this says so rather than
+              quietly returning a smaller answer than the heading promises. */}
+          <GapNotice what="Tasks you only watch are not included yet." />
         </footer>
       </div>
 
-      {search.task === undefined ? null : <TaskDrawer taskId={search.task} />}
+      {search.task === undefined ? null : <TaskPeek taskId={search.task} />}
     </section>
   )
 }

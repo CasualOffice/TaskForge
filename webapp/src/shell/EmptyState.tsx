@@ -1,42 +1,61 @@
 /**
- * Empty, loading and failure as first-class states.
+ * What a surface shows when it has nothing to show.
  *
  * # The failure this module prevents
  *
- * Blank space where a state should be. `design/DESIGN-FOUNDATION.md` §10:
- * "Empty, error, offline and permission-denied states are first-class product
- * states", and §11 forbids the full-screen loader that usually stands in for
- * them. `design/LAYOUT-AND-INTERACTION-GUIDELINES.md` §10 goes further and says
- * what an empty state is *for*: "Empty states are operational … No tasks match
- * this view. Change the filters or create a task." A sentence, and the control
- * that acts on it — not an illustration and not encouragement.
+ * Blank space, or the word "None". `design/LAYOUT-AND-INTERACTION-GUIDELINES.md`
+ * §10: "Empty states are operational." An empty column that says nothing is
+ * indistinguishable from a column that failed to load, and the user's next
+ * move — change the filter, create a task, pick a project — is exactly the
+ * thing the screen is best placed to tell them.
  *
- * # Why the action is a slot and not a prop pair
+ * # Why the copy is a prop and the shape is not
  *
- * The thing to do next is a real control with its own permission check and its
- * own mutation — "New task" is `CreateTask`, not a label and a callback. Passing
- * `{ actionLabel, onAction }` would force every caller to rebuild a button that
- * already exists somewhere better.
+ * VISUAL-IDENTITY §9 fixes the voice: "concise, factual and operational",
+ * against "cute empty-state copy" and "vague enterprise language". A component
+ * cannot enforce tone, but it can enforce *structure* — a statement of fact,
+ * then what to do about it — so that a caller who has only a sentence is
+ * prompted for the action, and one with no action states the fact plainly
+ * rather than padding it.
+ *
+ * # No illustration
+ *
+ * §10: "Avoid decorative illustrations by default." There is no image slot,
+ * because a slot is an invitation. The optional `icon` is a 28 px glyph
+ * (`--tf-icon-empty`, foundation §3) used to distinguish a *kind* of emptiness
+ * — a filter that matched nothing versus a permission that hid everything —
+ * not to decorate one.
  */
 import type { ReactElement, ReactNode } from 'react'
 
 export function EmptyState({
   title,
   detail,
-  children,
+  actions,
+  icon,
+  compact = false,
 }: {
-  /** One line, sentence case, describing the state. Not a heading for a page. */
+  /** The fact, as a sentence. "No tasks match this view." */
   title: string
-  /** What to do about it, when that is not obvious from the actions. */
-  detail?: string
-  /** The controls that resolve it. */
-  children?: ReactNode
+  /** Why, when the reason is not obvious from the title. */
+  detail?: ReactNode
+  /** What to do next. Buttons or links; omitted when there is genuinely nothing. */
+  actions?: ReactNode
+  icon?: ReactElement
+  /** For a board column or another small container, where the full block would
+   *  be taller than the space it sits in. */
+  compact?: boolean
 }): ReactElement {
   return (
-    <div className="state">
-      <p className="state__title">{title}</p>
-      {detail === undefined ? null : <p className="state__detail">{detail}</p>}
-      {children === undefined ? null : <div className="state__actions">{children}</div>}
+    <div className={compact ? 'empty-state empty-state--compact' : 'empty-state'}>
+      {icon === undefined ? null : (
+        <span className="empty-state__icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
+      <p className="empty-state__title">{title}</p>
+      {detail === undefined ? null : <p className="empty-state__detail">{detail}</p>}
+      {actions === undefined ? null : <div className="empty-state__actions">{actions}</div>}
     </div>
   )
 }
@@ -44,10 +63,14 @@ export function EmptyState({
 /**
  * The shape of the content that is coming, drawn in the space it will occupy.
  *
- * §10 asks for "skeletons for initial content whose geometry is known" and §7
- * for stable geometry — a spinner in the middle of an empty list is neither, and
- * the content lands by pushing everything down. `aria-hidden` with a sibling
- * `role="status"`: the bars are decoration, the sentence is the announcement.
+ * §10 of the foundation asks for "skeletons for initial content whose geometry
+ * is known" and §7 for stable geometry — a spinner in the middle of an empty
+ * list is neither, and the content lands by pushing everything down. It lives
+ * beside `EmptyState` because they are the same decision made twice: what a
+ * surface shows before it can show the thing itself.
+ *
+ * `aria-hidden` on the bars with a sibling `role="status"`: the bars are
+ * decoration, the sentence is the announcement.
  */
 export function Skeleton({ rows = 6, label }: { rows?: number; label: string }): ReactElement {
   return (
