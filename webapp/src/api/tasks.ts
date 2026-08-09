@@ -18,7 +18,7 @@
  * server answers `TF-WFL-0001` to anything else — a client type that *could*
  * express it would turn a compile error into a runtime refusal.
  */
-import { idempotencyKey, query, request } from './http'
+import { idempotencyKey, request } from './http'
 import type { Paged } from './page'
 
 /** `crates/casual-task-api/src/tasks/wire.rs` — `TaskView`. */
@@ -105,6 +105,8 @@ export interface TaskFilter {
   readonly created_at?: string
   readonly updated_at?: string
   readonly due_at?: string
+  /** The owning team. `''` means untriaged — the triage queue (`docs/45`). */
+  readonly team?: string
   readonly key?: string
   readonly title?: string
   readonly q?: string
@@ -126,13 +128,30 @@ export function listTasks(
   spec: TaskQuery,
   signal?: AbortSignal,
 ): Promise<Paged<Task>> {
-  const params: Record<string, string | number | undefined> = { ...spec.filter }
-  if (spec.sort !== undefined) {
-    params['sort'] = `${spec.sort.descending ? '-' : ''}${spec.sort.key}`
+  // Built here rather than with `query()`, and that is not duplication.
+  //
+  // `docs/27` §URL form: "`field=` — the empty value is how a URL says
+  // 'unset'". `environment=` means *on no environment*, `team=` means
+  // untriaged, `assignee=` means unassigned. `query()` drops empty values,
+  // which is right for every other caller and silently turns each of those
+  // filters into no filter at all — the environment board's "Not yet deployed"
+  // column showed every task in the project, including the ones it had just
+  // listed under qa. An absent key and an empty one are different questions.
+  const search = new URLSearchParams()
+  for (const [name, value] of Object.entries(spec.filter ?? {})) {
+    if (value === undefined) continue
+    search.set(name, value)
   }
-  params['limit'] = spec.limit
-  params['cursor'] = spec.cursor
-  return request<Paged<Task>>(`/api/v1/tasks${query(params)}`, { workspaceId, signal })
+  if (spec.sort !== undefined) {
+    search.set('sort', `${spec.sort.descending ? '-' : ''}${spec.sort.key}`)
+  }
+  if (spec.limit !== undefined) search.set('limit', String(spec.limit))
+  if (spec.cursor !== undefined && spec.cursor !== '') search.set('cursor', spec.cursor)
+  const encoded = search.toString()
+  return request<Paged<Task>>(`/api/v1/tasks${encoded === '' ? '' : `?${encoded}`}`, {
+    workspaceId,
+    signal,
+  })
 }
 
 export function readTask(

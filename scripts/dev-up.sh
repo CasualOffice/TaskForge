@@ -112,24 +112,61 @@ else
 fi
 
 # Migrations are not idempotent — 0001 creates types with no IF NOT EXISTS — so
-# re-running them against a database that already has them fails on the second
-# statement and looks like a broken migration. A dev database that survives a
-# restart is the whole point of keeping the container, so detect and skip.
-ALREADY=$(psql_owner -tAq -c "SELECT to_regclass('public.task') IS NOT NULL" 2>/dev/null || echo f)
-if [[ "$ALREADY" == "t" ]]; then
-  step "Schema is already present — skipping migrations"
-  note "run scripts/dev-up.sh --reset to rebuild it from scratch"
-else
+# a file that has already run cannot simply be re-run. This used to skip the
+# whole step whenever `task` existed, which meant EVERY NEW MIGRATION SILENTLY
+# NEVER APPLIED to a surviving dev database: the code moved on, the schema did
+# not, and the symptom was a 500 naming a column that exists in `migrations/`.
+# Found exactly that way, by an endpoint that worked in tests and not here.
+#
+# So the applied set is recorded, and each file runs at most once. The table is
+# created here rather than in a migration because it describes THIS SCRIPT's
+# bookkeeping, not the product's schema, and `verify-schema.sh` asserts the
+# schema's shape against `migrations/` alone.
+psql_owner -q -c "CREATE TABLE IF NOT EXISTS dev_applied_migration (
+    filename text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now())" >/dev/null
+
+# A database that predates this bookkeeping has every migration up to the last
+# one it could have run. Marking what is already there — rather than trying to
+# re-run it — is the only safe reading, and it is exactly what a fresh database
+# does not need because it has no `task` table.
+if [[ "$(psql_owner -tAq -c "SELECT to_regclass('public.task') IS NOT NULL" 2>/dev/null || echo f)" == "t" ]]; then
+  if [[ "$(psql_owner -tAq -c "SELECT count(*) = 0 FROM dev_applied_migration" 2>/dev/null || echo f)" == "t" ]]; then
+    note "recording the migrations this database already has"
+    # 0031 is the first migration that exists in a world with this bookkeeping.
+    # Everything before it is assumed present — a surviving dev database ran
+    # them under the old skip-everything rule — and 0031 onwards is pending.
+    # The comparison is on the four-digit prefix, so it does not depend on the
+    # rest of a filename sorting the way one might hope.
+    for f in migrations/*.sql; do
+      NAME=$(basename "$f")
+      [[ "${NAME:0:4}" < "0031" ]] || continue
+      psql_owner -q -c "INSERT INTO dev_applied_migration (filename) VALUES ('$NAME')
+                        ON CONFLICT DO NOTHING" >/dev/null
+    done
+  fi
+fi
+
 step "Applying migrations"
+PENDING=0
 for f in migrations/*.sql; do
+  NAME=$(basename "$f")
+  DONE=$(psql_owner -tAq -c "SELECT EXISTS (SELECT 1 FROM dev_applied_migration WHERE filename = '$NAME')")
+  if [[ "$DONE" == "t" ]]; then
+    continue
+  fi
+  PENDING=$((PENDING + 1))
   if psql_owner -v ON_ERROR_STOP=1 -q < "$f" >/dev/null 2>&1; then
-    printf '  ✅ %s\n' "$(basename "$f")"
+    psql_owner -q -c "INSERT INTO dev_applied_migration (filename) VALUES ('$NAME')" >/dev/null
+    printf '  ✅ %s\n' "$NAME"
   else
-    red "  ❌ $(basename "$f")"
+    red "  ❌ $NAME"
     psql_owner -v ON_ERROR_STOP=1 -q < "$f" 2>&1 | head -20
     exit 1
   fi
 done
+if [[ "$PENDING" == "0" ]]; then
+  note "schema is up to date"
 fi
 
 # The API refuses to start as a superuser (see crates/casual-task-api/src/main.rs

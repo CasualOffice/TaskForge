@@ -46,6 +46,12 @@ pub enum Field {
     Priority,
     Assignee,
     Reporter,
+    /// The team that owns the task now (`docs/45` §custody).
+    ///
+    /// `is_empty` is the important operator here and not an afterthought: a task
+    /// owned by no team is untriaged, and "untriaged in this project" is the
+    /// queue a lead opens first.
+    Team,
     Tag,
     Milestone,
     Environment,
@@ -171,6 +177,7 @@ impl Field {
             Self::Priority => "priority",
             Self::Assignee => "assignee",
             Self::Reporter => "reporter",
+            Self::Team => "team",
             Self::Tag => "tag",
             Self::Milestone => "milestone",
             Self::Environment => "environment",
@@ -200,6 +207,7 @@ impl Field {
             "priority" => Self::Priority,
             "assignee" => Self::Assignee,
             "reporter" => Self::Reporter,
+            "team" => Self::Team,
             "tag" => Self::Tag,
             "milestone" => Self::Milestone,
             "environment" => Self::Environment,
@@ -225,6 +233,7 @@ impl Field {
             | Self::Tag
             | Self::Milestone
             | Self::Environment
+            | Self::Team
             | Self::Parent => FieldType::Id,
             Self::State | Self::Type => FieldType::Enum,
             Self::Priority => FieldType::OrderedEnum,
@@ -250,6 +259,9 @@ impl Field {
             Self::Reporter => &[Eq, In],
             Self::Tag => &[In, NotIn, IsEmpty],
             Self::Milestone | Self::Environment => &[Eq, In, IsEmpty],
+            // `is_empty` is the triage queue; `in` is "my teams", for someone on
+            // more than one.
+            Self::Team => &[Eq, In, IsEmpty],
             Self::Parent => &[Eq, IsEmpty, IsNotEmpty],
             Self::CreatedAt | Self::UpdatedAt => &[Before, After, Between],
             Self::DueAt => &[Before, After, Between, IsEmpty],
@@ -434,6 +446,7 @@ mod tests {
             Field::Priority,
             Field::Assignee,
             Field::Reporter,
+            Field::Team,
             Field::Tag,
             Field::Milestone,
             Field::Environment,

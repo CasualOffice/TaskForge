@@ -139,6 +139,7 @@ function Sidebar(): ReactElement {
         <SideLink to="/my-work" label="My work" icon={<IconMyWork />} />
         <SideLink to="/" label="All tasks" icon={<IconTasks />} exact />
         <SideLink to="/board" label="Board" icon={<IconBoard />} />
+        <SideLink to="/environments" label="Environments" icon={<IconEnvironments />} />
         <SideLink to="/reports" label="Reports" icon={<IconReports />} />
       </ul>
 
@@ -422,6 +423,16 @@ function IconSearch(): ReactElement {
     <svg {...GLYPH}>
       <circle cx="9" cy="9" r="5" />
       <path d="M12.8 12.8 17 17" />
+    </svg>
+  )
+}
+
+function IconEnvironments(): ReactElement {
+  return (
+    <svg {...GLYPH}>
+      <rect x="3" y="3.5" width="14" height="4" rx="1" />
+      <rect x="3" y="12.5" width="14" height="4" rx="1" />
+      <path d="M10 7.5v5" />
     </svg>
   )
 }

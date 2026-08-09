@@ -41,6 +41,7 @@ import { listProjects } from '../api/projects'
 import { readTask } from '../api/tasks'
 import { Activity } from './Activity'
 import { CommentThread } from './CommentThread'
+import { Custody } from './Custody'
 import { RelationsPanel } from './Relations'
 import { Subtasks } from './Subtasks'
 import { EmptyState } from '../shell/EmptyState'
@@ -131,6 +132,9 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
             {/* §12: blockers and subtasks are two lists, never one. A blocker
                 gates this task's transitions; a subtask is part of its scope and
                 gates nothing. */}
+            {/* Custody first among the panels: the moment someone opens a task
+                is usually the moment they are about to pass it on. */}
+            <Custody task={current} authority={authority} />
             <Subtasks taskId={current.id} />
             <RelationsPanel
               taskId={current.id}

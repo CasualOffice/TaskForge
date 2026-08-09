@@ -180,6 +180,15 @@ const RESPONSES: ReadonlyArray<readonly [string, unknown]> = [
     },
   ],
   [`/api/v1/tasks/${TASK}/comments`, { data: [], page: { has_more: false } }],
+  [
+    `/api/v1/tasks/${TASK}/custody`,
+    { team_id: null, environment_id: null, transfers: [], promotions: [], verifications: [] },
+  ],
+  [`/api/v1/projects/${PROJECT}/environments`, { data: [] }],
+  [
+    `/api/v1/workspaces/${WORKSPACE}/teams`,
+    { data: [{ id: 'tm1', name: 'Android', created_at: iso() }], page: { has_more: false } },
+  ],
   [`/api/v1/tasks/${TASK}`, task(TASK, 'WR-1', 'The task under test')],
 ]
 

@@ -63,6 +63,12 @@ export const keys = {
     ['ws', workspaceId, 'tasks', 'one', taskId, 'subtasks'] as const,
   activity: (workspaceId: string, taskId: string) =>
     ['ws', workspaceId, 'tasks', 'one', taskId, 'activity'] as const,
+  custody: (workspaceId: string, taskId: string) =>
+    ['ws', workspaceId, 'tasks', 'one', taskId, 'custody'] as const,
+
+  /** A project's deployment pipeline. Configuration, so it is cached long. */
+  environments: (workspaceId: string, projectId: string) =>
+    ['ws', workspaceId, 'projects', projectId, 'environments'] as const,
 
   /**
    * The signed-in person. Outside every workspace, like `session()`, because

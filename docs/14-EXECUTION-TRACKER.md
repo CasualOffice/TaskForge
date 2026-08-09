@@ -1612,6 +1612,50 @@ on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
 
+**The lifecycle is on screen** — the custody panel and the environment board.
+
+**The custody panel is the hand-off, not a history.** The moment anyone opens a
+task is usually the moment they are about to pass it on, so the actions are the
+panel and the log sits under them as evidence. The transfer control says *"this
+clears the current assignees, so it lands in that team's queue"* above the
+button rather than in a toast after it — the clearing is the point of a hand-off,
+and a person who did not expect it has lost their assignee. A failure cannot be
+recorded without evidence, so that button is disabled rather than the refusal
+being explained afterwards.
+
+**The trail is merged, not stacked.** Three lists would make the reader
+interleave them by timestamp, which is the work the panel exists to do. It reads
+as sentences — *"handed it from Android to Backend — API returns 500 on rotate"*,
+*"failed it on qa — still crashes on rotate"* — and the two numbers that expose a
+broken process, the failure count and the bounce count, are stated rather than
+left to be counted.
+
+**The environment board is the surface the product could not produce.** Columns
+are environments in deployment order, plus *Not yet deployed*, because a
+project's work is not all in the pipeline and the tasks that have reached nothing
+are exactly what a release conversation asks after next. It is a read: a card
+does not move by being dragged, because an environment changes when something was
+*deployed* and a promotion is a record of a real event rather than a wish.
+
+**`team` joins the filter grammar's closed field set.** `is_empty` is the
+important operator and not an afterthought: a task owned by no team is untriaged,
+and "untriaged in this project" is the queue a lead opens first.
+
+**Two defects found by looking at the screen, neither by a test.**
+
+- *An empty filter value was dropped before it was sent.* `docs/27` says
+  "`field=` — the empty value is how a URL says 'unset'", and the client's query
+  builder skipped empty values — right for every other caller, and it silently
+  turned `environment=`, `team=` and `assignee=` into no filter at all. The
+  environment board's "Not yet deployed" column showed every task in the project,
+  including the ones it had just listed under qa. An absent key and an empty one
+  are different questions.
+- *`scripts/dev-up.sh` never applied a new migration.* It skipped the whole step
+  whenever `task` existed, so a surviving dev database silently stayed behind the
+  code — the symptom was a 500 naming a column that exists in `migrations/`. It
+  now records what it has applied and runs only what is pending. Every migration
+  since 0030 would have hit this.
+
 **Custody is served** — transfer, promote, verify, and the chain they leave
 ([45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md)). Migration 0031 gave the model
 the vocabulary; these are the four endpoints that write and read it.
