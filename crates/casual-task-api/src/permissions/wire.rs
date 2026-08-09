@@ -63,6 +63,18 @@ pub struct EffectivePermissionView {
     /// `conditional` — exercisable where the grant's constraints hold, so the
     /// client asks per resource instead of assuming either answer.
     pub reach: &'static str,
+    /// For `task.create` only: which types the actor may raise, or absent for
+    /// all of them.
+    ///
+    /// `reach: conditional` says the answer may be no; it cannot say which
+    /// types, and a create form offering four where one will be refused is the
+    /// cognitive burden the product exists to remove. Absent rather than a
+    /// list of all five, so a sixth type does not silently fall outside it.
+    ///
+    /// This narrows a menu. The create path re-authorizes against the type
+    /// actually sent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_types: Option<Vec<&'static str>>,
 }
 
 #[derive(Debug, Serialize)]

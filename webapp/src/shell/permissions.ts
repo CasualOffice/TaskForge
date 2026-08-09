@@ -34,6 +34,14 @@ export interface Authority {
   readonly can: (permission: string) => boolean
   /** `undefined` when absent — lets a caller distinguish the two grant kinds. */
   readonly reachOf: (permission: string) => Reach | undefined
+  /**
+   * The task types the actor may raise here, or `undefined` for "no narrowing".
+   *
+   * `undefined` and an empty array are different answers: the first is every
+   * type, the second is none — which is what a grant narrowed to types the
+   * project does not use looks like, and it must not read as "all".
+   */
+  readonly creatableTypes: readonly string[] | undefined
   readonly loading: boolean
 }
 
@@ -54,20 +62,18 @@ export function useAuthority(projectId?: string): Authority {
   const result = useQuery({
     queryKey: [...keys.workspace(workspaceId), 'permissions', projectId ?? ''],
     queryFn: ({ signal }) =>
-      readEffective(
-        workspaceId,
-        projectId === undefined ? {} : { projectId },
-        signal,
-      ),
+      readEffective(workspaceId, projectId === undefined ? {} : { projectId }, signal),
     enabled: workspaceId !== '',
     staleTime: 5 * 60_000,
   })
 
-  const byKey = new Map((result.data?.permissions ?? []).map((entry) => [entry.permission, entry.reach]))
+  const entries = result.data?.permissions ?? []
+  const byKey = new Map(entries.map((entry) => [entry.permission, entry.reach]))
 
   return {
     can: (permission) => byKey.has(permission),
     reachOf: (permission) => byKey.get(permission),
+    creatableTypes: entries.find((entry) => entry.permission === 'task.create')?.task_types,
     loading: result.isPending,
   }
 }

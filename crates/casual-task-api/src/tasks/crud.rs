@@ -114,12 +114,20 @@ pub async fn create(
             tracing::error!(%error, "reading project membership failed");
             ApiError::internal(&request_id)
         })?;
+    // The *requested* type is the fact this decision turns on. `docs/45` allows
+    // "a developer may raise a bug but not a feature", spelled `task_type_in`
+    // on the grant — and a constraint evaluated against no type at all is
+    // satisfied by nothing, so passing the project-level facts here did not
+    // merely lose the rule, it denied every create to anyone holding it.
     unit::authorized(
         ctx.authority.may_in_project(
             permission::TASK_CREATE,
             ProjectId::from_uuid(project_row.id),
             &project_row.teams(),
-            &ctx.facts_in_project(is_member),
+            &casual_task_app::ResourceFacts {
+                task_type: super::guard::task_type_of(task_type),
+                ..ctx.facts_in_project(is_member)
+            },
         ),
         &request_id,
     )?;
@@ -578,6 +586,42 @@ pub async fn update(
         &request_id,
     )
     .await?;
+
+    // Changing the type is raising the new one, and it has to be authorized as
+    // such. Without this, a grant narrowed to `task_type_in [BUG]` is escaped
+    // in two requests: raise a bug, then convert it to a feature. The check is
+    // against the *new* type, on top of the update check already made against
+    // the old — both must hold, because the actor is asserting authority over
+    // the task as it will be as well as as it is.
+    if let Some(wanted) = task_type
+        && wanted != current.task_type
+    {
+        let is_member = project::is_member(&mut scoped, current.project_id, ctx.actor.as_uuid())
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "reading project membership failed");
+                ApiError::internal(&request_id)
+            })?;
+        let project_row = project::read_visible(&mut scoped, &ctx.viewer, current.project_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "reading the project failed");
+                ApiError::internal(&request_id)
+            })?
+            .ok_or_else(|| ApiError::missing(codes::PROJECT_NOT_FOUND, &request_id))?;
+        unit::authorized(
+            ctx.authority.may_in_project(
+                permission::TASK_CREATE,
+                ProjectId::from_uuid(current.project_id),
+                &project_row.teams(),
+                &casual_task_app::ResourceFacts {
+                    task_type: super::guard::task_type_of(wanted),
+                    ..ctx.facts_in_project(is_member)
+                },
+            ),
+            &request_id,
+        )?;
+    }
 
     let patch = task::TaskPatch {
         title: title.map(ToOwned::to_owned),

@@ -421,3 +421,151 @@ async fn neither_endpoint_answers_without_a_session() -> Result<()> {
     }
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_developer_may_raise_the_types_their_grant_names_and_no_others() -> Result<()> {
+    // `docs/45`: "QA and management raise anything, a developer raises bugs."
+    //
+    // Every piece of this existed and none of it worked. `TaskTypeIn` was in
+    // the closed constraint set with its own unit tests; `explain` knew its
+    // name; and `constraints_of` had no arm for it, so a stored grant carrying
+    // it decoded to *unsatisfiable* — the holder could raise nothing at all.
+    // Even decoded, `create` authorized with no task type in the facts, and a
+    // type constraint matches no type when there is none. Two independent
+    // reasons the rule denied everything, both of them silent, because a rule
+    // that denies looks like a strict administrator rather than a bug.
+    let db = schema_harness::TestDatabase::start().await?;
+    let app = app(db.pool.clone());
+    let caller = sign_up(&app, &db.pool, "dev@example.com").await?;
+    let workspace = workspace_with(&db.pool, caller.user_id, "acme").await?;
+
+    test_support::grant_at_workspace(
+        &db.pool,
+        workspace,
+        caller.user_id,
+        &["project.create", "task.read", "task.update"],
+    )
+    .await?;
+    test_support::grant_at_workspace_constrained(
+        &db.pool,
+        workspace,
+        caller.user_id,
+        &["task.create"],
+        json!({ "task_type_in": ["BUG", "INCIDENT"] }),
+    )
+    .await?;
+
+    let created = app
+        .clone()
+        .oneshot(
+            request(&caller, workspace, "POST", "/api/v1/projects")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("idempotency-key", Uuid::now_v7().to_string())
+                .body(Body::from(
+                    json!({ "key": "WR", "name": "Work", "visibility": "WORKSPACE" }).to_string(),
+                ))?,
+        )
+        .await?;
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let project: Uuid = json_body(created).await?["id"]
+        .as_str()
+        .expect("project id")
+        .parse()?;
+
+    let raise = async |task_type: &'static str| {
+        app.clone()
+            .oneshot(
+                request(
+                    &caller,
+                    workspace,
+                    "POST",
+                    &format!("/api/v1/projects/{project}/tasks"),
+                )
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("idempotency-key", Uuid::now_v7().to_string())
+                .body(Body::from(
+                    json!({ "title": "Login crashes on rotate", "type": task_type }).to_string(),
+                ))
+                .expect("request"),
+            )
+            .await
+            .expect("send")
+    };
+
+    // The type the grant names.
+    let bug = raise("BUG").await;
+    assert_eq!(
+        bug.status(),
+        StatusCode::CREATED,
+        "a grant naming BUG must permit raising one"
+    );
+    let bug_id: Uuid = json_body(bug).await?["id"].as_str().expect("id").parse()?;
+
+    // And one it does not.
+    assert_eq!(
+        raise("FEATURE").await.status(),
+        StatusCode::FORBIDDEN,
+        "a grant naming BUG and INCIDENT must not permit raising a FEATURE"
+    );
+    // Including the default, which is the easy one to miss: a body with no
+    // type at all is still a TASK, and TASK is not on the list.
+    assert_eq!(
+        raise("TASK").await.status(),
+        StatusCode::FORBIDDEN,
+        "the default type is a type, and it is not one this grant names"
+    );
+
+    // The escape hatch that made the whole constraint decorative: raise a bug,
+    // then convert it. Changing the type is raising the new one.
+    let read = app
+        .clone()
+        .oneshot(
+            request(
+                &caller,
+                workspace,
+                "GET",
+                &format!("/api/v1/tasks/{bug_id}"),
+            )
+            .body(Body::empty())?,
+        )
+        .await?;
+    let version = json_body(read).await?["version"].as_i64().expect("version");
+    let converted = app
+        .clone()
+        .oneshot(
+            request(
+                &caller,
+                workspace,
+                "PATCH",
+                &format!("/api/v1/tasks/{bug_id}"),
+            )
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::IF_MATCH, format!("\"{version}\""))
+            .body(Body::from(json!({ "type": "FEATURE" }).to_string()))?,
+        )
+        .await?;
+    assert_eq!(
+        converted.status(),
+        StatusCode::FORBIDDEN,
+        "converting a bug into a feature is raising a feature"
+    );
+
+    // And the menu the client draws is the same answer, so the form never
+    // offers a type the create path will refuse.
+    let body = effective(&app, &caller, workspace).await?;
+    let offered = body["permissions"]
+        .as_array()
+        .expect("permissions")
+        .iter()
+        .find(|p| p["permission"] == "task.create")
+        .expect("task.create")["task_types"]
+        .as_array()
+        .expect("task_types")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(offered, vec!["BUG", "INCIDENT"], "{body}");
+
+    Ok(())
+}

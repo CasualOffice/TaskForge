@@ -92,9 +92,44 @@ fn constraints_of(value: &serde_json::Value) -> Vec<Constraint> {
                         .collect(),
                 )
             }),
+            // `docs/45`: "QA and management raise anything, a developer raises
+            // bugs". The constraint existed in the closed set with its own
+            // tests and its own name in `explain`, and every stored grant
+            // carrying it decoded to *unsatisfiable* — so the rule denied its
+            // holder everything instead of narrowing them. Nothing failed
+            // loudly, because failing closed looks like a strict
+            // administrator.
+            //
+            // An unparseable member is dropped rather than made unsatisfiable:
+            // a list of types this build does not know is a narrower list, not
+            // a broken grant, and it still denies the types it does not name.
+            "task_type_in" => argument.as_array().map_or_else(unsatisfiable, |kinds| {
+                Constraint::TaskTypeIn(
+                    kinds
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .filter_map(task_type_of)
+                        .collect(),
+                )
+            }),
             _ => unsatisfiable(),
         })
         .collect()
+}
+
+/// A stored task type as the model's enum.
+///
+/// The `UPPERCASE` spelling the filter grammar, the create body and the wire
+/// all use, so a grant is written in the same words a client would send.
+fn task_type_of(stored: &str) -> Option<casual_task_model::TaskType> {
+    match stored {
+        "TASK" => Some(casual_task_model::TaskType::Task),
+        "BUG" => Some(casual_task_model::TaskType::Bug),
+        "FEATURE" => Some(casual_task_model::TaskType::Feature),
+        "INCIDENT" => Some(casual_task_model::TaskType::Incident),
+        "REQUEST" => Some(casual_task_model::TaskType::Request),
+        _ => None,
+    }
 }
 
 /// Everything a request's authority is resolved from, gathered once.
@@ -270,6 +305,86 @@ impl Authority {
         let scopes = casual_task_authz::ResourceScopes::project(self.workspace, project)
             .in_teams(teams.iter().copied());
         self.effective_in(&scopes)
+    }
+
+    /// Which task types the actor may raise here, or `None` for all of them.
+    ///
+    /// # Why the client needs this and cannot derive it
+    ///
+    /// `docs/45` allows "a developer may raise a bug but not a feature", and it
+    /// is expressed as `task_type_in` on the grant. `effective_in_*` reports
+    /// that `task.create` is *conditional*, which is enough to know the answer
+    /// may be no but not enough to draw a menu — and a create form offering
+    /// four types where one will be refused is the cognitive burden the product
+    /// exists to remove.
+    ///
+    /// # Why `None` and not "all five"
+    ///
+    /// The set is closed today and will not stay closed — `docs/04` allows the
+    /// type vocabulary to grow. `None` means "this grant does not narrow by
+    /// type", which stays true when a sixth type is added; a materialised list
+    /// of five would quietly become a list that excludes the new one.
+    ///
+    /// This narrows a menu. It does not decide anything: the create path
+    /// re-authorizes against the type actually sent, and a caller who ignores
+    /// this is refused there.
+    #[must_use]
+    pub fn creatable_task_types_in_workspace(&self) -> Option<Vec<casual_task_model::TaskType>> {
+        self.creatable_task_types(&casual_task_authz::ResourceScopes::workspace(
+            self.workspace,
+        ))
+    }
+
+    /// The same question, in one project.
+    ///
+    /// Two named methods rather than one taking a scope, mirroring
+    /// `effective_in_workspace` / `effective_in_project`: `docs/19` makes this
+    /// crate the only layer permitted to compose, and a handler assembling a
+    /// `ResourceScopes` itself would be a second place to get the containment
+    /// chain wrong.
+    #[must_use]
+    pub fn creatable_task_types_in_project(
+        &self,
+        project: ProjectId,
+        teams: &[TeamId],
+    ) -> Option<Vec<casual_task_model::TaskType>> {
+        let scopes = casual_task_authz::ResourceScopes::project(self.workspace, project)
+            .in_teams(teams.iter().copied());
+        self.creatable_task_types(&scopes)
+    }
+
+    fn creatable_task_types(
+        &self,
+        resource: &casual_task_authz::ResourceScopes,
+    ) -> Option<Vec<casual_task_model::TaskType>> {
+        let mut union: Vec<casual_task_model::TaskType> = Vec::new();
+        for (permission, constraints) in
+            casual_task_authz::effective(&self.actor, resource, &self.grants)
+        {
+            if permission != casual_task_model::permission::TASK_CREATE {
+                continue;
+            }
+            let narrowing: Vec<&Vec<casual_task_model::TaskType>> = constraints
+                .iter()
+                .filter_map(|c| match c {
+                    Constraint::TaskTypeIn(allowed) => Some(allowed),
+                    _ => None,
+                })
+                .collect();
+            // A grant that does not narrow by type allows every type, and the
+            // combining rule is a union — so one such grant settles it.
+            if narrowing.is_empty() {
+                return None;
+            }
+            for allowed in narrowing {
+                for kind in allowed {
+                    if !union.contains(kind) {
+                        union.push(*kind);
+                    }
+                }
+            }
+        }
+        Some(union)
     }
 
     /// Whether the actor may create this grant (`docs/04` §The rules).
@@ -737,5 +852,62 @@ mod tests {
              visibility from a grant scoped to the project, and widening it \
              would make every private project visible to every member"
         );
+    }
+
+    #[test]
+    fn a_task_type_constraint_decodes_to_the_types_it_names() {
+        // The regression this pins: `task_type_in` had no arm here, so every
+        // grant carrying it fell through to `unsatisfiable` and denied its
+        // holder everything. Nothing failed loudly — a rule that denies looks
+        // like a strict administrator, not like a bug.
+        let decoded = constraints_of(&serde_json::json!({ "task_type_in": ["BUG", "INCIDENT"] }));
+        assert_eq!(
+            decoded,
+            vec![Constraint::TaskTypeIn(vec![
+                casual_task_model::TaskType::Bug,
+                casual_task_model::TaskType::Incident
+            ])]
+        );
+    }
+
+    #[test]
+    fn an_unknown_type_narrows_the_list_rather_than_breaking_the_grant() {
+        // A type this build does not know is a type it cannot be asked to
+        // allow. Dropping it leaves a narrower grant; making the whole
+        // constraint unsatisfiable would take away the types that *are*
+        // spelled correctly beside it.
+        let decoded = constraints_of(&serde_json::json!({ "task_type_in": ["BUG", "CHORE"] }));
+        assert_eq!(
+            decoded,
+            vec![Constraint::TaskTypeIn(vec![
+                casual_task_model::TaskType::Bug
+            ])]
+        );
+    }
+
+    #[test]
+    fn a_task_type_constraint_that_is_not_a_list_is_unsatisfiable() {
+        // Malformed, not narrow. Failing closed is right here: nobody can say
+        // what `"task_type_in": "BUG"` was meant to permit, and guessing "the
+        // one type it names" would turn a typo into a grant.
+        assert_eq!(
+            constraints_of(&serde_json::json!({ "task_type_in": "BUG" })),
+            vec![unsatisfiable()]
+        );
+    }
+
+    #[test]
+    fn an_empty_task_type_list_permits_nothing() {
+        // Distinct from an absent constraint, which permits everything. A
+        // grant narrowed to no types is a grant that raises nothing, and
+        // reading it as "unrestricted" would invert it.
+        let decoded = constraints_of(&serde_json::json!({ "task_type_in": [] }));
+        assert_eq!(decoded, vec![Constraint::TaskTypeIn(Vec::new())]);
+        let facts = ResourceFacts {
+            task_type: Some(casual_task_model::TaskType::Bug),
+            ..ResourceFacts::default()
+        };
+        let actor = casual_task_model::UserId::from_uuid(uuid::Uuid::now_v7());
+        assert!(!decoded[0].satisfied(actor, &facts));
     }
 }

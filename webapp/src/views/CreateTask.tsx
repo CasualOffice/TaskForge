@@ -102,6 +102,10 @@ function CreateForm({
 
   const available = projects.data?.data ?? []
   const [project, setProject] = useState(projectId ?? '')
+  // Asked about the project being filed into, not the one the view is scoped
+  // to: a person may raise anything on their own team's project and only bugs
+  // on another's, and the menu has to follow the choice.
+  const authority = useAuthority(project === '' ? projectId : project)
   const [title, setTitle] = useState('')
   const [type, setType] = useState<TaskType>('TASK')
   const [priority, setPriority] = useState<Priority>('NONE')
@@ -117,6 +121,21 @@ function CreateForm({
   // Only when the caller passed none and exactly one exists: choosing *for* the
   // user out of several would silently file work in the wrong place.
   const chosen = project !== '' ? project : available.length === 1 ? (available[0]?.id ?? '') : ''
+
+  // `docs/45`: a grant may be narrowed to the types its holder may raise — QA
+  // and leads open anything, a developer raises bugs. Offering a type the
+  // server will refuse is the cognitive burden this product exists to remove,
+  // so the menu is the answer to "what may I raise", not the whole vocabulary.
+  // `undefined` means no narrowing, which is not the same as an empty list.
+  const allowed = authority.creatableTypes
+  const offered: readonly TaskType[] =
+    allowed === undefined ? TASK_TYPES : TASK_TYPES.filter((option) => allowed.includes(option))
+
+  // A default nobody may raise would fail on the first press. Corrected here
+  // rather than in the initial state, because the answer arrives after it.
+  useEffect(() => {
+    if (offered.length > 0 && !offered.includes(type)) setType(offered[0] as TaskType)
+  }, [offered, type])
 
   const create = useMutation({
     mutationFn: () =>
@@ -212,7 +231,7 @@ function CreateForm({
               value={type}
               onChange={(event) => setType(event.target.value as TaskType)}
             >
-              {TASK_TYPES.map((option) => (
+              {offered.map((option) => (
                 <option key={option} value={option}>
                   {typeLabel(option)}
                 </option>
