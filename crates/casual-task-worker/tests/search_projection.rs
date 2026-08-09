@@ -20,9 +20,7 @@ use uuid::Uuid;
 /// the one row-level security applies to. As the owner every assertion here
 /// would pass with the tenant predicates removed.
 async fn app_pool(db: &schema_harness::TestDatabase) -> Result<sqlx::PgPool> {
-    sqlx::query("ALTER ROLE taskforge_app WITH LOGIN PASSWORD 'apppw'")
-        .execute(&db.pool)
-        .await?;
+    test_support::enable_app_login(&db.pool, "apppw").await?;
     Ok(sqlx::PgPool::connect(&db.app_url()).await?)
 }
 
@@ -111,10 +109,7 @@ async fn a_deleted_task_is_removed_and_staying_deleted_is_idempotent() -> Result
         .map_err(anyhow::Error::msg)?;
     assert_eq!(test_support::indexed_count(&db.pool, workspace).await?, 1);
 
-    sqlx::query("UPDATE task SET deleted_at = now() WHERE id = $1")
-        .bind(task)
-        .execute(&db.pool)
-        .await?;
+    test_support::soft_delete_task(&db.pool, task).await?;
 
     // Twice: the second is the redelivery that at-least-once permits.
     for _ in 0..2 {

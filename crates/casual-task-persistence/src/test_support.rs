@@ -824,6 +824,42 @@ pub async fn insert_task_fixture(
     Ok(task)
 }
 
+/// Give `taskforge_app` a password so a test can connect as it.
+///
+/// Tests that assert row-level security MUST connect as this role — RLS is
+/// inert for the owner (migration 0012) — and the crates that hold those tests
+/// cannot issue the `ALTER ROLE` themselves: `docs/19` puts all SQL here, and
+/// `casual-task-lint` makes that a build failure rather than a review comment.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn enable_app_login(pool: &sqlx::PgPool, password: &str) -> Result<(), sqlx::Error> {
+    // The password is an identifier position, not a bind position: PostgreSQL
+    // does not accept a parameter in ALTER ROLE. It is quoted rather than
+    // interpolated raw, and every caller passes a literal from a test.
+    let quoted = password.replace('\'', "''");
+    sqlx::query(&format!(
+        "ALTER ROLE taskforge_app WITH LOGIN PASSWORD '{quoted}'"
+    ))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Soft-delete a task, as `DELETE /tasks/{id}` does.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn soft_delete_task(pool: &sqlx::PgPool, task_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE task SET deleted_at = now() WHERE id = $1")
+        .bind(task_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Rebuild one task's search document, as the projection consumer would.
 ///
 /// The consumer itself lives in `casual-task-worker` and is exercised by its

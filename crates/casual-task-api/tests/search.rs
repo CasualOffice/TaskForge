@@ -359,10 +359,7 @@ async fn a_soft_deleted_task_leaves_the_projection() -> Result<()> {
     let (_, body) = caller.get("/api/v1/tasks?q=payment").await?;
     assert_eq!(ids(&body), vec![task.to_string()]);
 
-    sqlx::query("UPDATE task SET deleted_at = now() WHERE id = $1")
-        .bind(task)
-        .execute(&db.pool)
-        .await?;
+    test_support::soft_delete_task(&db.pool, task).await?;
     // Re-running the projection is what the worker does on `task.deleted`.
     assert!(
         !test_support::index_task(&db.pool, caller.workspace, task).await?,
