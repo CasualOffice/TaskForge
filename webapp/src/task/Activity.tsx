@@ -22,6 +22,8 @@
  * the console on every task a reader opens, and the disclosure would open onto
  * an error rather than not being offered.
  */
+import { FLUSH } from '../shell/controls'
+import { Button } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 
@@ -60,14 +62,9 @@ export function Activity({
   return (
     <section className="act" aria-labelledby="activity-heading">
       <h2 id="activity-heading" className="narr__heading">
-        <button
-          type="button"
-          className="button button--quiet"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
+        <Button variant="subtle" style={FLUSH} aria-expanded={open} onClick={() => setOpen(!open)}>
           Activity
-        </button>
+        </Button>
       </h2>
 
       {!open ? null : (
@@ -85,14 +82,13 @@ export function Activity({
           </ol>
 
           {history.hasNextPage ? (
-            <button
-              type="button"
-              className="button button--quiet"
+            <Button
+              variant="subtle"
               disabled={history.isFetchingNextPage}
               onClick={() => void history.fetchNextPage()}
             >
               {history.isFetchingNextPage ? 'Loading…' : 'Older'}
-            </button>
+            </Button>
           ) : null}
         </>
       )}

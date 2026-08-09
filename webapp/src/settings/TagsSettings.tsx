@@ -15,6 +15,7 @@
  * meet as a picker offering an option the save rejects. The form says which is
  * which before the choice is made.
  */
+import { Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -72,9 +73,9 @@ export function TagsSettings(): ReactElement {
       {mayManage ? (
         <Form onSubmit={() => create.submit(undefined)}>
           <Field label="Name" id="tag-name">
-            <input
+            <Input
+              full
               id="tag-name"
-              className="input"
               value={name}
               maxLength={200}
               onChange={(event) => setName(event.target.value)}
@@ -85,9 +86,9 @@ export function TagsSettings(): ReactElement {
             id="tag-scope"
             hint="A project-scoped tag is refused on tasks anywhere else."
           >
-            <select
+            <Select
+              full
               id="tag-scope"
-              className="select"
               value={projectId}
               onChange={(event) => setProjectId(event.target.value)}
             >
@@ -97,29 +98,25 @@ export function TagsSettings(): ReactElement {
                   Only {project.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field
             label="Colour"
             id="tag-color"
             hint="A hint only. Every surface renders the name too, so colour is never the sole carrier of meaning."
           >
-            <input
+            <Input
+              full
               id="tag-color"
-              className="input"
               value={color}
               placeholder="#7a5cff"
               onChange={(event) => setColor(event.target.value)}
             />
           </Field>
           <WriteError error={create.error} />
-          <button
-            type="submit"
-            className="button button--primary"
-            disabled={create.pending || name.trim() === ''}
-          >
+          <Button variant="primary" type="submit" disabled={create.pending || name.trim() === ''}>
             {create.pending ? 'Creating…' : 'Create tag'}
-          </button>
+          </Button>
         </Form>
       ) : (
         <NeedsPermission permission="tag.manage" />
@@ -127,19 +124,13 @@ export function TagsSettings(): ReactElement {
 
       {tags.isPending ? <Loading label="Loading tags" /> : null}
       {tags.error ? <ErrorNotice error={tags.error} /> : null}
-      {!tags.isPending && rows.length === 0 ? (
-        <p className="empty">No tags yet.</p>
-      ) : null}
+      {!tags.isPending && rows.length === 0 ? <p className="empty">No tags yet.</p> : null}
       <ul className="settings__rows">
         {rows.map((tag) => (
           <li className="settings__row" key={tag.id}>
             <span className="settings__row-main">
               {tag.color === null ? null : (
-                <span
-                  className="dot"
-                  style={{ background: tag.color }}
-                  aria-hidden="true"
-                />
+                <span className="dot" style={{ background: tag.color }} aria-hidden="true" />
               )}
               {tag.name}
             </span>

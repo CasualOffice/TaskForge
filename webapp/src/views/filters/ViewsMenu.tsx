@@ -25,6 +25,8 @@
  * `tasks/builtinViews.ts`). Hiding them would quietly redefine what TaskForge
  * ships as what it currently manages; running them would show the user a 500.
  */
+import { Button } from '@schnsrw/design-system'
+import { narrowing } from '../../shell/controls'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import type { AppSearch } from '../../router'
@@ -62,20 +64,33 @@ export function ViewsMenu({
 
   return (
     <div className="filter" ref={host}>
-      <button
-        type="button"
-        className={`button filter__trigger${current === undefined ? '' : ' filter__trigger--on'}`}
+      <Button
+        variant="secondary"
+        iconRight="expand_more"
+        style={narrowing(current !== undefined)}
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen(!open)}
       >
         {current === undefined ? 'Views' : current.name}
-      </button>
+      </Button>
 
       {open ? (
         <div className="filter__popover views__popover">
-          <Group label="My Work" views={mine} current={current} onApply={onApply} close={() => setOpen(false)} />
-          <Group label="Workspace" views={shared} current={current} onApply={onApply} close={() => setOpen(false)} />
+          <Group
+            label="My Work"
+            views={mine}
+            current={current}
+            onApply={onApply}
+            close={() => setOpen(false)}
+          />
+          <Group
+            label="Workspace"
+            views={shared}
+            current={current}
+            onApply={onApply}
+            close={() => setOpen(false)}
+          />
           <p className="views__note">
             Saving your own view needs <code>/api/v1/saved-views</code>, which is specified in
             docs/05 and not served yet.

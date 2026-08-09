@@ -15,6 +15,7 @@
  * arriving. Splitting them means an admin who has just invited someone has to
  * navigate to find out whether it worked.
  */
+import { Badge, Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -127,30 +128,27 @@ function People({
           <li className="settings__row" key={member.user_id}>
             <span className="settings__row-main">
               {member.display_name}
-              {member.member_type === 'GUEST' ? <span className="badge"> guest</span> : null}
-              {member.user_id === actor?.actor_id ? <span className="badge"> you</span> : null}
+              {member.member_type === 'GUEST' ? <Badge tone="neutral">guest</Badge> : null}
+              {member.user_id === actor?.actor_id ? <Badge tone="accent">you</Badge> : null}
             </span>
             <span className="settings__row-meta">
               {member.email ?? 'address removed'}
               {showGrants ? ` · ${describeRoles(held.get(member.user_id))}` : ''}
             </span>
             {mayManage && member.user_id !== actor?.actor_id ? (
-              <button
-                type="button"
-                className="button button--quiet"
+              <Button
+                variant="subtle"
                 onClick={() => remove.submit(member.user_id)}
                 disabled={remove.pending}
               >
                 Remove
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
       </ul>
       {hasMore ? (
-        <p className="field__hint">
-          Showing the first 100. Narrowing this list is not built yet.
-        </p>
+        <p className="field__hint">Showing the first 100. Narrowing this list is not built yet.</p>
       ) : null}
     </Section>
   )
@@ -164,7 +162,8 @@ function People({
  * thing to fix.
  */
 function describeRoles(names: readonly string[] | undefined): string {
-  if (names === undefined || names.length === 0) return 'no roles — they can sign in and see nothing'
+  if (names === undefined || names.length === 0)
+    return 'no roles — they can sign in and see nothing'
   return names.join(', ')
 }
 
@@ -204,7 +203,10 @@ function Invitations({
 
   if (!mayManage) {
     return (
-      <Section title="Invitations" description="Who has been asked to join, and has not arrived yet.">
+      <Section
+        title="Invitations"
+        description="Who has been asked to join, and has not arrived yet."
+      >
         <NeedsPermission permission="workspace.manage" />
       </Section>
     )
@@ -219,9 +221,9 @@ function Invitations({
     >
       <Form onSubmit={() => invite.submit(undefined)}>
         <Field label="Email address" id="invite-email">
-          <input
+          <Input
+            full
             id="invite-email"
-            className="input"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -232,9 +234,9 @@ function Invitations({
           id="invite-role"
           hint="Optional. Checked against your own authority now, so an invitation cannot grant what you could not."
         >
-          <select
+          <Select
+            full
             id="invite-role"
-            className="select"
             value={roleId}
             onChange={(event) => setRoleId(event.target.value)}
           >
@@ -244,16 +246,12 @@ function Invitations({
                 {role.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         <WriteError error={invite.error} />
-        <button
-          type="submit"
-          className="button button--primary"
-          disabled={invite.pending || email.trim() === ''}
-        >
+        <Button variant="primary" type="submit" disabled={invite.pending || email.trim() === ''}>
           {invite.pending ? 'Sending…' : 'Send invitation'}
-        </button>
+        </Button>
       </Form>
 
       <WriteError error={revoke.error} />
@@ -298,9 +296,9 @@ function InvitationRow({
         {expired ? 'expired' : 'expires'}{' '}
         <time dateTime={invitation.expires_at}>{expiry.toLocaleString()}</time>
       </span>
-      <button type="button" className="button button--quiet" onClick={onRevoke} disabled={busy}>
+      <Button variant="subtle" onClick={onRevoke} disabled={busy}>
         Revoke
-      </button>
+      </Button>
     </li>
   )
 }

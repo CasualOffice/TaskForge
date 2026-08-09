@@ -26,6 +26,7 @@
  * content, which is exactly the mistake the board's old "choose a project"
  * banner made.
  */
+import { Button } from '@schnsrw/design-system'
 import { useMemo, type ReactElement } from 'react'
 
 import type { TaskQuery } from '../api/tasks'
@@ -126,14 +127,9 @@ export function MyWorkView(): ReactElement {
             <p>{active.empty}</p>
             <div className="empty__actions">
               {LENSES.filter((option) => option.id !== lens).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className="button"
-                  onClick={() => choose(option.id)}
-                >
+                <Button variant="secondary" key={option.id} onClick={() => choose(option.id)}>
                   {option.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -163,14 +159,9 @@ export function MyWorkView(): ReactElement {
         </ul>
 
         {feed.hasMore ? (
-          <button
-            type="button"
-            className="button button--quiet"
-            onClick={feed.fetchMore}
-            disabled={feed.isFetchingMore}
-          >
+          <Button variant="subtle" onClick={feed.fetchMore} disabled={feed.isFetchingMore}>
             {feed.isFetchingMore ? 'Loading…' : 'Load more'}
-          </button>
+          </Button>
         ) : null}
 
         <footer className="mywork__footnote">

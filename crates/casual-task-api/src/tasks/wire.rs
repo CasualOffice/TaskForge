@@ -57,7 +57,7 @@ pub struct TaskView {
     pub version: i64,
 }
 
-pub(crate) fn view(row: &TaskRow, project_key: &str) -> TaskView {
+pub fn view(row: &TaskRow, project_key: &str) -> TaskView {
     TaskView {
         id: row.id,
         key: format!("{project_key}-{}", row.number),

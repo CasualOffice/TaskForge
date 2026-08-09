@@ -25,6 +25,7 @@
  * alignment, content, an open state — are that shape, so the swap replaces the
  * body of this file rather than every call site.
  */
+import { Button, type ButtonVariant } from '@schnsrw/design-system'
 import {
   useCallback,
   useEffect,
@@ -39,7 +40,8 @@ export function Popover({
   label,
   ariaLabel,
   align = 'start',
-  triggerClass = 'button',
+  triggerClass,
+  triggerVariant,
   disabled = false,
   title,
   children,
@@ -50,7 +52,14 @@ export function Popover({
   ariaLabel?: string
   /** Which edge the surface lines up with. `end` keeps a right-hand control on screen. */
   align?: 'start' | 'end'
+  /** A bespoke trigger — a status chip, a metadata cell, the account button. */
   triggerClass?: string
+  /**
+   * Or an ordinary button, drawn by the design system. One of the two: a
+   * trigger that is both a Button and a `.something__button` is a control with
+   * two opinions about its own height.
+   */
+  triggerVariant?: ButtonVariant
   disabled?: boolean
   /** Hover/focus explanation — §9: a tooltip explains, it does not act. */
   title?: string
@@ -94,20 +103,36 @@ export function Popover({
 
   return (
     <div className="pop" ref={host}>
-      <button
-        type="button"
-        ref={trigger}
-        className={triggerClass}
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-controls={open ? id : undefined}
-        {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
-        {...(title === undefined ? {} : { title })}
-        disabled={disabled}
-        onClick={() => setOpen(!open)}
-      >
-        {label}
-      </button>
+      {triggerVariant === undefined ? (
+        <button
+          type="button"
+          ref={trigger}
+          className={triggerClass}
+          aria-expanded={open}
+          aria-haspopup="true"
+          aria-controls={open ? id : undefined}
+          {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
+          {...(title === undefined ? {} : { title })}
+          disabled={disabled}
+          onClick={() => setOpen(!open)}
+        >
+          {label}
+        </button>
+      ) : (
+        <Button
+          ref={trigger}
+          variant={triggerVariant}
+          aria-expanded={open}
+          aria-haspopup="true"
+          aria-controls={open ? id : undefined}
+          {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
+          {...(title === undefined ? {} : { title })}
+          disabled={disabled}
+          onClick={() => setOpen(!open)}
+        >
+          {label}
+        </Button>
+      )}
 
       {open ? (
         <div className={`pop__surface pop__surface--${align}`} id={id}>

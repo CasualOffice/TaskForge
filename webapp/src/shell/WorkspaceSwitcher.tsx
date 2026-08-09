@@ -15,6 +15,7 @@
  * keyboard trap appears (docs/42 §Accessibility).
  */
 import type { ReactElement } from 'react'
+import { Select } from '@schnsrw/design-system'
 
 import { useSession } from './session'
 
@@ -31,9 +32,10 @@ export function WorkspaceSwitcher(): ReactElement | null {
       <label className="visually-hidden" htmlFor="workspace-switcher">
         Workspace
       </label>
-      <select
+      <Select
+        width="auto"
+        containerStyle={{ maxWidth: 220 }}
         id="workspace-switcher"
-        className="select workspace__select"
         value={workspace.id}
         onChange={(event) => chooseWorkspace(event.target.value)}
       >
@@ -42,7 +44,7 @@ export function WorkspaceSwitcher(): ReactElement | null {
             {candidate.name}
           </option>
         ))}
-      </select>
+      </Select>
     </>
   )
 }

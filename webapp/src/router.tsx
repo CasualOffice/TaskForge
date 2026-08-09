@@ -25,6 +25,7 @@ import { SettingsLayout } from './settings/SettingsLayout'
 import { AppFrame } from './shell/AppFrame'
 import { TaskDetail } from './task/TaskDetail'
 import { BoardView } from './views/BoardView'
+import { HomeView } from './views/HomeView'
 import { MyWorkView } from './views/MyWorkView'
 import { TaskListView } from './views/TaskListView'
 
@@ -197,7 +198,11 @@ function validateSearch(raw: Record<string, unknown>): AppSearch {
 
 const rootRoute = createRootRoute({ component: AppFrame, validateSearch })
 
-const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: TaskListView })
+const listRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: TaskListView,
+})
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/board',
@@ -222,6 +227,16 @@ const taskRoute = createRoute({
   },
 })
 
+/**
+ * Home answers "whose turn is it" (`docs/45`); My Work answers "what is
+ * assigned, reported by, or overdue for me". They overlap and are not the same
+ * question, so both exist and Home is the one the rail points at first.
+ */
+const homeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/home',
+  component: HomeView,
+})
 const myWorkRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/my-work',
@@ -232,7 +247,13 @@ const environmentsRoute = createRoute({
   path: '/environments',
   component: function EnvironmentsRoute(): ReactElement {
     return (
-      <Suspense fallback={<p className="empty" role="status">Loading environments…</p>}>
+      <Suspense
+        fallback={
+          <p className="empty" role="status">
+            Loading environments…
+          </p>
+        }
+      >
         <EnvironmentView />
       </Suspense>
     )
@@ -319,6 +340,7 @@ const settingsChildren = [
 export const routeTree = rootRoute.addChildren([
   listRoute,
   boardRoute,
+  homeRoute,
   myWorkRoute,
   taskRoute,
   reportsRoute,

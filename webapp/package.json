@@ -22,7 +22,8 @@
     "@tanstack/react-router": "1.170.23",
     "@tanstack/react-virtual": "3.14.9",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "@schnsrw/design-system": "github:CasualOffice/design-book#b75531b8fb5e683f4606728167fb1e878b96cfe4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

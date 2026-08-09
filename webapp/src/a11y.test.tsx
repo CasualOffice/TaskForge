@@ -44,7 +44,9 @@ afterEach(cleanup)
 
 /** A client with retries off: a test must not wait out a backoff schedule. */
 function testClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
 }
 
 /**
@@ -121,9 +123,7 @@ describe('refusals', () => {
   })
 
   it('render a gap as a gap, not as an error', async () => {
-    const { container, queryByRole } = render(
-      <GapNotice what="Relations are not readable yet." />,
-    )
+    const { container, queryByRole } = render(<GapNotice what="Relations are not readable yet." />)
     // An unbuilt capability is not something that went wrong. Rendering it as an
     // alert teaches users to ignore alert styling.
     expect(queryByRole('alert')).toBeNull()

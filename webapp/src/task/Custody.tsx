@@ -23,6 +23,8 @@
  * twice on qa, then passed" survive however many times the status has changed —
  * a status column only ever holds the latest value.
  */
+import { CONTROL } from '../shell/controls'
+import { Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -195,9 +197,11 @@ function Handoff({
       <label className="field__label" htmlFor="cust-team">
         Hand over to
       </label>
-      <select
+      <Select
+        width="auto"
+        containerStyle={{ maxWidth: 260 }}
+        style={{ height: CONTROL }}
         id="cust-team"
-        className="select"
         value={team}
         onChange={(event) => setTeam(event.target.value)}
       >
@@ -207,9 +211,9 @@ function Handoff({
             {candidate.name}
           </option>
         ))}
-      </select>
-      <input
-        className="input"
+      </Select>
+      <Input
+        full
         value={note}
         placeholder="Why — the receiving team reads this"
         onChange={(event) => setNote(event.target.value)}
@@ -221,9 +225,9 @@ function Handoff({
         This clears the current assignees, so it lands in that team&rsquo;s queue.
       </p>
       {hand.error ? <ErrorNotice error={hand.error} /> : null}
-      <button type="submit" className="button" disabled={hand.pending || team === ''}>
+      <Button variant="secondary" type="submit" disabled={hand.pending || team === ''}>
         {hand.pending ? 'Handing over…' : 'Hand over'}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -247,8 +251,8 @@ function Promote({
   if (environments.length === 0) {
     return (
       <p className="field__hint">
-        This project has no environments yet, so nothing can be promoted. Add them under
-        the project&rsquo;s settings.
+        This project has no environments yet, so nothing can be promoted. Add them under the
+        project&rsquo;s settings.
       </p>
     )
   }
@@ -266,9 +270,11 @@ function Promote({
       </label>
       {/* In deployment order, which is `position` — sorting by name would put
           production second. */}
-      <select
+      <Select
+        width="auto"
+        containerStyle={{ maxWidth: 260 }}
+        style={{ height: CONTROL }}
         id="cust-env"
-        className="select"
         value={environment}
         onChange={(event) => setEnvironment(event.target.value)}
       >
@@ -278,11 +284,11 @@ function Promote({
             {candidate.name}
           </option>
         ))}
-      </select>
+      </Select>
       {push.error ? <ErrorNotice error={push.error} /> : null}
-      <button type="submit" className="button" disabled={push.pending || environment === ''}>
+      <Button variant="secondary" type="submit" disabled={push.pending || environment === ''}>
         {push.pending ? 'Recording…' : 'Record promotion'}
-      </button>
+      </Button>
     </form>
   )
 }
@@ -310,8 +316,8 @@ function Verify({
     // result. Said here rather than left to a 422 after the press.
     return (
       <p className="field__hint">
-        Record which environment this reached before verifying it — a verdict with no
-        environment cannot be reproduced.
+        Record which environment this reached before verifying it — a verdict with no environment
+        cannot be reproduced.
       </p>
     )
   }
@@ -319,8 +325,8 @@ function Verify({
   return (
     <div className="cust__form">
       <span className="field__label">Verify on {envName(on)}</span>
-      <input
-        className="input"
+      <Input
+        full
         value={note}
         placeholder="What you saw — evidence for a failure"
         onChange={(event) => setNote(event.target.value)}
@@ -328,22 +334,16 @@ function Verify({
       />
       {record.error ? <ErrorNotice error={record.error} /> : null}
       <div className="cust__verdicts">
-        <button
-          type="button"
-          className="button"
-          disabled={record.pending}
-          onClick={() => record.submit('PASS')}
-        >
+        <Button variant="secondary" disabled={record.pending} onClick={() => record.submit('PASS')}>
           Passed
-        </button>
-        <button
-          type="button"
-          className="button button--danger"
+        </Button>
+        <Button
+          variant="danger"
           disabled={record.pending || note.trim() === ''}
           onClick={() => record.submit('FAIL')}
         >
           Failed
-        </button>
+        </Button>
       </div>
       {/* A failure with no evidence is a message nobody can act on, so the
           control is disabled rather than the refusal being explained later. */}

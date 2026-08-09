@@ -24,6 +24,7 @@
  * cannot exist in one and be forgotten in the other. `StatusControl` and the
  * assignee row here are the same components the detail route renders.
  */
+import { Button } from '@schnsrw/design-system'
 import { useCallback, useRef, type ReactElement } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -69,7 +70,9 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
   const current = task.data
   /** Present the day `TaskView` carries the set; see `TaskMeta`. */
   const assignees =
-    current === undefined ? undefined : (current as Task & { assignees?: readonly string[] }).assignees
+    current === undefined
+      ? undefined
+      : (current as Task & { assignees?: readonly string[] }).assignees
   const description = current?.description ?? ''
   const clipped = description.length > SNIPPET
 
@@ -91,9 +94,9 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
         <header className="peek__head">
           <span className="key">{current?.key ?? '…'}</span>
           <span className="shell__spacer" />
-          <button type="button" className="button button--quiet" onClick={close}>
+          <Button variant="subtle" onClick={close}>
             Close
-          </button>
+          </Button>
         </header>
 
         {task.isPending ? <p className="empty">Loading task…</p> : null}
@@ -129,7 +132,9 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
                 the last one that may be left off this list. */}
             <p className="peek__who">
               <span className="peek__wholabel">Assignees</span>
-              <span className={assignees === undefined || assignees.length === 0 ? 'meta2__unset' : ''}>
+              <span
+                className={assignees === undefined || assignees.length === 0 ? 'meta2__unset' : ''}
+              >
                 {assignees === undefined
                   ? 'Not shown yet'
                   : assignees.length === 0
@@ -151,7 +156,7 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
             <Link
               to="/tasks/$taskId"
               params={{ taskId: current.id }}
-              className="button button--primary peek__open"
+              className="linkbutton linkbutton--primary peek__open"
             >
               Open full view
             </Link>

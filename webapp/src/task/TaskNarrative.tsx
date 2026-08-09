@@ -22,6 +22,7 @@
  * beside it. Re-deriving the field from the server copy on every render is the
  * bug that silently reverts a paragraph the moment someone else saves.
  */
+import { Button, Input } from '@schnsrw/design-system'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { PERMISSIONS } from '../api/permissions'
@@ -96,13 +97,9 @@ export function TaskTitle({
       <div className="narr__titlerow">
         <Heading className="narr__title">{task.title}</Heading>
         {mayEdit ? (
-          <button
-            type="button"
-            className="button button--quiet narr__edit"
-            onClick={() => setEditing(true)}
-          >
+          <Button variant="subtle" className="narr__edit" onClick={() => setEditing(true)}>
             Rename
-          </button>
+          </Button>
         ) : null}
       </div>
     )
@@ -113,10 +110,10 @@ export function TaskTitle({
       <label className="visually-hidden" htmlFor="task-title">
         Title
       </label>
-      <input
+      <Input
+        full
         id="task-title"
         ref={input}
-        className="input narr__titleinput"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
@@ -132,24 +129,18 @@ export function TaskTitle({
         }}
       />
       <div className="field__actions">
-        <button
-          type="button"
-          className="button button--primary"
-          disabled={patch.isPending || draft.trim() === ''}
-          onClick={save}
-        >
+        <Button variant="primary" disabled={patch.isPending || draft.trim() === ''} onClick={save}>
           Save
-        </button>
-        <button
-          type="button"
-          className="button button--quiet"
+        </Button>
+        <Button
+          variant="subtle"
           onClick={() => {
             setDraft(task.title)
             setEditing(false)
           }}
         >
           Cancel
-        </button>
+        </Button>
       </div>
       {patch.isError ? <ErrorNotice error={patch.error} /> : null}
     </div>
@@ -216,24 +207,18 @@ export function TaskDescription({
           }}
         />
         <div className="field__actions">
-          <button
-            type="button"
-            className="button button--primary"
-            disabled={patch.isPending}
-            onClick={save}
-          >
+          <Button variant="primary" disabled={patch.isPending} onClick={save}>
             {patch.isPending ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            className="button button--quiet"
+          </Button>
+          <Button
+            variant="subtle"
             onClick={() => {
               setDraft(task.description ?? '')
               setEditing(false)
             }}
           >
             Cancel
-          </button>
+          </Button>
         </div>
         {patch.isError ? <ErrorNotice error={patch.error} /> : null}
       </section>
@@ -249,13 +234,9 @@ export function TaskDescription({
           Description
         </h2>
         {mayEdit ? (
-          <button
-            type="button"
-            className="button button--quiet narr__edit"
-            onClick={() => setEditing(true)}
-          >
+          <Button variant="subtle" className="narr__edit" onClick={() => setEditing(true)}>
             {text === '' ? 'Add' : 'Edit'}
-          </button>
+          </Button>
         ) : null}
       </div>
       {text === '' ? (

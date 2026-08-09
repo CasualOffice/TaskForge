@@ -35,6 +35,7 @@
  * would make the user's *next* task a replay of their last. It is therefore
  * rotated on success, which is exactly when the attempt is over.
  */
+import { Button, Input, Select } from '@schnsrw/design-system'
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -73,7 +74,7 @@ export function CreateTask({
     <Popover
       label={label}
       align="end"
-      triggerClass={`button button--${variant === 'primary' ? 'primary' : 'quiet'}`}
+      triggerVariant={variant === 'primary' ? 'primary' : 'subtle'}
     >
       {(close) => <CreateForm projectId={projectId} close={close} />}
     </Popover>
@@ -162,9 +163,9 @@ function CreateForm({
         <label className="field__label" htmlFor="create-project">
           Project
         </label>
-        <select
+        <Select
+          full
           id="create-project"
-          className="select"
           value={chosen}
           onChange={(event) => setProject(event.target.value)}
         >
@@ -174,30 +175,30 @@ function CreateForm({
               {entry.key} — {entry.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="field">
         <label className="field__label" htmlFor="create-title">
           Title
         </label>
-        <input
+        <Input
+          full
           id="create-title"
-          className="input"
           ref={titleRef}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />
       </div>
 
-      <button
-        type="button"
-        className="button button--quiet create__more"
+      <Button
+        variant="subtle"
+        className="create__more"
         aria-expanded={more}
         onClick={() => setMore(!more)}
       >
         {more ? 'Fewer fields' : 'Type and priority'}
-      </button>
+      </Button>
 
       {more ? (
         <div className="create__row">
@@ -205,9 +206,9 @@ function CreateForm({
             <label className="field__label" htmlFor="create-type">
               Type
             </label>
-            <select
+            <Select
+              full
               id="create-type"
-              className="select"
               value={type}
               onChange={(event) => setType(event.target.value as TaskType)}
             >
@@ -216,15 +217,15 @@ function CreateForm({
                   {typeLabel(option)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="field">
             <label className="field__label" htmlFor="create-priority">
               Priority
             </label>
-            <select
+            <Select
+              full
               id="create-priority"
-              className="select"
               value={priority}
               onChange={(event) => setPriority(event.target.value as Priority)}
             >
@@ -233,22 +234,22 @@ function CreateForm({
                   {priorityLabel(option)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
       ) : null}
 
       <div className="field__actions">
-        <button
+        <Button
+          variant="primary"
           type="submit"
-          className="button button--primary"
           disabled={create.isPending || title.trim() === '' || chosen === ''}
         >
           {create.isPending ? 'Creating…' : 'Create task'}
-        </button>
-        <button type="button" className="button button--quiet" onClick={close}>
+        </Button>
+        <Button variant="subtle" onClick={close}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       {/* Beside the fields, not over them: §6 puts validation near what it is

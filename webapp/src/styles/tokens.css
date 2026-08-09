@@ -2,7 +2,11 @@
  * than from `app.css` so that adopting the foundation is a change to the token
  * layer alone — `app.css` is being edited concurrently for the filter bar, and
  * a one-line import added there would drag that work into this commit. */
-@import './compat.css';
+/* `compat.css` is gone. It existed to publish `--color-*`, `--space-*`,
+ * `--radius-*` and `--shadow-*` — the design system's own names — from local
+ * `--tf-*` values, because this product was not consuming the design system.
+ * It is now, so those names come from the source and the bridge is deleted
+ * rather than left as a second definition that can disagree. */
 
 /* TaskForge design tokens — `design/DESIGN-FOUNDATION.md`.
  *
@@ -41,217 +45,172 @@
 :root {
   color-scheme: light;
 
-  /* ── §5 Colour foundation ──────────────────────────────────────────────
-   * Transcribed exactly. "The UI must work in grayscale before brand color is
-   * applied", so every one of these carries meaning through weight, position
-   * or an accompanying glyph as well as hue (§7: never colour alone). */
-  --tf-bg: #ffffff;
-  --tf-surface: #ffffff;
-  --tf-surface-subtle: #f7f8f9;
-  /* A third ground, for the sidebar and table headers. The product had two and
-     every structural division had to be carried by a border alone, which is
-     what made it read as a wireframe rather than an application. */
-  --tf-surface-sunken: #f1f2f4;
+  /* ── Colour, spacing, radius, type and shadow come from the design system ──
+   *
+   * Every value below is an ALIAS. TaskForge had its own palette and its own
+   * 4 px grid, invented while the product was not consuming
+   * `@schnsrw/design-system` — which AGENTS.md names as a dependency, not a
+   * work surface. Two systems in one document is how a product ends up looking
+   * like a lookalike of its own suite, so there is now one source and these
+   * names resolve to it.
+   *
+   * The spacing map is by VALUE, not by name, and that distinction is
+   * load-bearing: the design system's `--space-4` is 8 px where this file's was
+   * 16 px. Aliasing name-to-name would have silently halved every gap in the
+   * product. */
+  --tf-bg: var(--color-bg);
+  --tf-surface: var(--color-surface);
+  --tf-surface-subtle: var(--color-surface-alt);
+  --tf-surface-sunken: var(--color-surface-strip);
 
-  --tf-text: #172b4d;
-  --tf-text-secondary: #44546f;
-  --tf-text-muted: #626f86;
+  --tf-text: var(--color-text);
+  --tf-text-secondary: var(--color-text-secondary);
+  /* A deviation from the suite, with a reason.
+   *
+   * `--color-text-muted` is #8a8886 — the same value the design system labels
+   * `--color-text-disabled: "(3.55:1)"`. At that ratio it fails WCAG AA for
+   * body text, and in this product muted is not decorative: it carries the due
+   * date on a card, the "why" under a court heading, and every timestamp. §11
+   * of the foundation names low-contrast grey-on-grey an anti-pattern, and
+   * `tokens.contrast.test.ts` holds muted to the body threshold rather than
+   * excusing it.
+   *
+   * #6b6a68 keeps the suite's warm-neutral hue and clears 5.0:1. Raised
+   * upstream against `CasualOffice/design-book`; this override goes when the
+   * suite's own value clears AA. */
+  --tf-text-muted: #6b6a68;
 
-  --tf-border: #dfe1e6;
-  /* Raised from #d4d4d8, which was 1.48:1 on white and could not identify a
-     control boundary under WCAG 1.4.11 — a conflict `tokens.contrast.test.ts`
-     had recorded as unresolvable without a foundation change. This is that
-     change: 3.89:1, so the two pairs move out of KNOWN_CONFLICTS and into the
-     assertions. */
+  --tf-border: var(--color-border);
+  /* The same deviation, for the same reason. `--color-border-strong` is
+   * #cdd3db, which is 1.6:1 on white and cannot identify a control boundary
+   * under WCAG 1.4.11 — the conflict this product had already resolved locally
+   * before adopting the suite. #98a1ad keeps the hue and clears 3:1. */
   --tf-border-strong: #758195;
 
-  --tf-focus: #0c66e4;
+  --tf-focus: var(--color-focus-ring);
 
-  --tf-info: #0055cc;
-  --tf-success: #216e4e;
-  --tf-warning: #a54800;
-  --tf-danger: #ae2e24;
-  --tf-extension: #5e4db2;
+  --tf-info: var(--color-info);
+  --tf-success: var(--color-success);
+  --tf-warning: var(--color-warning);
+  --tf-danger: var(--color-danger);
+  /* The suite has no "extension" ink. Plugin surfaces borrow info until one
+     exists there, rather than reintroducing a local hue. */
+  --tf-extension: var(--color-info);
 
-  /* The interactive accent, and the product's mark, are two different things.
-     Every primary control, link and selected state is `--tf-accent` blue; the
-     mark stays forge orange, which is what `design/favicon.svg` draws and what
-     VISUAL-IDENTITY §4 fixes. Blue also takes white ink at 5.07:1, where the
-     orange took it at 3.2:1 and had to be darkened for every filled control. */
-  --tf-accent: #0c66e4;
-  --tf-accent-hover: #0055cc;
-  --tf-accent-pressed: #09326c;
-  --tf-accent-fg: #ffffff;
-  --tf-accent-subtle: #e9f2ff;
+  --tf-accent: var(--color-accent);
+  --tf-accent-hover: var(--color-accent-hover);
+  --tf-accent-pressed: var(--color-accent-active);
+  --tf-accent-fg: var(--color-accent-fg);
+  --tf-accent-subtle: var(--color-accent-soft);
 
+  /* The mark stays forge orange: VISUAL-IDENTITY §4 fixes it and
+     `design/favicon.svg` draws it. A product's mark is its own; its controls
+     belong to the suite. */
   --tf-brand: #d8610b;
   --tf-brand-strong: #a94400;
 
-  /* Tints. Not in §5, which fixes only the ink; a chip needs a ground and the
-   * alternative is a per-component `rgba()` literal, which §11 forbids. Each
-   * is its own ink at low alpha over white, so the pair keeps its hue
-   * relationship in one place. */
-  --tf-info-subtle: #e9f2ff;
-  --tf-success-subtle: #dcfff1;
-  --tf-warning-subtle: #fff4e5;
-  --tf-danger-subtle: #ffecea;
-  --tf-extension-subtle: #f3f0ff;
+  --tf-info-subtle: var(--color-info-soft);
+  --tf-success-subtle: var(--color-success-soft);
+  --tf-warning-subtle: var(--color-warning-soft);
+  --tf-danger-subtle: var(--color-danger-soft);
+  --tf-extension-subtle: var(--color-info-soft);
   --tf-brand-subtle: #fdf1e7;
 
-  /* Interaction. §8 keeps motion short; these are the states it moves between. */
-  --tf-hover: rgba(9, 30, 66, 0.06);
-  --tf-pressed: rgba(9, 30, 66, 0.12);
-  --tf-selected: rgba(12, 102, 228, 0.1);
-  --tf-scrim: rgba(9, 30, 66, 0.54);
+  --tf-hover: var(--color-hover);
+  --tf-pressed: var(--color-pressed);
+  --tf-selected: var(--color-selected);
+  --tf-scrim: var(--color-scrim);
 
-  /* ── §2 Density and sizing — the 4 px grid ─────────────────────────────
-   * The table is sparse on purpose: it names 1,2,3,4,5,6,8,10,12 and nothing
-   * between. A gap that wants `space-7` wants one of its neighbours. */
-  --tf-space-1: 4px;
-  --tf-space-2: 8px;
-  --tf-space-3: 12px;
-  --tf-space-4: 16px;
-  --tf-space-5: 20px;
-  --tf-space-6: 24px;
-  --tf-space-8: 32px;
-  --tf-space-10: 40px;
-  --tf-space-12: 48px;
+  /* By value: 4, 8, 12, 16, 20, 24, 32, 48. */
+  --tf-space-1: var(--space-2);
+  --tf-space-2: var(--space-4);
+  --tf-space-3: var(--space-5);
+  --tf-space-4: var(--space-6);
+  --tf-space-5: var(--space-7);
+  --tf-space-6: var(--space-8);
+  --tf-space-8: var(--space-9);
+  --tf-space-10: var(--space-10);
+  --tf-space-12: var(--space-10);
 
-  /* §2 Control tiers. A control's height is one of four values, never a
-   * padding sum that happens to land nearby. */
+  /* §2 Control tiers — TaskForge's own, because the design system sizes each
+     control rather than publishing a height scale. */
   --tf-control-compact: 28px;
   --tf-control-default: 32px;
   --tf-control-comfortable: 36px;
   --tf-control-touch: 44px;
 
-  /* §3 Iconography. "Do not make the icon glyph the size of its interaction
-   * target" — so glyph sizes and target sizes are separate scales. */
   --tf-icon-dense: 16px;
   --tf-icon-default: 18px;
   --tf-icon-nav: 20px;
   --tf-icon-empty: 28px;
 
-  /* ── §1 Layout geometry (LAYOUT-AND-INTERACTION-GUIDELINES §2) ─────────── */
+  /* Layout geometry is this product's alone: no other app in the suite has a
+     board, a task rail or a detail drawer. */
   --tf-global-bar-h: 48px;
-  /* A labelled sidebar, not an icon rail.
-   *
-   * 60 px fitted a glyph and a two-word label stacked under it, and the result
-   * read as a strip of tiny icons — the thing every product this one is
-   * measured against replaced years ago. 240 px is the width at which a
-   * destination is a row with an icon beside its label, section headings are
-   * possible, and a project's own navigation can live under the workspace's.
-   * The board and the list get the width back from the content padding, which
-   * this change tightens. */
   --tf-rail-w: 240px;
   --tf-rail-collapsed-w: 56px;
   --tf-context-w: 224px;
   --tf-drawer-w: 480px;
   --tf-content-pad: 20px;
 
-  /* ── §4 Typography ─────────────────────────────────────────────────────
-   * Size and line height travel together: the foundation specifies "14 / 20"
-   * for a card title, and a rule that sets only the size re-opens the leading
-   * question at every call site. */
-  --tf-font-sans:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
-  --tf-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --tf-font-sans: var(--font-sans);
+  --tf-font-mono: var(--font-mono);
 
-  --tf-page-title: 600 24px/30px var(--tf-font-sans);
-  --tf-section-title: 600 18px/24px var(--tf-font-sans);
-  --tf-card-title: 600 14px/20px var(--tf-font-sans);
-  --tf-body: 400 14px/21px var(--tf-font-sans);
-  --tf-control-text: 500 13px/18px var(--tf-font-sans);
-  --tf-meta: 400 12px/16px var(--tf-font-sans);
-  --tf-code: 500 12px/18px var(--tf-font-mono);
+  --tf-page-title: 600 24px/30px var(--font-sans);
+  --tf-section-title: 600 18px/24px var(--font-sans);
+  --tf-card-title: 600 14px/20px var(--font-sans);
+  --tf-body: 400 14px/21px var(--font-sans);
+  --tf-control-text: 500 13px/18px var(--font-sans);
+  --tf-meta: 400 12px/16px var(--font-sans);
+  --tf-code: 500 12px/18px var(--font-mono);
 
-  /* ── §6 Borders, radius and elevation ─────────────────────────────────── */
-  --tf-radius-badge: 5px;
-  --tf-radius-control: 6px;
-  --tf-radius-card: 8px;
-  --tf-radius-popover: 10px;
-  --tf-radius-drawer: 12px;
+  --tf-radius-badge: var(--radius-sm);
+  --tf-radius-control: var(--radius-md);
+  --tf-radius-card: var(--radius-lg);
+  --tf-radius-popover: var(--radius-lg);
+  --tf-radius-drawer: var(--radius-xl);
 
-  /* "Default hierarchy uses borders, not shadows. Use shadows only for
-   * surfaces that physically overlay another interaction plane." There are
-   * exactly three, and a card is not among them. */
-  --tf-shadow-popover: 0 4px 12px rgba(24, 24, 27, 0.1), 0 1px 3px rgba(24, 24, 27, 0.08);
-  --tf-shadow-drawer: -8px 0 24px rgba(24, 24, 27, 0.1);
-  --tf-shadow-drag: 0 8px 16px rgba(24, 24, 27, 0.16);
+  --tf-shadow-popover: var(--shadow-2);
+  --tf-shadow-drawer: var(--shadow-3);
+  --tf-shadow-drag: var(--shadow-3);
 
-  /* ── §8 Motion ─────────────────────────────────────────────────────────── */
   --tf-motion-hover: 90ms;
   --tf-motion-menu: 130ms;
   --tf-motion-drawer: 200ms;
   --tf-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* ── Dark theme ────────────────────────────────────────────────────────────
+/* Dark is the design system's, not a second derivation of it.
  *
- * The foundation specifies light only. These values are *derived*, and the
- * derivation is stated so a reviewer can check it rather than guess: the
- * neutral ramp is Zinc reversed (the same family §5 draws its greys from), and
- * every semantic ink is lightened until `tokens.contrast.test.ts` clears it
- * against the surface it is used on. Hue is preserved; only lightness moves.
- *
- * Brand orange lightens to #f08a2e, which is the value `design/favicon.svg`
- * already uses for the mark on graphite — so the dark app rail and the
- * favicon agree rather than being two oranges.
- */
+ * `@schnsrw/design-system/dark-tokens.css` redefines every `--color-*` under
+ * `[data-theme='dark']`, and every alias above is a `var()` — so the whole
+ * product follows with nothing to keep in step. What used to live here was a
+ * hand-derived Zinc ramp, checked pair by pair against a contrast test, which
+ * is work the suite had already done. */
 :root[data-theme='dark'] {
   color-scheme: dark;
-
-  --tf-bg: #1d2125;
-  --tf-surface: #22272b;
-  --tf-surface-subtle: #282e33;
-  --tf-surface-sunken: #161a1d;
-
-  --tf-text: #e5eaf0;
-  --tf-text-secondary: #c2ccd6;
-  --tf-text-muted: #a4b1bf;
-
-  --tf-border: #38414a;
-  --tf-border-strong: #7b8794;
-
-  --tf-focus: #85b8ff;
-
-  --tf-info: #85b8ff;
-  --tf-success: #7ee2b8;
-  --tf-warning: #f5cd47;
-  --tf-danger: #ff9c8f;
-  --tf-extension: #b8acf6;
-
-  --tf-accent: #579dff;
-  --tf-accent-hover: #85b8ff;
-  --tf-accent-pressed: #cce0ff;
-  /* Dark inverts the filled control: light blue ground, dark ink. White on
-     #579dff is 2.6:1 and would fail the same way the orange did on light. */
-  --tf-accent-fg: #1d2125;
-  --tf-accent-subtle: #092957;
-
+  /* The mark lightens on graphite — the value `design/favicon.svg` already
+     uses, so the app and the favicon agree rather than being two oranges. */
   --tf-brand: #f08a2e;
   --tf-brand-strong: #f5a55e;
-
-  --tf-info-subtle: #092957;
-  --tf-success-subtle: #164b35;
-  --tf-warning-subtle: #4a2f00;
-  --tf-danger-subtle: #5d1f1a;
-  --tf-extension-subtle: #2b273f;
   --tf-brand-subtle: #33220f;
 
-  --tf-hover: rgba(166, 197, 226, 0.08);
-  --tf-pressed: rgba(166, 197, 226, 0.16);
-  --tf-selected: rgba(87, 157, 255, 0.16);
-  --tf-scrim: rgba(0, 0, 0, 0.64);
-
-  --tf-shadow-popover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
-  --tf-shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.5);
-  --tf-shadow-drag: 0 8px 16px rgba(0, 0, 0, 0.55);
+  /* The dark half of the two AA deviations above.
+   *
+   * These are required *because* the light ones exist: a literal in `:root` is
+   * not an alias, so the suite's dark value can no longer override it and the
+   * light grey would survive onto a graphite canvas — which is worse than not
+   * deviating at all. Found by the contrast gate, which measured 2.8:1 for
+   * muted text in dark and pointed straight at it.
+   *
+   * `--color-text-muted` is #8d9098 in dark, which clears 4.5:1 on three of the
+   * four grounds and lands at 4.40 on the strip; #9aa0a8 clears all four.
+   * `--color-border-strong` is #424751, which is 1.98:1 on the dark canvas and
+   * cannot identify a control boundary. Both raised upstream. */
+  --tf-text-muted: #9aa0a8;
+  --tf-border-strong: #7b8290;
 }
 
-/* §7 and §8: "Respect `prefers-reduced-motion`." Removed rather than
- * shortened — the setting is an accessibility need, and a 1 ms transform is
- * still a transform. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

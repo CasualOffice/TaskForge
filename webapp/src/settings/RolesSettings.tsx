@@ -25,6 +25,7 @@
  * would let a permission survive that the check never saw, which is exactly the
  * smuggling the control forbids — so the editor sends the whole set every time.
  */
+import { Badge, Button, Checkbox, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -92,7 +93,7 @@ function RoleRow({ role, mayAuthor }: { role: Role; mayAuthor: boolean }): React
       <div className="settings__row-head">
         <span className="settings__row-main">
           {role.name}
-          {role.is_template ? <span className="badge"> template</span> : null}
+          {role.is_template ? <Badge tone="info">template</Badge> : null}
         </span>
         <span className="settings__row-meta">
           {role.permissions.length === 0
@@ -100,14 +101,9 @@ function RoleRow({ role, mayAuthor }: { role: Role; mayAuthor: boolean }): React
             : `${role.permissions.length} ${role.permissions.length === 1 ? 'permission' : 'permissions'}`}
         </span>
         {mayAuthor ? (
-          <button
-            type="button"
-            className="button button--quiet"
-            aria-expanded={editing}
-            onClick={() => setEditing(!editing)}
-          >
+          <Button variant="subtle" aria-expanded={editing} onClick={() => setEditing(!editing)}>
             {editing ? 'Cancel' : 'Edit'}
-          </button>
+          </Button>
         ) : null}
       </div>
       {editing ? (
@@ -144,9 +140,9 @@ function RoleEditor({ role, onDone }: { role: Role; onDone: () => void }): React
   return (
     <Form onSubmit={() => save.submit(undefined)}>
       <Field label="Name" id={`role-name-${role.id}`}>
-        <input
+        <Input
+          full
           id={`role-name-${role.id}`}
-          className="input"
           value={name}
           maxLength={200}
           onChange={(event) => setName(event.target.value)}
@@ -154,13 +150,9 @@ function RoleEditor({ role, onDone }: { role: Role; onDone: () => void }): React
       </Field>
       <PermissionPicker chosen={chosen} onChange={setChosen} idPrefix={role.id} />
       <WriteError error={save.error} />
-      <button
-        type="submit"
-        className="button button--primary"
-        disabled={save.pending || name.trim() === ''}
-      >
+      <Button variant="primary" type="submit" disabled={save.pending || name.trim() === ''}>
         {save.pending ? 'Saving…' : 'Save role'}
-      </button>
+      </Button>
     </Form>
   )
 }
@@ -184,9 +176,9 @@ function NewRole(): ReactElement {
 
   if (!open) {
     return (
-      <button type="button" className="button" onClick={() => setOpen(true)}>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
         New role
-      </button>
+      </Button>
     )
   }
 
@@ -197,9 +189,9 @@ function NewRole(): ReactElement {
         id="new-role-name"
         hint="You can only give a new role permissions you hold yourself."
       >
-        <input
+        <Input
+          full
           id="new-role-name"
-          className="input"
           value={name}
           maxLength={200}
           onChange={(event) => setName(event.target.value)}
@@ -207,16 +199,12 @@ function NewRole(): ReactElement {
       </Field>
       <PermissionPicker chosen={chosen} onChange={setChosen} idPrefix="new" />
       <WriteError error={create.error} />
-      <button
-        type="submit"
-        className="button button--primary"
-        disabled={create.pending || name.trim() === ''}
-      >
+      <Button variant="primary" type="submit" disabled={create.pending || name.trim() === ''}>
         {create.pending ? 'Creating…' : 'Create role'}
-      </button>
-      <button type="button" className="button button--quiet" onClick={() => setOpen(false)}>
+      </Button>
+      <Button variant="subtle" onClick={() => setOpen(false)}>
         Cancel
-      </button>
+      </Button>
     </Form>
   )
 }
@@ -250,16 +238,17 @@ function PermissionPicker({
         <fieldset className="settings__permission-group" key={group.title}>
           <legend className="field__label">{group.title}</legend>
           {group.keys.map((key) => (
-            <label className="settings__permission" key={key} htmlFor={`${idPrefix}-${key}`}>
-              <input
-                id={`${idPrefix}-${key}`}
-                type="checkbox"
-                checked={chosen.has(key)}
-                onChange={() => toggle(key)}
-              />
-              <span className="settings__permission-key">{key}</span>
-              <span className="settings__permission-help">{PERMISSION_HELP[key] ?? ''}</span>
-            </label>
+            <Checkbox
+              key={key}
+              id={`${idPrefix}-${key}`}
+              className="settings__permission"
+              checked={chosen.has(key)}
+              onChange={() => toggle(key)}
+              // The key is the permission's name and the hint is what it lets
+              // someone do; a grant nobody can read is a grant nobody audits.
+              label={<span className="settings__permission-key">{key}</span>}
+              hint={PERMISSION_HELP[key] ?? ''}
+            />
           ))}
         </fieldset>
       ))}
@@ -276,7 +265,13 @@ function PermissionPicker({
  * whose id the user must paste would be worse than not offering it. Said out
  * loud below rather than left to be discovered.
  */
-function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boolean }): ReactElement {
+function Grants({
+  roles,
+  mayAssign,
+}: {
+  roles: readonly Role[]
+  mayAssign: boolean
+}): ReactElement {
   const workspaceId = useWorkspaceId()
   const [principalType, setPrincipalType] = useState<PrincipalType>('USER')
   const [principalId, setPrincipalId] = useState('')
@@ -345,9 +340,9 @@ function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boole
       {mayAssign ? (
         <Form onSubmit={() => grant.submit(undefined)}>
           <Field label="Give it to" id="grant-principal-type">
-            <select
+            <Select
+              full
               id="grant-principal-type"
-              className="select"
               value={principalType}
               onChange={(event) => {
                 setPrincipalType(event.target.value as PrincipalType)
@@ -356,12 +351,12 @@ function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boole
             >
               <option value="USER">A person</option>
               <option value="TEAM">A team — everyone in it inherits</option>
-            </select>
+            </Select>
           </Field>
           <Field label={principalType === 'TEAM' ? 'Team' : 'Person'} id="grant-principal">
-            <select
+            <Select
+              full
               id="grant-principal"
-              className="select"
               value={principalId}
               onChange={(event) => setPrincipalId(event.target.value)}
             >
@@ -371,16 +366,16 @@ function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boole
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field
             label="Role"
             id="grant-role"
             hint="Granted across the whole workspace. Narrower scopes exist in the API and have no picker here yet."
           >
-            <select
+            <Select
+              full
               id="grant-role"
-              className="select"
               value={roleId}
               onChange={(event) => setRoleId(event.target.value)}
             >
@@ -390,16 +385,16 @@ function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boole
                   {role.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <WriteError error={grant.error} />
-          <button
+          <Button
+            variant="primary"
             type="submit"
-            className="button button--primary"
             disabled={grant.pending || principalId === '' || roleId === ''}
           >
             {grant.pending ? 'Granting…' : 'Grant role'}
-          </button>
+          </Button>
         </Form>
       ) : (
         <NeedsPermission permission="role.assign" />
@@ -409,7 +404,9 @@ function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boole
       {grants.isPending ? <Loading rows={4} label="Loading grants" /> : null}
       {grants.error ? <ErrorNotice error={grants.error} /> : null}
       {!grants.isPending && rows.length === 0 ? (
-        <p className="empty">Nobody holds anything. That cannot be right — someone owns this workspace.</p>
+        <p className="empty">
+          Nobody holds anything. That cannot be right — someone owns this workspace.
+        </p>
       ) : null}
       <ul className="settings__rows">
         {rows.map((row) => (
@@ -422,14 +419,13 @@ function Grants({ roles, mayAssign }: { roles: readonly Role[]; mayAssign: boole
               <time dateTime={row.granted_at}>{new Date(row.granted_at).toLocaleDateString()}</time>
             </span>
             {mayAssign ? (
-              <button
-                type="button"
-                className="button button--quiet"
+              <Button
+                variant="subtle"
                 onClick={() => revoke.submit(row.id)}
                 disabled={revoke.pending}
               >
                 Revoke
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
