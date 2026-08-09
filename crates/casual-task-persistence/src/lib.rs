@@ -31,6 +31,7 @@ pub mod mfa;
 pub mod milestone;
 pub mod notification;
 pub mod project;
+pub mod project_team;
 pub mod role;
 pub mod scoped;
 pub mod search;

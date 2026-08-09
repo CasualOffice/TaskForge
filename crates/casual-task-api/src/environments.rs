@@ -34,7 +34,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use casual_task_model::{ProjectId, TeamId, permission};
+use casual_task_model::{ProjectId, permission};
 use casual_task_persistence::environment::{self, EnvironmentRow, WriteError};
 use casual_task_persistence::project::ProjectRow;
 use casual_task_persistence::{Change, Scoped, UnitOfWork, project};
@@ -355,7 +355,7 @@ pub async fn set_on_task(
         ctx.authority.may_in_project(
             permission::TASK_UPDATE,
             ProjectId::from_uuid(project.id),
-            project.team_id.map(TeamId::from_uuid),
+            &project.teams(),
             &ctx.facts_in_project(is_member),
         ),
         &request_id,
@@ -545,7 +545,7 @@ async fn authorize(
         ctx.authority.may_in_project(
             permission::PROJECT_UPDATE,
             ProjectId::from_uuid(project.id),
-            project.team_id.map(TeamId::from_uuid),
+            &project.teams(),
             &ctx.facts_in_project(is_member),
         ),
         request_id,

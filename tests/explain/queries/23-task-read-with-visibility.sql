@@ -24,7 +24,10 @@ SELECT t.id, t.workspace_id, t.project_id, t.number, t.title, t.description,
    AND t.deleted_at IS NULL
    AND p.deleted_at IS NULL
    AND (   p.visibility = 'WORKSPACE'
-        OR (p.visibility = 'TEAM' AND p.team_id = ANY (ARRAY[:'probe_team']::uuid[]))
+        OR (p.visibility = 'TEAM'
+            AND EXISTS (SELECT 1 FROM project_team pt
+                         JOIN team_membership tm ON tm.team_id = pt.team_id
+                        WHERE pt.project_id = p.id AND tm.user_id = :'probe_user'))
         OR EXISTS (SELECT 1 FROM project_membership pm
                     WHERE pm.project_id = p.id AND pm.user_id = :'probe_user')
         OR p.id = ANY (:accessible_projects))

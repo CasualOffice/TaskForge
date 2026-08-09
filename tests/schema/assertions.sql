@@ -106,7 +106,7 @@ DECLARE required text[] := ARRAY[
     'task_board_ix','task_list_ix','task_mywork_ix','task_reporter_ix',
     'task_parent_ix','task_milestone_ix','task_env_ix','task_due_ix',
     'task_type_prio_ix','task_updated_brin','task_assignee_user_ix',
-    'task_tag_rev_ix','task_dependency_rev_ix','task_search_gin',
+    'task_tag_rev_ix','task_dependency_rev_ix','task_search_gin','project_team_team_ix',
     'task_search_trgm','task_search_scope_ix','role_assignment_lookup_ix',
     'role_assignment_scope_ix','project_membership_user_ix',
     -- outbox_delivery_pending_ix replaces outbox_pending_ix: migration 0013

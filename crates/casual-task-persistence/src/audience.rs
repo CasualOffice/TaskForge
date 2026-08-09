@@ -152,8 +152,9 @@ pub async fn visible_to(
                          WHERE wm.workspace_id = $3 AND wm.user_id = c.id)
             AND (   p.visibility = 'WORKSPACE'
                  OR (p.visibility = 'TEAM'
-                     AND EXISTS (SELECT 1 FROM team_membership tm
-                                  WHERE tm.team_id = p.team_id AND tm.user_id = c.id))
+                     AND EXISTS (SELECT 1 FROM project_team pt
+                                  JOIN team_membership tm ON tm.team_id = pt.team_id
+                                 WHERE pt.project_id = p.id AND tm.user_id = c.id))
                  OR EXISTS (SELECT 1 FROM project_membership pm
                              WHERE pm.project_id = p.id AND pm.user_id = c.id)
                  OR EXISTS (SELECT 1 FROM role_assignment ra

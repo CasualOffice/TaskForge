@@ -138,11 +138,27 @@ pub async fn create(
         })?
         .ok_or_else(|| ApiError::missing(codes::TASK_NOT_FOUND, &request_id))?;
 
+    // The project's teams, not `None`. Passing none withheld every TEAM-scoped
+    // `task.comment` grant — a member of a team that holds it could not comment,
+    // and nothing said why.
+    let teams = casual_task_persistence::project::read_visible(
+        &mut scoped,
+        &ctx.viewer,
+        task_row.project_id,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "reading the project failed");
+        ApiError::internal(&request_id)
+    })?
+    .map(|p| p.teams())
+    .unwrap_or_default();
+
     unit::authorized(
         ctx.authority.may_in_project(
             permission::TASK_COMMENT,
             casual_task_model::ProjectId::from_uuid(task_row.project_id),
-            None,
+            &teams,
             &ctx.facts_in_project(true),
         ),
         &request_id,

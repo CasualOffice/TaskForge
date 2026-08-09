@@ -37,7 +37,7 @@
 //! wrong in exactly the direction nobody notices.
 
 use casual_task_app::ResourceFacts;
-use casual_task_model::{ProjectId, TeamId, permission};
+use casual_task_model::{ProjectId, permission};
 use casual_task_persistence::Scoped;
 use casual_task_persistence::project::{self, ProjectRow};
 use uuid::Uuid;
@@ -111,7 +111,7 @@ pub async fn may_subscribe(
             tracing::error!(%error, "reading project membership for a stream failed");
             ApiError::internal(request_id)
         })?;
-    let team = row.team_id.map(TeamId::from_uuid);
+    let team = row.teams();
 
     // Question one: may they read tasks here at all, on the most favourable
     // reading of the facts? If not, there is nothing to discuss.
@@ -127,7 +127,7 @@ pub async fn may_subscribe(
         .may_in_project(
             permission::TASK_READ,
             ProjectId::from_uuid(project),
-            team,
+            &team,
             &best_case,
         )
         .is_allowed()
@@ -155,7 +155,7 @@ pub async fn may_subscribe(
         .may_in_project(
             permission::TASK_READ,
             ProjectId::from_uuid(project),
-            team,
+            &team,
             &worst_case,
         )
         .is_allowed()

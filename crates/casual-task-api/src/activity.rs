@@ -24,7 +24,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use casual_task_model::{Cursor, ProjectId, TeamId, permission};
+use casual_task_model::{Cursor, ProjectId, permission};
 use casual_task_persistence::activity::{self, ActivityCursor, ActivityRow};
 use casual_task_persistence::{project, task};
 use serde::{Deserialize, Serialize};
@@ -114,12 +114,13 @@ pub async fn stream(
             tracing::error!(%error, "reading the project failed");
             ApiError::internal(&request_id)
         })?
-        .and_then(|row| row.team_id);
+        .map(|row| row.teams())
+        .unwrap_or_default();
     unit::authorized(
         ctx.authority.may_in_project(
             permission::TASK_HISTORY_READ,
             ProjectId::from_uuid(task_row.project_id),
-            team.map(TeamId::from_uuid),
+            &team,
             &ctx.facts_in_project(is_member),
         ),
         &request_id,

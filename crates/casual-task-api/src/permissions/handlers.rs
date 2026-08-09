@@ -14,7 +14,7 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use casual_task_app::ResourceFacts;
 use casual_task_app::explain::Reach;
-use casual_task_model::{Permission, ProjectId, TeamId, UserId, permission};
+use casual_task_model::{Permission, ProjectId, UserId, permission};
 use casual_task_persistence::{project, task};
 
 use super::subject::Subject;
@@ -81,17 +81,15 @@ pub async fn effective(
             // Visibility first: answering for a project the caller cannot see
             // confirms it exists, which `docs/04` requires be indistinguishable
             // from absent.
-            project::read_visible(&mut scoped, &ctx.viewer, project_id)
+            let project = project::read_visible(&mut scoped, &ctx.viewer, project_id)
                 .await
                 .map_err(|error| {
                     tracing::error!(%error, "reading the project failed");
                     ApiError::internal(&request_id)
                 })?
                 .ok_or_else(|| ApiError::missing(codes::PROJECT_NOT_FOUND, &request_id))?;
-            ctx.authority.effective_in_project(
-                ProjectId::from_uuid(project_id),
-                query.team_id.map(TeamId::from_uuid),
-            )
+            ctx.authority
+                .effective_in_project(ProjectId::from_uuid(project_id), &project.teams())
         }
     };
 
@@ -175,7 +173,6 @@ pub async fn explain(
 
     let resource = request.resource.unwrap_or(ResourceRef {
         project_id: None,
-        team_id: None,
         task_id: None,
     });
 
@@ -204,15 +201,17 @@ pub async fn explain(
     let explanation = match project_id {
         None => subject.authority.explain_in_workspace(permission),
         Some(project_id) => {
-            if task_row.is_none() {
-                project::read_visible(&mut scoped, &ctx.viewer, project_id)
-                    .await
-                    .map_err(|error| {
-                        tracing::error!(%error, "reading the project failed");
-                        ApiError::internal(&request_id)
-                    })?
-                    .ok_or_else(|| ApiError::missing(codes::PROJECT_NOT_FOUND, &request_id))?;
-            }
+            // Read whether or not a task named the project: the teams are part
+            // of the scope chain, and when a task supplied the project its
+            // visibility has already been established by reading the task.
+            let teams = project::read_visible(&mut scoped, &ctx.viewer, project_id)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "reading the project failed");
+                    ApiError::internal(&request_id)
+                })?
+                .ok_or_else(|| ApiError::missing(codes::PROJECT_NOT_FOUND, &request_id))?
+                .teams();
             let subject_in_project = subject
                 .authority
                 .granted_projects()
@@ -228,7 +227,7 @@ pub async fn explain(
             subject.authority.explain_in_project(
                 permission,
                 ProjectId::from_uuid(project_id),
-                resource.team_id.map(TeamId::from_uuid),
+                &teams,
                 &facts,
             )
         }

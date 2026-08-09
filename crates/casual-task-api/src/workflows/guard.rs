@@ -173,7 +173,7 @@ pub async fn authorize(
             ctx.authority.may_in_project(
                 permission::PROJECT_WORKFLOW_MANAGE,
                 ProjectId::from_uuid(project),
-                teams.into_iter().next().map(TeamId::from_uuid),
+                &teams.into_iter().map(TeamId::from_uuid).collect::<Vec<_>>(),
                 &facts,
             ),
             request_id,

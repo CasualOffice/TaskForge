@@ -209,13 +209,11 @@ impl Authority {
         &self,
         permission: Permission,
         project: ProjectId,
-        team: Option<TeamId>,
+        teams: &[TeamId],
         facts: &ResourceFacts,
     ) -> Decision {
-        let mut scopes = casual_task_authz::ResourceScopes::project(self.workspace, project);
-        if let Some(team) = team {
-            scopes = scopes.in_team(team);
-        }
+        let scopes = casual_task_authz::ResourceScopes::project(self.workspace, project)
+            .in_teams(teams.iter().copied());
         casual_task_authz::allows(&self.actor, permission, &scopes, facts, &self.grants)
     }
 
@@ -268,11 +266,9 @@ impl Authority {
 
     /// The actor's effective permission set in `project`.
     #[must_use]
-    pub fn effective_in_project(&self, project: ProjectId, team: Option<TeamId>) -> Vec<Effective> {
-        let mut scopes = casual_task_authz::ResourceScopes::project(self.workspace, project);
-        if let Some(team) = team {
-            scopes = scopes.in_team(team);
-        }
+    pub fn effective_in_project(&self, project: ProjectId, teams: &[TeamId]) -> Vec<Effective> {
+        let scopes = casual_task_authz::ResourceScopes::project(self.workspace, project)
+            .in_teams(teams.iter().copied());
         self.effective_in(&scopes)
     }
 
@@ -319,13 +315,11 @@ impl Authority {
         &self,
         permission: Permission,
         project: ProjectId,
-        team: Option<TeamId>,
+        teams: &[TeamId],
         facts: &ResourceFacts,
     ) -> Explanation {
-        let mut scopes = casual_task_authz::ResourceScopes::project(self.workspace, project);
-        if let Some(team) = team {
-            scopes = scopes.in_team(team);
-        }
+        let scopes = casual_task_authz::ResourceScopes::project(self.workspace, project)
+            .in_teams(teams.iter().copied());
         self.explained(permission, &scopes, facts)
     }
 }
@@ -502,7 +496,7 @@ mod tests {
         let explanation = authority.explain_in_project(
             permission::TASK_CLOSE,
             project,
-            None,
+            &[],
             &ResourceFacts::default(),
         );
         assert!(!explanation.allowed);
@@ -535,7 +529,7 @@ mod tests {
             ..ResourceFacts::default()
         };
         let explanation =
-            authority.explain_in_project(permission::TASK_CLOSE, project, None, &facts);
+            authority.explain_in_project(permission::TASK_CLOSE, project, &[], &facts);
         assert!(explanation.allowed);
         assert_eq!(explanation.deny_reason, None);
         assert!(explanation.contributing[0].constraints_satisfied);
@@ -586,7 +580,7 @@ mod tests {
                 .may_in_project(
                     permission::TASK_CREATE,
                     ProjectId::new(),
-                    None,
+                    &[],
                     &ResourceFacts::default()
                 )
                 .is_allowed()
@@ -630,7 +624,7 @@ mod tests {
                 .may_in_project(
                     permission::TASK_CREATE,
                     project,
-                    None,
+                    &[],
                     &ResourceFacts::default()
                 )
                 .is_allowed()
@@ -640,7 +634,7 @@ mod tests {
                 .may_in_project(
                     permission::TASK_CREATE,
                     ProjectId::new(),
-                    None,
+                    &[],
                     &ResourceFacts::default()
                 )
                 .is_allowed()

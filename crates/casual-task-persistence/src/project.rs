@@ -37,34 +37,38 @@ use crate::scoped::Scoped;
 /// by making that project private, and widening this clause would take that
 /// answer away.
 pub(crate) const VISIBLE: &str = "(   p.visibility = 'WORKSPACE'
-                        OR (p.visibility = 'TEAM' AND p.team_id = ANY($2))
+                        OR (p.visibility = 'TEAM'
+                            AND EXISTS (SELECT 1 FROM project_team pt
+                                         WHERE pt.project_id = p.id
+                                           AND pt.team_id = ANY($2)))
                         OR EXISTS (SELECT 1 FROM project_membership pm
                                     WHERE pm.project_id = p.id AND pm.user_id = $3)
                         OR p.id = ANY($4))";
 
 /// The columns every read in this module returns, in [`ProjectRow`] order.
 ///
-/// Two spellings of one list. A `SELECT` in this module joins nothing but still
-/// aliases `project` as `p` (the visibility predicate needs the alias), while
-/// `INSERT ... RETURNING` has no alias to qualify with. Writing them separately
-/// and asserting they agree is safer than rewriting one into the other with a
-/// string replacement, which is what this was before and which would have
-/// silently mangled a future column named `p_something`.
-const COLUMNS_ALIASED: &str = "p.id, p.workspace_id, p.team_id, p.key, p.name, p.description,
+/// **One list, used everywhere.** There were two — a `p.`-qualified spelling for
+/// the `SELECT`s and a bare one for `RETURNING` — kept in step by a test that
+/// compared them. `INSERT INTO project AS p` and `UPDATE project p` both accept
+/// an alias, so the second spelling is not needed, and a list that does not
+/// exist cannot drift from the one that does.
+///
+/// `team_ids` is a correlated `ARRAY(...)` rather than a join or a second
+/// query. A join would multiply the project row by its team count and break the
+/// keyset page size; a second query per row is the N+1 `docs/04` §The list
+/// problem exists to forbid. `ARRAY()` yields `{}` for a project with no teams,
+/// which is `docs/03`'s "a project with no teams is still legal" without a
+/// `COALESCE` anyone could forget.
+pub(crate) const COLUMNS: &str = "p.id, p.workspace_id, p.key, p.name, p.description,
                        p.visibility::text AS visibility, p.workflow_id, p.created_at, p.created_by,
-                       p.updated_at, p.updated_by, p.version, p.archived_at";
-
-/// [`COLUMNS_ALIASED`] without the alias, for `RETURNING`.
-const COLUMNS: &str = "id, workspace_id, team_id, key, name, description,
-                       visibility::text AS visibility, workflow_id, created_at, created_by,
-                       updated_at, updated_by, version, archived_at";
+                       p.updated_at, p.updated_by, p.version, p.archived_at,
+                       ARRAY(SELECT pt.team_id FROM project_team pt WHERE pt.project_id = p.id ORDER BY pt.team_id) AS team_ids";
 
 /// A project as stored.
 #[derive(Debug, Clone)]
 pub struct ProjectRow {
     pub id: Uuid,
     pub workspace_id: Uuid,
-    pub team_id: Option<Uuid>,
     pub key: String,
     pub name: String,
     pub description: Option<String>,
@@ -77,12 +81,14 @@ pub struct ProjectRow {
     pub updated_by: Option<Uuid>,
     pub version: i64,
     pub archived_at: Option<OffsetDateTime>,
+    /// Every team on this project, ascending (`docs/03` §Teams on a project).
+    /// Empty is legal and means the project has no team.
+    pub team_ids: Vec<Uuid>,
 }
 
-type ProjectTuple = (
+pub(crate) type ProjectTuple = (
     Uuid,
     Uuid,
-    Option<Uuid>,
     String,
     String,
     Option<String>,
@@ -94,24 +100,25 @@ type ProjectTuple = (
     Option<Uuid>,
     i64,
     Option<OffsetDateTime>,
+    Vec<Uuid>,
 );
 
-fn row_of(t: ProjectTuple) -> ProjectRow {
+pub(crate) fn row_of(t: ProjectTuple) -> ProjectRow {
     ProjectRow {
         id: t.0,
         workspace_id: t.1,
-        team_id: t.2,
-        key: t.3,
-        name: t.4,
-        description: t.5,
-        visibility: t.6,
-        workflow_id: t.7,
-        created_at: t.8,
-        created_by: t.9,
-        updated_at: t.10,
-        updated_by: t.11,
-        version: t.12,
-        archived_at: t.13,
+        key: t.2,
+        name: t.3,
+        description: t.4,
+        visibility: t.5,
+        workflow_id: t.6,
+        created_at: t.7,
+        created_by: t.8,
+        updated_at: t.9,
+        updated_by: t.10,
+        version: t.11,
+        archived_at: t.12,
+        team_ids: t.13,
     }
 }
 
@@ -136,7 +143,6 @@ pub struct NewProject {
     pub description: Option<String>,
     /// `PRIVATE` | `TEAM` | `WORKSPACE`.
     pub visibility: String,
-    pub team_id: Option<Uuid>,
     pub workflow_id: Uuid,
     pub created_by: Uuid,
 }
@@ -170,6 +176,23 @@ impl From<sqlx::Error> for CreateError {
     }
 }
 
+impl ProjectRow {
+    /// The project's teams, typed for the authorization layer.
+    ///
+    /// `docs/03` §Teams on a project makes the team position of the scope chain
+    /// a set. Every authority question about a project passes this, so there is
+    /// one place that turns stored ids into `TeamId` and no handler can pass a
+    /// team the project does not actually have.
+    #[must_use]
+    pub fn teams(&self) -> Vec<casual_task_model::TeamId> {
+        self.team_ids
+            .iter()
+            .copied()
+            .map(casual_task_model::TeamId::from_uuid)
+            .collect()
+    }
+}
+
 /// The cursor position for the project list: `(created_at, id)`.
 pub type ProjectCursor = (OffsetDateTime, Uuid);
 
@@ -195,7 +218,7 @@ pub async fn list_visible(
     // and `$5 IS NULL OR ...` keeps that in one statement rather than two that
     // could drift.
     let sql = format!(
-        "SELECT {COLUMNS_ALIASED}
+        "SELECT {COLUMNS}
            FROM project p
           WHERE p.workspace_id = $1
             AND p.deleted_at IS NULL
@@ -232,7 +255,7 @@ pub async fn read_visible(
 ) -> Result<Option<ProjectRow>, sqlx::Error> {
     let workspace = scoped.workspace_id().as_uuid();
     let sql = format!(
-        "SELECT {COLUMNS_ALIASED}
+        "SELECT {COLUMNS}
            FROM project p
           WHERE p.id = $5
             AND p.workspace_id = $1
@@ -301,17 +324,18 @@ pub async fn accessible(
 /// error.
 pub async fn insert(scoped: &mut Scoped<'_>, new: &NewProject) -> Result<ProjectRow, CreateError> {
     let workspace = scoped.workspace_id().as_uuid();
+    // `AS p` so the one column list above serves this statement too — see its
+    // docs for why there is only one.
     let sql = format!(
-        "INSERT INTO project
-             (id, workspace_id, team_id, key, name, description, visibility,
+        "INSERT INTO project AS p
+             (id, workspace_id, key, name, description, visibility,
               workflow_id, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::visibility,$8,$9)
+         VALUES ($1,$2,$3,$4,$5,$6::visibility,$7,$8)
          RETURNING {COLUMNS}"
     );
     let row: ProjectTuple = sqlx::query_as(&sql)
         .bind(new.id)
         .bind(workspace)
-        .bind(new.team_id)
         .bind(&new.key)
         .bind(&new.name)
         .bind(new.description.as_deref())
@@ -463,16 +487,13 @@ mod tests {
     }
 
     #[test]
-    fn the_two_column_lists_are_the_same_list() {
-        // One is `p.`-qualified for the SELECTs, the other bare for RETURNING.
-        // If they drift, the row tuple is decoded in the wrong order and every
-        // field lands in the wrong place — a failure that type-checks.
-        let strip = |s: &str| {
-            s.split(',')
-                .map(|c| c.trim().trim_start_matches("p.").to_owned())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(strip(COLUMNS_ALIASED), strip(COLUMNS));
+    fn team_visibility_reads_the_join_and_not_the_superseded_column() {
+        // Migration 0027 replaced `project.team_id` with `project_team`. A
+        // predicate left on the old column would answer for the FIRST team a
+        // project ever had and silently hide it from every other one.
+        assert!(VISIBLE.contains("project_team"));
+        assert!(!VISIBLE.contains("p.team_id"));
+        assert!(!COLUMNS.contains("p.team_id"));
     }
 
     #[test]

@@ -491,12 +491,9 @@ pub async fn projects_on(
     actor: Uuid,
 ) -> Result<Vec<(Uuid, Vec<Uuid>, bool)>, sqlx::Error> {
     sqlx::query_as(
-        // A project carries at most one team today, so the array is that team or
-        // empty. It is returned as an array rather than an `Option` because the
-        // scope chain is `{W, T₁…Tₙ, P, E}` in `docs/03` and this shape does not
-        // change when `project_team` lands — only what fills it does.
         "SELECT p.id,
-                CASE WHEN p.team_id IS NULL THEN ARRAY[]::uuid[] ELSE ARRAY[p.team_id] END,
+                ARRAY(SELECT pt.team_id FROM project_team pt
+                       WHERE pt.project_id = p.id ORDER BY pt.team_id),
                 EXISTS (SELECT 1 FROM project_membership pm
                          WHERE pm.project_id = p.id AND pm.user_id = $2)
            FROM project p
