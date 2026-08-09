@@ -65,10 +65,31 @@ assert_eq "dispatcher exists, is NOT a superuser, DOES bypass RLS, can log in" \
   "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
       "select rolsuper||'|'||rolbypassrls||'|'||rolcanlogin from pg_roles where rolname='taskforge_dispatcher'" | tr -d '[:space:]')"
 
-step "Applying migrations"
-for f in migrations/*.sql; do
-  $DC exec -T postgres psql -U taskforge_owner -d taskforge -v ON_ERROR_STOP=1 -q < "$f" >/dev/null
-done
+# The stack now migrates itself: `deploy/apply-migrations.sh` runs as an
+# init script, so by the time the API is healthy the schema is already there.
+# This step used to apply the migrations a second time, which failed on
+# `type "task_state" already exists` — migrations are not idempotent, and the
+# gate was competing with the thing it exists to verify.
+#
+# So it asserts instead of applies. That is the stronger check: it proves the
+# DEPLOYMENT migrated, which is the behaviour being gated, rather than proving
+# that this script can run psql.
+step "The deployment migrated itself"
+assert_eq "the schema is present before the gate touches anything" "present" \
+  "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
+      "select case when to_regclass('public.task') is null then 'absent' else 'present' end" \
+      | tr -d '[:space:]')"
+
+# Every migration, not just the last one to create a table: a partially applied
+# schema would satisfy the check above and fail in a way that looks like a code
+# bug much later.
+assert_eq "every migration in the image was applied" "none" \
+  "$($DC exec -T postgres psql -U taskforge_owner -d taskforge -tAc \
+      "select coalesce(string_agg(t, ',' order by t), 'none') from (
+         select unnest(array['workspace','project','task','comment','role_assignment',
+                             'outbox_event','outbox_delivery','activity_event',
+                             'user_credential','session']) as t
+       ) w where to_regclass('public.' || w.t) is null" | tr -d '[:space:]')"
 # Names the offending tables rather than counting the compliant ones.
 #
 # This used to compare a count against a literal 30, which did not assert what
