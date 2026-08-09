@@ -117,6 +117,14 @@ pub struct AppState {
     /// `TF_SECRET_KEY`. Used for the CSRF binding and nothing else — ADR-032:
     /// "TF_SECRET_KEY is not a cookie signature."
     pub secret_key: Arc<str>,
+    /// `TF_PUBLIC_URL`. `docs/48`: "used in emails and OIDC redirects". The
+    /// reset link is built from it, so a deployment that sets it wrongly sends
+    /// links to the wrong host rather than merely rendering one oddly.
+    pub public_url: Arc<str>,
+    /// Where outbound mail goes. `Arc<dyn Mailer>` and not an `Option`: an
+    /// empty `TF_SMTP_HOST` selects the no-op implementation at startup
+    /// (`docs/48`, D-046), so no handler has to ask whether email is on.
+    pub mailer: Arc<dyn casual_task_infra::Mailer>,
 }
 
 /// Build the router.
@@ -140,6 +148,19 @@ pub fn router(state: AppState) -> Router {
             axum::routing::post(crate::auth::logout),
         )
         .route("/api/v1/auth/session", get(crate::middleware::whoami))
+        // Both reset routes are registered HERE, above the layers, like every
+        // other route: one registered below them escapes the CSRF guard and the
+        // request id. They pass the CSRF guard because they carry no session
+        // cookie — there is nothing to forge with, which is the same reason
+        // login does.
+        .route(
+            "/api/v1/auth/password-reset",
+            axum::routing::post(crate::password_reset::request),
+        )
+        .route(
+            "/api/v1/auth/password-reset/confirm",
+            axum::routing::post(crate::password_reset::confirm),
+        )
         // C-006 / C-008. Every one of these takes `WorkspaceMember`, which is
         // the only thing that mints an `AuthContext` — so none of them can
         // reach a tenant row without a validated membership (`docs/32`).
@@ -407,6 +428,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
+    "/api/v1/auth/password-reset",
+    "/api/v1/auth/password-reset/confirm",
     // The route TEMPLATE, never the resolved path — `{id}` is one series, and
     // `/api/v1/projects/<uuid>` would be one series per project.
     "/api/v1/projects",
@@ -490,6 +513,8 @@ mod tests {
             "/api/v1/auth/login",
             "/api/v1/auth/logout",
             "/api/v1/auth/session",
+            "/api/v1/auth/password-reset",
+            "/api/v1/auth/password-reset/confirm",
             "/api/v1/projects",
             "/api/v1/projects/{id}",
             "/api/v1/projects/{id}/tasks",

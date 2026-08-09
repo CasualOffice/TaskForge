@@ -39,6 +39,7 @@ tower = { workspace = true, features = ["util"] }
 casual-task-observability = { workspace = true }
 casual-task-identity = { workspace = true }
 casual-task-persistence = { workspace = true, features = ["test-support"] }
+casual-task-infra = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 anyhow = { workspace = true }

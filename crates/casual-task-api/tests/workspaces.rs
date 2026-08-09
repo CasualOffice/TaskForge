@@ -40,6 +40,8 @@ fn app(pool: sqlx::PgPool) -> axum::Router {
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: SECRET.into(),
+        public_url: "https://tasks.example.test".into(),
+        mailer: Arc::new(casual_task_infra::mail::LoggingMailer),
     })
 }
 
