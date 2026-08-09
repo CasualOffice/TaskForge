@@ -20,10 +20,23 @@ const STORAGE_KEY = 'taskforge.theme'
 /** What the user chose, or `'system'` when they have not. */
 export function storedChoice(): ThemeChoice {
   const raw = localStorage.getItem(STORAGE_KEY)
-  return raw === 'light' || raw === 'dark' ? raw : 'system'
+  if (raw === 'light' || raw === 'dark' || raw === 'system') return raw
+  // No stored preference: light, not `system`. See `resolve` — the foundation
+  // designs on a white canvas, and inheriting the OS's dark mode would show a
+  // first-time user a surface the design was never checked against.
+  return 'light'
 }
 
 /** The theme actually in effect, resolving `'system'` against the OS. */
+/**
+ * The theme a choice resolves to.
+ *
+ * `system` follows the operating system, and an *unset* preference is not
+ * `system`: `design/DESIGN-FOUNDATION.md` §1.5 makes white "the primary
+ * application canvas", so a first-time visitor on a machine set to dark must
+ * still see the canvas the product was designed on. Dark remains a theme a
+ * user can choose — `storedChoice()` returns `light` until they do.
+ */
 export function resolve(choice: ThemeChoice): 'light' | 'dark' {
   if (choice !== 'system') return choice
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'

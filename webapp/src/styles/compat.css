@@ -1,0 +1,108 @@
+/* The bridge from the old token vocabulary to `design/DESIGN-FOUNDATION.md`.
+ *
+ * # Why this file exists rather than a find-and-replace
+ *
+ * `app.css` was written against a teal, dark-capable palette with a 4/8/12/16
+ * spacing scale of its own and names like `--color-surface-alt`. The
+ * foundation replaces all of it. Rewriting nine hundred lines of rules and
+ * re-checking every surface in one commit is exactly the "large drop" that
+ * conflicts badly on a shared branch, and it would mix two kinds of change —
+ * the palette moving, and each view's layout being reworked — in a single
+ * diff nobody can review.
+ *
+ * So the old names survive for exactly as long as it takes to migrate the
+ * views, and they resolve to foundation values. The visible effect is
+ * immediate and total: the canvas goes white, the greys become Zinc, and every
+ * radius snaps to the §6 table, without a single rule in `app.css` changing.
+ *
+ * # This file is scaffolding
+ *
+ * Every alias here is a rule not yet migrated. It shrinks as views move to
+ * `--tf-*` and is deleted when the last one does; `tokens.legacy.test.ts`
+ * counts the remaining references so the number cannot quietly grow.
+ */
+
+:root {
+  /* Interactive accent. VISUAL-IDENTITY §4 makes forge orange the product's
+   * "brand mark/accent", so it carries primary affordances — but the *ink* on
+   * a filled control is `--tf-brand-strong`, because white on #d8610b is
+   * 3.2:1 and fails §7's 4.5:1 for control labels. The bright orange stays for
+   * marks and borders, where 3:1 applies. */
+  --color-accent: var(--tf-brand-strong);
+  --color-accent-hover: #8f3900;
+  --color-accent-active: #7a3100;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: var(--tf-brand-subtle);
+  --color-text-on-accent: #ffffff;
+
+  --color-bg: var(--tf-bg);
+  --color-surface: var(--tf-surface);
+  --color-surface-alt: var(--tf-surface-subtle);
+  --color-surface-strip: var(--tf-surface-subtle);
+  --color-surface-raised: var(--tf-surface);
+
+  --color-border: var(--tf-border);
+  --color-border-strong: var(--tf-border-strong);
+  --color-divider: var(--tf-border);
+  --color-scrim: var(--tf-scrim);
+
+  --color-text: var(--tf-text);
+  --color-text-secondary: var(--tf-text-secondary);
+  --color-text-muted: var(--tf-text-muted);
+
+  --color-hover: var(--tf-hover);
+  --color-pressed: var(--tf-pressed);
+  /* §7 wants one visible focus state everywhere; §5 gives it its own blue so
+   * focus never reads as brand or as status. */
+  --color-focus-ring: var(--tf-focus);
+  --color-selected: var(--tf-selected);
+
+  --color-danger: var(--tf-danger);
+  --color-danger-soft: var(--tf-danger-subtle);
+  --color-warning: var(--tf-warning);
+  --color-warning-soft: var(--tf-warning-subtle);
+  --color-success: var(--tf-success);
+  --color-success-soft: var(--tf-success-subtle);
+  --color-info-soft: var(--tf-info-subtle);
+
+  /* §6 radius table. The old three-step scale collapses onto it: `sm` was
+   * chips (badge, 5 px), `md` controls (6 px), `lg` cards and popovers — which
+   * the foundation splits, so `lg` takes the card value and popovers move to
+   * `--tf-radius-popover` as they migrate. */
+  --radius-sm: var(--tf-radius-badge);
+  --radius-md: var(--tf-radius-control);
+  --radius-lg: var(--tf-radius-card);
+
+  /* §2's grid. The old scale ran 4/8/12/16/24/32; the foundation inserts 20 at
+   * step 5 and moves 32 to step 8, so `--space-5` and `--space-6` shift by
+   * 4 px and 8 px. That is the intended correction, not a regression. */
+  --space-1: var(--tf-space-1);
+  --space-2: var(--tf-space-2);
+  --space-3: var(--tf-space-3);
+  --space-4: var(--tf-space-4);
+  --space-5: var(--tf-space-5);
+  --space-6: var(--tf-space-6);
+
+  --font-sans: var(--tf-font-sans);
+  --font-mono: var(--tf-font-mono);
+
+  /* §4's scale is expressed as font shorthands, which carry line height. These
+   * size-only aliases exist for rules that set `font-size` alone; each one is
+   * a rule still to migrate to a `font:` shorthand. */
+  --text-xs: 12px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+
+  /* §6: shadows only for overlay planes. The old `--shadow-raised` sat on
+   * every card, which §11 lists as an anti-pattern ("shadows on every
+   * surface"), so it resolves to `none` — cards are separated by the border
+   * they already have. Overlays keep a real shadow. */
+  --shadow-raised: none;
+  --shadow-overlay: var(--tf-shadow-popover);
+
+  --motion-fast: var(--tf-motion-hover);
+  --motion-base: var(--tf-motion-menu);
+  --easing: var(--tf-ease);
+}

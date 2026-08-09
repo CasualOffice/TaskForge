@@ -1,140 +1,218 @@
-/* Design tokens.
+/* The legacy vocabulary, mapped onto the foundation. Imported from here rather
+ * than from `app.css` so that adopting the foundation is a change to the token
+ * layer alone — `app.css` is being edited concurrently for the filter bar, and
+ * a one-line import added there would drag that work into this commit. */
+@import './compat.css';
+
+/* TaskForge design tokens — `design/DESIGN-FOUNDATION.md`.
  *
- * # Why these are declared here and not imported
+ * # Where these values come from
  *
- * AGENTS.md §Repository boundary: `@schnsrw/design-system` lives at
- * `../design-system` in the development monorepo, and "if you have cloned
- * TaskForge on its own, those paths will not exist. Nothing in this repository
- * depends on them." A `link:../design-system` dependency would make that false —
- * `pnpm install` would fail for anyone who cloned only this repo, and the
- * `bundle-size` gate would fail with it.
+ * §5 of the foundation declares the colour tokens verbatim, §2 the 4 px
+ * spacing grid, §4 the type scale, §6 the radius table and §8 the motion
+ * durations. This file is that specification, transcribed. It is not a place
+ * to invent a value: §11 names "arbitrary spacing/radius values" as an
+ * anti-pattern, so a component that needs a number it cannot find here needs a
+ * change to the foundation, not a local literal.
  *
- * docs/42 also makes the design system the one input that could still break the
- * 200 KiB budget and requires a re-measurement when it is wired in. Wiring it is
- * therefore its own piece of work, not a side effect of C-018.
+ * # Why the prefix is `--tf-`
  *
- * So: the token NAMES here are the design system's, character for character
- * (`../design-system/src/tokens/colors.css`). Adopting the package later is a
- * changed import in this one file, not a restyle of every component.
+ * The shared Casual Office design system (`@schnsrw/design-system`) publishes
+ * `--color-*`, `--space-*` and `--radius-*` in the *same* global scope, and its
+ * values differ: its `--space-4` is 8 px where the foundation's is 16 px, and
+ * its `--text-md` is 14 px where this file's body size is 14 px but `--text-md`
+ * means 13 px. Two systems sharing one name is how a stylesheet silently halves
+ * every gap in the product. `--tf-` is the namespace that lets both be present
+ * at once — TaskForge rules read `--tf-*`, design-system primitives read their
+ * own, and neither can overwrite the other.
  *
- * Contrast: every text token against its intended surface clears 4.5:1, and
- * every non-text boundary clears 3:1 (WCAG 2.2 AA, docs/42 §Accessibility).
+ * # White is the primary canvas
+ *
+ * §1.5: "The primary application canvas is white. Hierarchy comes from
+ * typography, spacing, borders and structure — not washed-out surfaces." Dark
+ * is a theme a user may choose, not the default, and `shell/theme.ts` resolves
+ * an unset preference to light rather than to the operating system.
+ *
+ * Contrast is not asserted here — `tokens.contrast.test.ts` computes every pair
+ * in both themes and fails the build, because §7 makes AA "a component
+ * acceptance criterion, not a release cleanup task".
  */
 
 :root {
   color-scheme: light;
 
-  --color-accent: #0e7490;
-  --color-accent-hover: #0c627a;
-  --color-accent-active: #0a5266;
-  --color-accent-fg: #ffffff;
-  --color-accent-soft: #e6f3f7;
+  /* ── §5 Colour foundation ──────────────────────────────────────────────
+   * Transcribed exactly. "The UI must work in grayscale before brand color is
+   * applied", so every one of these carries meaning through weight, position
+   * or an accompanying glyph as well as hue (§7: never colour alone). */
+  --tf-bg: #ffffff;
+  --tf-surface: #ffffff;
+  --tf-surface-subtle: #f7f7f8;
 
-  --color-bg: #f4f6f9;
-  --color-surface: #ffffff;
-  --color-surface-alt: #f4f6f9;
-  --color-surface-strip: #eef1f5;
-  --color-surface-raised: #ffffff;
+  --tf-text: #18181b;
+  --tf-text-secondary: #52525b;
+  --tf-text-muted: #71717a;
 
-  --color-border: #e6e9ee;
-  --color-border-strong: #cdd3db;
-  --color-divider: #edeff3;
-  --color-scrim: rgba(15, 23, 42, 0.38);
+  --tf-border: #e4e4e7;
+  --tf-border-strong: #d4d4d8;
 
-  --color-text: #201f1e;
-  --color-text-secondary: #55534f;
-  --color-text-muted: #6b6966;
-  --color-text-on-accent: #ffffff;
+  --tf-focus: #2563eb;
 
-  --color-hover: rgba(15, 23, 42, 0.045);
-  --color-pressed: rgba(15, 23, 42, 0.09);
-  --color-focus-ring: #0e7490;
-  --color-selected: rgba(14, 116, 144, 0.11);
+  --tf-info: #2563eb;
+  --tf-success: #15803d;
+  --tf-warning: #a16207;
+  --tf-danger: #b91c1c;
+  --tf-extension: #7e22ce;
 
-  --color-danger: #b42318;
-  --color-danger-soft: #fdecea;
-  --color-warning: #8a5300;
-  --color-warning-soft: #fdf3e2;
-  --color-success: #08654a;
-  --color-success-soft: #e6f5f0;
-  --color-info-soft: #eef2ff;
+  --tf-brand: #d8610b;
+  --tf-brand-strong: #a94400;
 
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  /* Tints. Not in §5, which fixes only the ink; a chip needs a ground and the
+   * alternative is a per-component `rgba()` literal, which §11 forbids. Each
+   * is its own ink at low alpha over white, so the pair keeps its hue
+   * relationship in one place. */
+  --tf-info-subtle: #eff4fe;
+  --tf-success-subtle: #eef7f0;
+  --tf-warning-subtle: #fbf5e8;
+  --tf-danger-subtle: #fdf0ef;
+  --tf-extension-subtle: #f6eefc;
+  --tf-brand-subtle: #fdf1e7;
 
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
+  /* Interaction. §8 keeps motion short; these are the states it moves between. */
+  --tf-hover: rgba(24, 24, 27, 0.045);
+  --tf-pressed: rgba(24, 24, 27, 0.085);
+  --tf-selected: rgba(37, 99, 235, 0.08);
+  --tf-scrim: rgba(24, 24, 27, 0.4);
 
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* ── §2 Density and sizing — the 4 px grid ─────────────────────────────
+   * The table is sparse on purpose: it names 1,2,3,4,5,6,8,10,12 and nothing
+   * between. A gap that wants `space-7` wants one of its neighbours. */
+  --tf-space-1: 4px;
+  --tf-space-2: 8px;
+  --tf-space-3: 12px;
+  --tf-space-4: 16px;
+  --tf-space-5: 20px;
+  --tf-space-6: 24px;
+  --tf-space-8: 32px;
+  --tf-space-10: 40px;
+  --tf-space-12: 48px;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 15px;
-  --text-xl: 19px;
+  /* §2 Control tiers. A control's height is one of four values, never a
+   * padding sum that happens to land nearby. */
+  --tf-control-compact: 28px;
+  --tf-control-default: 32px;
+  --tf-control-comfortable: 36px;
+  --tf-control-touch: 44px;
 
-  --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-overlay: 0 8px 32px rgba(15, 23, 42, 0.18);
+  /* §3 Iconography. "Do not make the icon glyph the size of its interaction
+   * target" — so glyph sizes and target sizes are separate scales. */
+  --tf-icon-dense: 16px;
+  --tf-icon-default: 18px;
+  --tf-icon-nav: 20px;
+  --tf-icon-empty: 28px;
 
-  --motion-fast: 120ms;
-  --motion-base: 180ms;
-  --easing: cubic-bezier(0.2, 0, 0, 1);
+  /* ── §1 Layout geometry (LAYOUT-AND-INTERACTION-GUIDELINES §2) ─────────── */
+  --tf-global-bar-h: 48px;
+  --tf-rail-w: 56px;
+  --tf-context-w: 224px;
+  --tf-drawer-w: 480px;
+  --tf-content-pad: 20px;
+
+  /* ── §4 Typography ─────────────────────────────────────────────────────
+   * Size and line height travel together: the foundation specifies "14 / 20"
+   * for a card title, and a rule that sets only the size re-opens the leading
+   * question at every call site. */
+  --tf-font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --tf-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --tf-page-title: 600 24px/30px var(--tf-font-sans);
+  --tf-section-title: 600 18px/24px var(--tf-font-sans);
+  --tf-card-title: 600 14px/20px var(--tf-font-sans);
+  --tf-body: 400 14px/21px var(--tf-font-sans);
+  --tf-control-text: 500 13px/18px var(--tf-font-sans);
+  --tf-meta: 400 12px/16px var(--tf-font-sans);
+  --tf-code: 500 12px/18px var(--tf-font-mono);
+
+  /* ── §6 Borders, radius and elevation ─────────────────────────────────── */
+  --tf-radius-badge: 5px;
+  --tf-radius-control: 6px;
+  --tf-radius-card: 8px;
+  --tf-radius-popover: 10px;
+  --tf-radius-drawer: 12px;
+
+  /* "Default hierarchy uses borders, not shadows. Use shadows only for
+   * surfaces that physically overlay another interaction plane." There are
+   * exactly three, and a card is not among them. */
+  --tf-shadow-popover: 0 4px 12px rgba(24, 24, 27, 0.1), 0 1px 3px rgba(24, 24, 27, 0.08);
+  --tf-shadow-drawer: -8px 0 24px rgba(24, 24, 27, 0.1);
+  --tf-shadow-drag: 0 8px 16px rgba(24, 24, 27, 0.16);
+
+  /* ── §8 Motion ─────────────────────────────────────────────────────────── */
+  --tf-motion-hover: 90ms;
+  --tf-motion-menu: 130ms;
+  --tf-motion-drawer: 200ms;
+  --tf-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* The dark theme exposes the SAME token names — the design system's rule, and
- * the reason a component never asks which theme is active. */
+/* ── Dark theme ────────────────────────────────────────────────────────────
+ *
+ * The foundation specifies light only. These values are *derived*, and the
+ * derivation is stated so a reviewer can check it rather than guess: the
+ * neutral ramp is Zinc reversed (the same family §5 draws its greys from), and
+ * every semantic ink is lightened until `tokens.contrast.test.ts` clears it
+ * against the surface it is used on. Hue is preserved; only lightness moves.
+ *
+ * Brand orange lightens to #f08a2e, which is the value `design/favicon.svg`
+ * already uses for the mark on graphite — so the dark app rail and the
+ * favicon agree rather than being two oranges.
+ */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --color-accent: #3bb4d4;
-  --color-accent-hover: #58c4e0;
-  --color-accent-active: #7ad2e9;
-  --color-accent-fg: #04202a;
-  --color-accent-soft: #10323d;
+  --tf-bg: #18181b;
+  --tf-surface: #1f1f23;
+  --tf-surface-subtle: #27272a;
 
-  --color-bg: #0d1117;
-  --color-surface: #151b23;
-  --color-surface-alt: #1c232c;
-  --color-surface-strip: #11171f;
-  --color-surface-raised: #1c232c;
+  --tf-text: #fafafa;
+  --tf-text-secondary: #d4d4d8;
+  --tf-text-muted: #a1a1aa;
 
-  --color-border: #262d36;
-  --color-border-strong: #3a434f;
-  --color-divider: #21272f;
-  --color-scrim: rgba(0, 0, 0, 0.6);
+  --tf-border: #34343a;
+  --tf-border-strong: #4b4b52;
 
-  --color-text: #e8ecf1;
-  --color-text-secondary: #b3bcc7;
-  --color-text-muted: #98a2af;
-  --color-text-on-accent: #04202a;
+  --tf-focus: #7ea6f6;
 
-  --color-hover: rgba(255, 255, 255, 0.06);
-  --color-pressed: rgba(255, 255, 255, 0.11);
-  --color-focus-ring: #58c4e0;
-  --color-selected: rgba(59, 180, 212, 0.16);
+  --tf-info: #7ea6f6;
+  --tf-success: #6ece8f;
+  --tf-warning: #e0b44e;
+  --tf-danger: #f58b84;
+  --tf-extension: #c99cf0;
 
-  --color-danger: #ff9c92;
-  --color-danger-soft: #3a1a17;
-  --color-warning: #f0b352;
-  --color-warning-soft: #33260f;
-  --color-success: #6fd3b0;
-  --color-success-soft: #10302a;
-  --color-info-soft: #1a2338;
+  --tf-brand: #f08a2e;
+  --tf-brand-strong: #f5a55e;
 
-  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --tf-info-subtle: #1b2437;
+  --tf-success-subtle: #16281c;
+  --tf-warning-subtle: #2c2412;
+  --tf-danger-subtle: #331b19;
+  --tf-extension-subtle: #281f33;
+  --tf-brand-subtle: #33220f;
+
+  --tf-hover: rgba(250, 250, 250, 0.06);
+  --tf-pressed: rgba(250, 250, 250, 0.11);
+  --tf-selected: rgba(126, 166, 246, 0.14);
+  --tf-scrim: rgba(0, 0, 0, 0.6);
+
+  --tf-shadow-popover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --tf-shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.5);
+  --tf-shadow-drag: 0 8px 16px rgba(0, 0, 0, 0.55);
 }
 
-/* docs/42 §Accessibility: `prefers-reduced-motion` respected. Not "animations
- * shortened" — removed, because the setting is an accessibility need and a 1 ms
- * transform is still a transform. */
+/* §7 and §8: "Respect `prefers-reduced-motion`." Removed rather than
+ * shortened — the setting is an accessibility need, and a 1 ms transform is
+ * still a transform. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
