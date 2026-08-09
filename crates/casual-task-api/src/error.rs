@@ -150,6 +150,8 @@ pub mod codes {
     pub const TASK_NOT_FOUND: Code = Code::new("TF-TSK-0001");
     /// Assignee is not a member of the project.
     pub const ASSIGNEE_NOT_PROJECT_MEMBER: Code = Code::new("TF-TSK-0005");
+    /// A dependency that would close a loop (ADR-019, `docs/20` TF-TSK-0003).
+    pub const DEPENDENCY_CYCLE: Code = Code::new("TF-TSK-0003");
     /// Parent task must be in the same project (ADR-018).
     pub const PARENT_OUT_OF_PROJECT: Code = Code::new("TF-TSK-0006");
 
@@ -238,6 +240,7 @@ pub mod codes {
         PROJECT_KEY_IMMUTABLE,
         PROJECT_KEY_FORMAT,
         TASK_NOT_FOUND,
+        DEPENDENCY_CYCLE,
         ASSIGNEE_NOT_PROJECT_MEMBER,
         PARENT_OUT_OF_PROJECT,
         STATUS_NOT_DIRECTLY_WRITABLE,

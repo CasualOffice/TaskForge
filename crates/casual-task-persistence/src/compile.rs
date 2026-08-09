@@ -421,8 +421,21 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
         Field::IsBlocked => {
             let p = cast(&bind(params, param_of(value)), Field::IsBlocked, false);
             return format!(
+                // `blocked_task_id` is a column `task_dependency` has never
+                // had — migration 0005 names the two ends `from_task_id` and
+                // `to_task_id`. Every `is_blocked` filter therefore failed at
+                // execution time with "column does not exist"; no test caught
+                // it because the compiler's own suite asserts the SQL text, and
+                // the EXPLAIN catalogue has no probe for this field.
+                //
+                // "Blocked" is the same question `task::unresolved_blockers`
+                // asks: an unresolved BLOCKS edge pointing AT this task.
                 "(EXISTS (SELECT 1 FROM task_dependency d \
-                  WHERE d.blocked_task_id = t.id)) = ({p})"
+                   JOIN task b ON b.id = d.from_task_id \
+                  WHERE d.to_task_id = t.id \
+                    AND d.kind = 'BLOCKS' \
+                    AND b.deleted_at IS NULL \
+                    AND b.state NOT IN ('COMPLETED','CANCELED'))) = ({p})"
             );
         }
         Field::Key => {

@@ -17,12 +17,14 @@
 //! database. Those need a router, and a router cannot be reached from inside
 //! `main`.
 
+pub mod activity;
 pub mod attachments;
 pub mod auth;
 pub mod comments;
 pub mod config;
 pub mod context;
 pub mod csrf;
+pub mod dependencies;
 pub mod error;
 pub mod etag;
 pub mod invitations;
