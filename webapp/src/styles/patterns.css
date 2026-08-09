@@ -1,0 +1,225 @@
+/* Product patterns: the surfaces a person acts through.
+ *
+ * Split from `app.css` because they change for a different reason — `app.css`
+ * holds the shell and the primitives, this holds the toast, the popover, the
+ * state block, the selection bar and the detail drawer's reading layout. Three
+ * agents are editing `webapp/` concurrently; a file per concern is also a merge
+ * boundary.
+ *
+ * Every value comes from `design/DESIGN-FOUNDATION.md` — §2 spacing, §4 type,
+ * §6 radius and elevation, §8 motion. §11 names "arbitrary spacing/radius
+ * values" as an anti-pattern, so nothing here is a number somebody liked.
+ */
+
+/* ── Toasts ────────────────────────────────────────────────────────────────
+ * The visible half of `shell/announce.tsx`. Bottom-right, above everything,
+ * never over the primary action: §11 forbids full-screen loaders and the same
+ * reasoning applies to feedback that blocks the work it is confirming. */
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 8px;
+  background: var(--tf-surface, var(--color-surface));
+  color: var(--tf-text, var(--color-text));
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+  font-size: 13px;
+  line-height: 18px;
+  animation: toast-in 150ms ease-out;
+}
+.toast--error {
+  border-color: var(--tf-danger, var(--color-danger));
+}
+.toast__text {
+  flex: 1;
+}
+.toast__close {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+  font: inherit;
+  cursor: pointer;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* §7 of the foundation: respect `prefers-reduced-motion`. */
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}
+
+/* ── First-class states ────────────────────────────────────────────────────
+ * §10: "Empty, error, offline and permission-denied states are first-class
+ * product states." §10 of the layout guidelines: they are operational — a
+ * sentence and the control that resolves it, no illustration, no encouragement. */
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.state__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tf-text, var(--color-text));
+}
+.state__detail {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 13px;
+  color: var(--tf-text-secondary, var(--color-text-muted));
+}
+.state__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Geometry the content will occupy, drawn while it loads (§10, §7 stable
+ * geometry). Not a spinner: a spinner is a promise with no shape. */
+.skeleton {
+  padding: 8px 0;
+}
+.skeleton__row {
+  height: 40px;
+  margin: 0 0 1px;
+  background: linear-gradient(
+    90deg,
+    var(--tf-surface-subtle, var(--color-surface-alt)) 0%,
+    var(--tf-border, var(--color-border)) 50%,
+    var(--tf-surface-subtle, var(--color-surface-alt)) 100%
+  );
+  background-size: 300% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+  border-radius: 6px;
+  opacity: 0.6;
+}
+@keyframes skeleton {
+  to {
+    background-position: -150% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton__row {
+    animation: none;
+  }
+}
+
+/* ── Popover / menu ────────────────────────────────────────────────────────
+ * §9: popover for small contextual controls, menu for choices. §6: radius 10,
+ * and a shadow because it overlays another interaction plane. */
+.pop {
+  position: relative;
+  display: inline-flex;
+}
+.pop__surface {
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 40;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 10px;
+  background: var(--tf-surface, var(--color-surface));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+.pop__surface--start {
+  left: 0;
+}
+.pop__surface--end {
+  right: 0;
+}
+.pop__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.pop__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--tf-text, var(--color-text));
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.pop__item:hover:not(:disabled) {
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+}
+.pop__item:disabled {
+  cursor: not-allowed;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+/* Never colour alone (§7): the current entry carries a check glyph as well. */
+.pop__item[aria-current='true']::after {
+  content: '✓';
+  margin-left: auto;
+  color: var(--tf-brand-strong, var(--color-brand-strong));
+}
+.pop__why {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.pop__section {
+  padding: 6px 8px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.pop__divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--tf-border, var(--color-border));
+}
+
+/* ── Create form ───────────────────────────────────────────────────────────
+ * §6: labels visible, required field first, actions separated from the fields. */
+.create {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 4px;
+}
+.create__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.create__more {
+  align-self: flex-start;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}

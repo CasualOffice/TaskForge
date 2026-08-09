@@ -9,6 +9,10 @@
  */
 
 @import './tokens.css';
+/* Product patterns — toast, popover, first-class states, detail surface. Its
+ * own file so the surfaces being built in parallel are not one merge
+ * conflict. */
+@import './patterns.css';
 
 *,
 *::before,

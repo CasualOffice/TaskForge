@@ -1,13 +1,31 @@
 /**
- * Creating a task: one field.
+ * Creating a task.
  *
  * # The failure this module prevents
  *
- * A create form with fourteen fields. docs/42 §Progressive disclosure calls this
- * "the single highest-leverage decision in the UI" and says why: "Every tracker
- * that opens with fourteen fields trains its users to paste 'TODO' into half of
- * them." So this asks for a title, the server defaults everything else, and the
- * rest of the task is edited in the drawer that opens straight afterwards.
+ * A tracker you cannot add work to. This control used to return `null` whenever
+ * no project was scoped — which is the state the application *lands in*, because
+ * the list opens on "All projects". The result was a task tracker whose default
+ * screen had no way to create a task, and the reason was invisible: nothing was
+ * disabled and nothing was explained, the button simply was not there.
+ *
+ * A missing project is a question, not a disqualification. So the control is
+ * always offered, and the form asks which project — required field first, per
+ * `design/LAYOUT-AND-INTERACTION-GUIDELINES.md` §6 — defaulting to whatever the
+ * view is scoped to so the common case is still one field and one Enter.
+ *
+ * # A popover, not a modal
+ *
+ * §6: "Avoid modal forms for workflows that require referencing the underlying
+ * task/project." Someone naming a task is usually reading the board behind it.
+ *
+ * # Why the second field set is behind a disclosure
+ *
+ * docs/42 §Progressive disclosure calls this "the single highest-leverage
+ * decision in the UI" and says why: "Every tracker that opens with fourteen
+ * fields trains its users to paste 'TODO' into half of them." Title is the
+ * required field; type and priority are one click away for the person who
+ * already knows the answer; everything else is the detail surface's job.
  *
  * # Why the idempotency key is minted once per attempt, not per submit
  *
@@ -17,82 +35,224 @@
  * would make the user's *next* task a replay of their last. It is therefore
  * rotated on success, which is exactly when the attempt is over.
  */
-import { useRef, useState, type FormEvent, type ReactElement } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { idempotencyKey } from '../api/http'
 import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
-import { createTask } from '../api/tasks'
+import { listProjects } from '../api/projects'
+import { createTask, PRIORITIES, TASK_TYPES, type Priority, type TaskType } from '../api/tasks'
 import { useAnnounce } from '../shell/announce'
 import { useOpenTask } from '../shell/navigation'
 import { ErrorNotice } from '../shell/notice'
 import { useAuthority } from '../shell/permissions'
+import { Popover } from '../shell/Popover'
 import { useWorkspaceId } from '../shell/session'
+import { priorityLabel, typeLabel } from '../tasks/present'
 
-export function CreateTask({ projectId }: { projectId: string | undefined }): ReactElement | null {
-  const workspaceId = useWorkspaceId()
+export function CreateTask({
+  projectId,
+  variant = 'primary',
+  label = 'New task',
+}: {
+  /** The project the view is scoped to, used as the default. May be absent. */
+  projectId: string | undefined
+  /** `quiet` for the copy inside an empty state, which already carries the emphasis. */
+  variant?: 'primary' | 'quiet'
+  label?: string
+}): ReactElement | null {
+  // Asked at workspace scope when nothing is scoped, which is the honest
+  // question: "may this person create a task anywhere here". A project-scoped
+  // refusal still surfaces — the server re-authorizes the write regardless, and
+  // its refusal carries a registry code the notice names.
   const authority = useAuthority(projectId)
+  if (!authority.can(PERMISSIONS.taskCreate)) return null
+
+  return (
+    <Popover
+      label={label}
+      align="end"
+      triggerClass={`button button--${variant === 'primary' ? 'primary' : 'quiet'}`}
+    >
+      {(close) => <CreateForm projectId={projectId} close={close} />}
+    </Popover>
+  )
+}
+
+function CreateForm({
+  projectId,
+  close,
+}: {
+  projectId: string | undefined
+  close: () => void
+}): ReactElement {
+  const workspaceId = useWorkspaceId()
   const announce = useAnnounce()
   const openTask = useOpenTask()
   const client = useQueryClient()
 
-  const [open, setOpen] = useState(false)
+  const projects = useQuery({
+    queryKey: keys.projects(workspaceId),
+    queryFn: ({ signal }) => listProjects(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+
+  const available = projects.data?.data ?? []
+  const [project, setProject] = useState(projectId ?? '')
   const [title, setTitle] = useState('')
+  const [type, setType] = useState<TaskType>('TASK')
+  const [priority, setPriority] = useState<Priority>('NONE')
+  const [more, setMore] = useState(false)
   const attempt = useRef(idempotencyKey())
+  const titleRef = useRef<HTMLInputElement>(null)
+
+  // The surface exists because the user pressed "New task", so focus belongs in
+  // the field they came for. Done with a ref rather than `autoFocus`, which is
+  // the page-load version of the same idea and which `jsx-a11y` is right about.
+  useEffect(() => titleRef.current?.focus(), [])
+
+  // Only when the caller passed none and exactly one exists: choosing *for* the
+  // user out of several would silently file work in the wrong place.
+  const chosen = project !== '' ? project : available.length === 1 ? (available[0]?.id ?? '') : ''
 
   const create = useMutation({
-    mutationFn: () => createTask(workspaceId, projectId ?? '', { title: title.trim() }, attempt.current),
+    mutationFn: () =>
+      createTask(
+        workspaceId,
+        chosen,
+        {
+          title: title.trim(),
+          ...(type === 'TASK' ? {} : { type }),
+          ...(priority === 'NONE' ? {} : { priority }),
+        },
+        attempt.current,
+      ),
     onSuccess: (task) => {
       attempt.current = idempotencyKey()
-      setTitle('')
-      setOpen(false)
-      announce(`Created ${task.key}`)
+      announce(`Created ${task.key} — ${task.title}`)
       void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
+      close()
       openTask(task.id)
     },
   })
 
-  // No project, no create: a task belongs to one, and the endpoint is
-  // `POST /projects/{id}/tasks`. Rendering a button that opens a form that
-  // cannot submit would be worse than rendering nothing.
-  if (projectId === undefined) return null
-  if (!authority.can(PERMISSIONS.taskCreate)) return null
-
-  if (!open) {
-    return (
-      <button type="button" className="button button--primary" onClick={() => setOpen(true)}>
-        New task
-      </button>
-    )
-  }
-
   function submit(event: FormEvent): void {
     event.preventDefault()
-    if (title.trim() !== '') create.mutate()
+    if (title.trim() !== '' && chosen !== '') create.mutate()
+  }
+
+  if (!projects.isPending && available.length === 0) {
+    return (
+      <div className="create">
+        <p className="state__title">There are no projects yet.</p>
+        <p className="state__detail">
+          A task belongs to a project. Create a project first, or ask an owner to.
+        </p>
+      </div>
+    )
   }
 
   return (
     <form className="create" onSubmit={submit}>
-      <label className="visually-hidden" htmlFor="create-title">
-        Task title
-      </label>
-      <input
-        id="create-title"
-        className="input create__title"
-        value={title}
-        placeholder="What needs doing?"
-        onChange={(event) => setTitle(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') setOpen(false)
-        }}
-      />
-      <button type="submit" className="button button--primary" disabled={create.isPending}>
-        {create.isPending ? 'Creating…' : 'Create'}
+      {/* Required field first (§6), and the label stays visible — §6 again:
+          "placeholder text is not a label". */}
+      <div className="field">
+        <label className="field__label" htmlFor="create-project">
+          Project
+        </label>
+        <select
+          id="create-project"
+          className="select"
+          value={chosen}
+          onChange={(event) => setProject(event.target.value)}
+        >
+          <option value="">Choose a project…</option>
+          {available.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.key} — {entry.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor="create-title">
+          Title
+        </label>
+        <input
+          id="create-title"
+          className="input"
+          ref={titleRef}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+      </div>
+
+      <button
+        type="button"
+        className="button button--quiet create__more"
+        aria-expanded={more}
+        onClick={() => setMore(!more)}
+      >
+        {more ? 'Fewer fields' : 'Type and priority'}
       </button>
-      <button type="button" className="button button--quiet" onClick={() => setOpen(false)}>
-        Cancel
-      </button>
+
+      {more ? (
+        <div className="create__row">
+          <div className="field">
+            <label className="field__label" htmlFor="create-type">
+              Type
+            </label>
+            <select
+              id="create-type"
+              className="select"
+              value={type}
+              onChange={(event) => setType(event.target.value as TaskType)}
+            >
+              {TASK_TYPES.map((option) => (
+                <option key={option} value={option}>
+                  {typeLabel(option)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label className="field__label" htmlFor="create-priority">
+              Priority
+            </label>
+            <select
+              id="create-priority"
+              className="select"
+              value={priority}
+              onChange={(event) => setPriority(event.target.value as Priority)}
+            >
+              {PRIORITIES.map((option) => (
+                <option key={option} value={option}>
+                  {priorityLabel(option)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="field__actions">
+        <button
+          type="submit"
+          className="button button--primary"
+          disabled={create.isPending || title.trim() === '' || chosen === ''}
+        >
+          {create.isPending ? 'Creating…' : 'Create task'}
+        </button>
+        <button type="button" className="button button--quiet" onClick={close}>
+          Cancel
+        </button>
+      </div>
+
+      {/* Beside the fields, not over them: §6 puts validation near what it is
+          about, and the draft is still on screen to correct. */}
       {create.isError ? <ErrorNotice error={create.error} /> : null}
     </form>
   )
