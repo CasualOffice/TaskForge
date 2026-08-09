@@ -330,6 +330,15 @@ pub(crate) fn member_body(record: &repo::MemberRecord) -> MemberBody {
     }
 }
 
+pub(crate) fn team_member_body(record: &repo::TeamMemberRecord) -> TeamMemberBody {
+    TeamMemberBody {
+        user_id: record.user_id,
+        display_name: record.display_name.clone(),
+        email: record.email.clone(),
+        member_type: record.member_type.clone(),
+    }
+}
+
 pub(crate) fn team_body(record: &repo::TeamRecord) -> TeamBody {
     TeamBody {
         id: record.id,

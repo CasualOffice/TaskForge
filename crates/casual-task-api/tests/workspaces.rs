@@ -958,3 +958,86 @@ async fn a_refused_create_leaves_no_roles_behind() -> Result<()> {
     assert_eq!(owners, vec![founder.user_id]);
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_team_can_be_read_back_and_the_read_stops_at_the_tenant_boundary() -> Result<()> {
+    // Team membership used to be write-only: POST added and DELETE removed, and
+    // nothing could say who was in a team. A team is a *principal* a grant is
+    // assigned to (`docs/04`), so "who does this grant reach?" was unanswerable.
+    let db = schema_harness::TestDatabase::start().await?;
+    let app = app(db.pool.clone());
+    let alice = sign_up(&app, &db.pool, "alice@example.test").await?;
+    let bob = sign_up(&app, &db.pool, "bob@example.test").await?;
+    let (alpha, _) = create_workspace(&app, &alice, "alpha").await?;
+    let (beta, _) = create_workspace(&app, &bob, "beta").await?;
+
+    let created = send(
+        &app,
+        request(&alice, "POST", &format!("/api/v1/workspaces/{alpha}/teams"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(json!({ "name": "Platform" }).to_string()))?,
+    )
+    .await?;
+    let team: Uuid = json_body(created).await?["id"]
+        .as_str()
+        .context("team id")?
+        .parse()?;
+
+    // Empty before anyone is in it, and a page rather than a bare array.
+    let empty = send(
+        &app,
+        request(&alice, "GET", &format!("/api/v1/teams/{team}/members"))
+            .header(WORKSPACE_HEADER, alpha.to_string())
+            .body(Body::empty())?,
+    )
+    .await?;
+    assert_eq!(empty.status(), StatusCode::OK);
+    let body = json_body(empty).await?;
+    assert!(
+        body["data"].as_array().context("data")?.is_empty(),
+        "{body}"
+    );
+    assert_eq!(body["page"]["has_more"], false, "{body}");
+
+    send(
+        &app,
+        request(&alice, "POST", &format!("/api/v1/teams/{team}/members"))
+            .header(WORKSPACE_HEADER, alpha.to_string())
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(json!({ "user_id": alice.user_id }).to_string()))?,
+    )
+    .await?;
+
+    let listed = send(
+        &app,
+        request(&alice, "GET", &format!("/api/v1/teams/{team}/members"))
+            .header(WORKSPACE_HEADER, alpha.to_string())
+            .body(Body::empty())?,
+    )
+    .await?;
+    assert_eq!(listed.status(), StatusCode::OK);
+    let body = json_body(listed).await?;
+    let rows = body["data"].as_array().context("data")?;
+    assert_eq!(rows.len(), 1, "{body}");
+    assert_eq!(rows[0]["user_id"], alice.user_id.to_string());
+    // The fixture names every user `Test`; what matters is that the join
+    // reached `user_account` at all rather than returning a bare id.
+    assert_eq!(rows[0]["display_name"], "Test");
+    assert_eq!(rows[0]["email"], "alice@example.test");
+    // No `joined_at`: `team_membership` is (team_id, user_id) and nothing else,
+    // so a date here could only be the workspace's, answering another question.
+    assert!(rows[0].get("joined_at").is_none(), "{body}");
+
+    // Bob, in beta, cannot read alpha's team — 404, the same answer an absent
+    // team gives, so the endpoint is not a team-existence oracle.
+    let across = send(
+        &app,
+        request(&bob, "GET", &format!("/api/v1/teams/{team}/members"))
+            .header(WORKSPACE_HEADER, beta.to_string())
+            .body(Body::empty())?,
+    )
+    .await?;
+    assert_eq!(across.status(), StatusCode::NOT_FOUND);
+    Ok(())
+}

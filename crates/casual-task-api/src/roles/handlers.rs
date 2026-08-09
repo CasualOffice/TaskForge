@@ -1,6 +1,6 @@
 //! The five handlers.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use casual_task_app::{Principal, ProposedAssignment, Refusal, ResourceScopes, Scope};
@@ -12,13 +12,19 @@ use casual_task_persistence::{Change, UnitOfWork};
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
-use super::wire::{AssignRequest, AssignmentView, CreateRoleRequest, PatchRoleRequest, RoleView};
+use super::wire::{
+    AssignRequest, AssignmentQuery, AssignmentView, CreateRoleRequest, PatchRoleRequest, RoleView,
+};
 use crate::context::Context;
 use crate::error::{ApiError, codes};
 use crate::middleware::WorkspaceMember;
 use crate::server::{AppState, RequestId};
 use crate::wire::Body;
 use crate::{etag, unit};
+
+/// `docs/21` bounds every page. Same numbers as every other list here.
+const DEFAULT_ASSIGNMENT_PAGE: u32 = 50;
+const MAX_ASSIGNMENT_PAGE: u32 = 100;
 
 fn view(row: RoleRow) -> RoleView {
     RoleView {
@@ -156,6 +162,95 @@ pub async fn list(
 
     Ok(axum::Json(serde_json::json!({
         "data": rows.into_iter().map(view).collect::<Vec<_>>()
+    }))
+    .into_response())
+}
+
+/// `GET /api/v1/role-assignments` — who holds what, and where.
+///
+/// # Why this read had to exist
+///
+/// The grant set was write-only. `POST` created a grant and `DELETE` needed its
+/// id, and that id appeared exactly once — in the response to the call that
+/// made it. An admin who closed the tab could never take a permission back, and
+/// no screen could answer "who can do this here?" without one request per
+/// member. `docs/04`'s whole model is that authority is legible; a set nobody
+/// can read is not.
+///
+/// # Authorization
+///
+/// The same pair as [`list`] — `role.assign` or `role.manage`. Reading the
+/// grants is what makes assigning them safe: an admin choosing a role needs to
+/// see what the person already has, and a permission that let you grant but not
+/// look would push them to guess.
+///
+/// # Errors
+///
+/// `400` for a bad `limit`, `403` without either permission, `500` on a
+/// database failure.
+pub async fn list_assignments(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    headers: HeaderMap,
+    filters: Result<Query<AssignmentQuery>, axum::extract::rejection::QueryRejection>,
+) -> Result<Response, ApiError> {
+    let request_id = RequestId::of_parts(&headers);
+    let Query(filters) = filters.map_err(|rejection| {
+        ApiError::bad_request(codes::MALFORMED_BODY, rejection.body_text(), &request_id)
+    })?;
+    let limit = match filters.limit {
+        None => DEFAULT_ASSIGNMENT_PAGE,
+        // Not clamped: a silently smaller page is one the client cannot notice
+        // it asked for, and `docs/20` gives the refusal a code.
+        Some(limit) if limit == 0 || limit > MAX_ASSIGNMENT_PAGE => {
+            return Err(ApiError::bad_request(
+                codes::PAGE_TOO_LARGE,
+                format!("limit must be between 1 and {MAX_ASSIGNMENT_PAGE}"),
+                &request_id,
+            ));
+        }
+        Some(limit) => limit,
+    };
+
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+
+    if !ctx
+        .authority
+        .may_in_workspace(permission::ROLE_ASSIGN)
+        .is_allowed()
+    {
+        unit::authorized(
+            ctx.authority.may_in_workspace(permission::ROLE_MANAGE),
+            &request_id,
+        )?;
+    }
+
+    let filter = role_edit::AssignmentFilter {
+        principal_id: filters.principal_id,
+        role_id: filters.role_id,
+        scope_id: filters.scope_id,
+    };
+    // One more than asked for: whether another page exists is a fact about the
+    // data, and a client that had to issue an empty request to find out would
+    // pay for it on every list that happens to end on a boundary.
+    let mut rows =
+        role_edit::list_assignments(&mut scoped, filter, filters.cursor, i64::from(limit) + 1)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "listing grants failed");
+                ApiError::internal(&request_id)
+            })?;
+    unit::commit(tx, &request_id).await?;
+
+    let has_more = rows.len() > limit as usize;
+    rows.truncate(limit as usize);
+    let next = rows.last().map(|row| row.id);
+
+    Ok(axum::Json(serde_json::json!({
+        "data": rows.iter().map(assignment_view).collect::<Vec<_>>(),
+        "page": { "next_cursor": next, "has_more": has_more },
     }))
     .into_response())
 }

@@ -24,6 +24,22 @@ pub struct MemberBody {
     pub joined_at: String,
 }
 
+/// One person in a team.
+///
+/// No `joined_at`: `team_membership` is `(team_id, user_id)` and nothing else
+/// (migration 0002). The workspace's join date was the available candidate and
+/// answers a different question, so the field is absent rather than plausible
+/// and wrong.
+#[derive(Debug, Serialize)]
+pub struct TeamMemberBody {
+    pub user_id: Uuid,
+    pub display_name: String,
+    /// `null` once anonymized (ADR-026).
+    pub email: Option<String>,
+    /// Their standing in the **workspace** — enough to mark a guest in a team.
+    pub member_type: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct TeamBody {
     pub id: Uuid,

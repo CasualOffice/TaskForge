@@ -547,6 +547,80 @@ pub async fn insert_team_member(
     Ok(affected > 0)
 }
 
+/// One person in a team.
+///
+/// Deliberately **not** [`MemberRecord`]: that carries `joined_at`, and
+/// `team_membership` is `(team_id, user_id)` and nothing else (migration 0002).
+/// Reusing the workspace shape would have meant filling that field with the
+/// date they joined the *workspace* — a plausible-looking date that answers a
+/// different question, which is worse than not answering.
+#[derive(Debug, Clone)]
+pub struct TeamMemberRecord {
+    pub user_id: Uuid,
+    pub display_name: String,
+    pub email: Option<String>,
+    /// Their standing in the **workspace**, so a team list can mark a guest.
+    pub member_type: String,
+}
+
+/// Who is in a team, one page at a time.
+///
+/// # Why it joins `workspace_membership` and not just `team_membership`
+///
+/// `team_membership` carries no `workspace_id` and therefore no policy of its
+/// own (migration 0010) — the same reason [`is_member_scoped`] exists on the
+/// write path. Reading it directly would return whatever ids that table holds;
+/// joining membership means a row naming someone outside this workspace is
+/// invisible rather than rendered, so a tenancy failure elsewhere cannot become
+/// a directory leak here. The `team` join carries the same constraint for the
+/// team itself.
+///
+/// The keyset is `user_id`, matching [`list_members`], so the two member lists
+/// paginate the same way.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn list_team_members(
+    scoped: &mut Scoped<'_>,
+    team_id: Uuid,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<TeamMemberRecord>, sqlx::Error> {
+    let rows: Vec<(Uuid, String, Option<String>, String)> = sqlx::query_as(
+        "SELECT tm.user_id, u.display_name, u.email::text, m.member_type
+           FROM team_membership tm
+           JOIN team t ON t.id = tm.team_id
+           JOIN workspace_membership m
+             ON m.user_id = tm.user_id AND m.workspace_id = t.workspace_id
+           JOIN user_account u ON u.id = tm.user_id
+          WHERE tm.team_id = $1
+            AND t.workspace_id = $2
+            AND t.deleted_at IS NULL
+            AND ($3::uuid IS NULL OR tm.user_id > $3::uuid)
+          ORDER BY tm.user_id
+          LIMIT $4",
+    )
+    .bind(team_id)
+    .bind(scoped.workspace_id().as_uuid())
+    .bind(after)
+    .bind(limit)
+    .fetch_all(scoped.conn())
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(user_id, display_name, email, member_type)| TeamMemberRecord {
+                user_id,
+                display_name,
+                email,
+                member_type,
+            },
+        )
+        .collect())
+}
+
 /// Remove someone from a team. `false` if they were not in it.
 ///
 /// # Errors

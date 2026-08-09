@@ -119,6 +119,16 @@ function ProductRail(): ReactElement {
         <RailSearch />
         <RailLink to="/reports" label="Reports" icon={<IconReports />} />
       </ul>
+
+      {/* Settings sits at the foot, apart from the work destinations above it:
+          it is where you go to change the product rather than to use it, and the
+          separation is what keeps the group above readable as one list. It is a
+          permanent entry rather than a command because the module comment's own
+          rule — new capability adds a command — is about *capabilities*, and
+          "where do I change my password" is a destination people look for. */}
+      <ul className="rail__group rail__group--foot">
+        <RailLink to="/settings" label="Settings" icon={<IconSettings />} />
+      </ul>
     </nav>
   )
 }
@@ -246,6 +256,15 @@ function IconReports(): ReactElement {
     <svg {...GLYPH}>
       <path d="M3 16.5h14" />
       <path d="M6 16.5V10M10 16.5V5M14 16.5v-4" />
+    </svg>
+  )
+}
+
+function IconSettings(): ReactElement {
+  return (
+    <svg {...GLYPH}>
+      <circle cx="10" cy="10" r="2.6" />
+      <path d="M10 3v1.8M10 15.2V17M17 10h-1.8M4.8 10H3M14.9 5.1l-1.3 1.3M6.4 13.6l-1.3 1.3M14.9 14.9l-1.3-1.3M6.4 6.4 5.1 5.1" />
     </svg>
   )
 }

@@ -75,6 +75,20 @@ export function csrfToken(): string | undefined {
  * is never surfaced — `ApiError.fromResponse` normalizes even a proxy's HTML.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return (await send<T>(path, options)).data
+}
+
+/**
+ * The request, with the response's `ETag` beside its body.
+ *
+ * Split out of [`request`] rather than layered over it because the version only
+ * exists on the `Response`, and by the time `request` has parsed the body it has
+ * thrown the headers away.
+ */
+async function send<T>(
+  path: string,
+  options: RequestOptions,
+): Promise<{ data: T; etag: string | null }> {
   const method = options.method ?? 'GET'
   const headers = new Headers({ accept: 'application/json' })
 
@@ -107,25 +121,53 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (!response.ok) throw await ApiError.fromResponse(response)
-  if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  const etag = response.headers.get('etag')
+
+  // An empty body is not only a 204. `POST /teams/{id}/members` answers 201 with
+  // nothing in it, and adding someone already in the team answers 200 with
+  // nothing in it — both perfectly reasonable, and both fed straight into
+  // `response.json()` by the version of this function that special-cased 204
+  // alone. That throws a `SyntaxError`, which is not an `ApiError`, so it
+  // reached the user as "something went wrong on the server" for a request the
+  // server had just succeeded at. Reading the text first is the fix: whether a
+  // body is present is a fact about the response, not a fact about its status.
+  const text = await response.text()
+  if (text === '') return { data: undefined as T, etag }
+  return { data: JSON.parse(text) as T, etag }
 }
 
 /**
  * A request whose `ETag` the caller needs.
  *
- * `docs/05` returns `version` in the body as well, and that is what writes send
- * back — but a read that only ever looked at the body would break silently the
- * day an endpoint stops echoing it, so the header is the source and the body is
- * the fallback.
+ * # The header, then the body — and both are load-bearing
+ *
+ * `docs/05` echoes `version` in most bodies, and that is convenient, but it is
+ * not universal: `WorkspaceBody` carries `id`, `name`, `slug` and `created_at`
+ * and no version at all, so a settings page that read only the body could never
+ * send the `If-Match` its own rename requires. The `ETag` is the contract —
+ * every conditional resource sets it — and the body is the fallback for the day
+ * an intermediary strips it.
  */
 export async function requestWithVersion<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<{ data: T; version: number | undefined }> {
-  const data = await request<T>(path, options)
-  const version = (data as { version?: number } | undefined)?.version
-  return { data, version }
+  const { data, etag } = await send<T>(path, options)
+  return { data, version: parseEtag(etag) ?? (data as { version?: number } | undefined)?.version }
+}
+
+/**
+ * `"7"` → `7`.
+ *
+ * `undefined` for anything else, including a weak validator (`W/"7"`): the
+ * version is used as a precondition, and a weak one means "equivalent, not
+ * identical" — precisely the guarantee `If-Match` must not be given.
+ */
+function parseEtag(etag: string | null): number | undefined {
+  if (etag === null) return undefined
+  const match = /^"(\d+)"$/.exec(etag)
+  if (match === null) return undefined
+  return Number(match[1])
 }
 
 /** Build a query string, dropping absent values so `?cursor=undefined` cannot happen. */

@@ -42,20 +42,21 @@ export interface EffectivePermissions {
 /**
  * The caller's own permissions, workspace-wide or narrowed to a project.
  *
- * `team_id` is passed through when the project has one: a team-scoped grant only
- * reaches a project through its team, so omitting a real team **understates**
- * the answer — and an understated answer hides a control the user could use.
+ * # There is no team parameter, and that is the current contract
+ *
+ * A team-scoped grant reaches a project through its team, so the answer has to
+ * account for one — but a project can now belong to **several** teams, and the
+ * server resolves them from the project itself. `EffectiveQuery` carries
+ * `project_id` alone and is `deny_unknown_fields`, so a client sending `team_id`
+ * would be refused with a `400` rather than given a narrower answer.
  */
 export function readEffective(
   workspaceId: string,
-  scope: { projectId?: string | undefined; teamId?: string | undefined } = {},
+  scope: { projectId?: string | undefined } = {},
   signal?: AbortSignal,
 ): Promise<EffectivePermissions> {
   return request<EffectivePermissions>(
-    `/api/v1/permissions/effective${query({
-      project_id: scope.projectId,
-      team_id: scope.teamId,
-    })}`,
+    `/api/v1/permissions/effective${query({ project_id: scope.projectId })}`,
     { workspaceId, signal },
   )
 }

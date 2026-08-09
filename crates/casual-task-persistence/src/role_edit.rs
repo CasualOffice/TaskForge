@@ -343,6 +343,74 @@ pub async fn revoke(scoped: &mut Scoped<'_>, assignment: Uuid) -> Result<bool, s
     Ok(affected == 1)
 }
 
+/// Which grants a listing asks for. Every field narrows; `None` means "any".
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AssignmentFilter {
+    pub principal_id: Option<Uuid>,
+    pub role_id: Option<Uuid>,
+    pub scope_id: Option<Uuid>,
+}
+
+/// The grants in this workspace, newest first, one page at a time.
+///
+/// # Why this read has to exist
+///
+/// `assign` and `revoke` were written without it, which made the grant set
+/// write-only: revoking needs the assignment id, and the only place that id
+/// ever appeared was the response to the call that created it. An admin who
+/// closed the tab could never take a permission back through the API.
+///
+/// # Why the order is descending and the cursor is an id
+///
+/// `role_assignment.id` is a UUIDv7, so id order *is* time order and one column
+/// serves both the sort and the keyset. `docs/26` bans `OFFSET`; `after` is the
+/// last id of the previous page and the predicate is `<` because the newest
+/// grant is the one an admin is looking for.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn list_assignments(
+    scoped: &mut Scoped<'_>,
+    filter: AssignmentFilter,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<AssignmentRow>, sqlx::Error> {
+    let rows: Vec<AssignmentTuple> = sqlx::query_as(
+        "SELECT id, principal_type::text, principal_id, role_id,
+                scope_type::text, scope_id, granted_by, granted_at
+           FROM role_assignment
+          WHERE ($1::uuid IS NULL OR principal_id = $1::uuid)
+            AND ($2::uuid IS NULL OR role_id      = $2::uuid)
+            AND ($3::uuid IS NULL OR scope_id     = $3::uuid)
+            AND ($4::uuid IS NULL OR id           < $4::uuid)
+          ORDER BY id DESC
+          LIMIT $5",
+    )
+    .bind(filter.principal_id)
+    .bind(filter.role_id)
+    .bind(filter.scope_id)
+    .bind(after)
+    .bind(limit)
+    .fetch_all(scoped.conn())
+    .await?;
+
+    Ok(rows.into_iter().map(row_to_assignment).collect())
+}
+
+fn row_to_assignment(r: AssignmentTuple) -> AssignmentRow {
+    AssignmentRow {
+        id: r.0,
+        principal_type: r.1,
+        principal_id: r.2,
+        role_id: r.3,
+        scope_type: r.4,
+        scope_id: r.5,
+        granted_by: r.6,
+        granted_at: r.7,
+    }
+}
+
 /// One grant by id, or `None` when it is not in this workspace.
 ///
 /// # Errors
@@ -360,16 +428,7 @@ pub async fn read_assignment(
     .bind(assignment)
     .fetch_optional(scoped.conn())
     .await?;
-    Ok(row.map(|r| AssignmentRow {
-        id: r.0,
-        principal_type: r.1,
-        principal_id: r.2,
-        role_id: r.3,
-        scope_type: r.4,
-        scope_id: r.5,
-        granted_by: r.6,
-        granted_at: r.7,
-    }))
+    Ok(row.map(row_to_assignment))
 }
 
 #[cfg(test)]

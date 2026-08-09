@@ -100,6 +100,55 @@ pub async fn create_team(
     Ok((StatusCode::CREATED, axum::Json(team_body(&created))).into_response())
 }
 
+/// `GET /api/v1/teams/{team_id}/members` — who is in a team.
+///
+/// # Why this read had to exist
+///
+/// Team membership was write-only: `POST` added someone and `DELETE` removed
+/// them, and nothing could say who was already there. An admin screen built on
+/// that can add a duplicate (silently idempotent) and can only remove a person
+/// whose id it was told out of band. A team is also a *principal* a grant is
+/// assigned to (`docs/04`), so "who does this grant actually reach?" was
+/// unanswerable through the API.
+///
+/// # Errors
+///
+/// [`ApiError`] 404 when the team is not in this workspace, or on a bad page
+/// request or a database failure.
+pub async fn list_team_members(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    request_id: RequestId,
+    Path(path): Path<TeamPath>,
+    paging: Result<Query<Paging>, axum::extract::rejection::QueryRejection>,
+) -> Result<Response, ApiError> {
+    let request_id = request_id.0;
+    let (limit, after) = page_request(paging, &request_id)?;
+
+    let mut tx = begin(&state, &request_id).await?;
+    let mut scoped = scope_of(&mut tx, &member, &request_id).await?;
+
+    // The team is resolved first so a team in another tenant is a 404 rather
+    // than an empty page, which would read as "this team has nobody in it".
+    repo::find_team(&mut scoped, path.team_id)
+        .await
+        .map_err(|error| internal(&error, "reading the team", &request_id))?
+        .ok_or_else(|| ApiError::not_found(&request_id))?;
+
+    let mut found = repo::list_team_members(&mut scoped, path.team_id, after, i64::from(limit) + 1)
+        .await
+        .map_err(|error| internal(&error, "listing team members", &request_id))?;
+    commit(tx, &request_id).await?;
+
+    let has_more = truncate(&mut found, limit);
+    let next = found.last().map(|m| cursor_for(m.user_id));
+    Ok(page(
+        found.iter().map(team_member_body).collect(),
+        has_more,
+        next,
+    ))
+}
+
 /// `POST /api/v1/teams/{team_id}/members`.
 ///
 /// The workspace comes from `X-Workspace-Id` — there is no workspace in this

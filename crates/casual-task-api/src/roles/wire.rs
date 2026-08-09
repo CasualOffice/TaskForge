@@ -60,6 +60,27 @@ pub struct RoleView {
     pub version: i64,
 }
 
+/// `GET /api/v1/role-assignments` — every field narrows.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssignmentQuery {
+    /// A user or team id. The question "what does this person hold?".
+    #[serde(default)]
+    pub principal_id: Option<Uuid>,
+    /// The question "who holds this role?".
+    #[serde(default)]
+    pub role_id: Option<Uuid>,
+    /// A workspace, team, project or environment id — the question "who has
+    /// authority *here*?". Not paired with a `scope_type`: an id names exactly
+    /// one thing, so the type would only be a way to disagree with it.
+    #[serde(default)]
+    pub scope_id: Option<Uuid>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub cursor: Option<Uuid>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AssignmentView {
     pub id: Uuid,
