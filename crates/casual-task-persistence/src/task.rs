@@ -492,9 +492,10 @@ pub async fn may_be_assigned(
                AND EXISTS (SELECT 1 FROM workspace_membership wm
                             WHERE wm.workspace_id = $2 AND wm.user_id = $3)
                AND (   p.visibility = 'WORKSPACE'
-                    OR (p.visibility = 'TEAM' AND p.team_id IN (
-                            SELECT tm.team_id FROM team_membership tm
-                             WHERE tm.user_id = $3))
+                    OR (p.visibility = 'TEAM'
+                        AND EXISTS (SELECT 1 FROM project_team pt
+                                     JOIN team_membership tm ON tm.team_id = pt.team_id
+                                    WHERE pt.project_id = p.id AND tm.user_id = $3))
                     OR EXISTS (SELECT 1 FROM project_membership pm
                                 WHERE pm.project_id = p.id AND pm.user_id = $3)
                     OR EXISTS (SELECT 1 FROM role_assignment ra

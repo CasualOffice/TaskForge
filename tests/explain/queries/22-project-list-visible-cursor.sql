@@ -11,14 +11,17 @@
 -- projects per workspace), so a scan here would not fail this gate. The probe
 -- is here because the query exists and a plan nobody looks at is a plan nobody
 -- notices changing.
-SELECT p.id, p.workspace_id, p.team_id, p.key, p.name, p.description,
+SELECT p.id, p.workspace_id, p.key, p.name, p.description,
        p.visibility::text AS visibility, p.workflow_id, p.created_at, p.created_by,
        p.updated_at, p.updated_by, p.version, p.archived_at
   FROM project p
  WHERE p.workspace_id = :'ws_id'
    AND p.deleted_at IS NULL
    AND (   p.visibility = 'WORKSPACE'
-        OR (p.visibility = 'TEAM' AND p.team_id = ANY (ARRAY[:'probe_team']::uuid[]))
+        OR (p.visibility = 'TEAM'
+            AND EXISTS (SELECT 1 FROM project_team pt
+                         JOIN team_membership tm ON tm.team_id = pt.team_id
+                        WHERE pt.project_id = p.id AND tm.user_id = :'probe_user'))
         OR EXISTS (SELECT 1 FROM project_membership pm
                     WHERE pm.project_id = p.id AND pm.user_id = :'probe_user')
         OR p.id = ANY (:accessible_projects))

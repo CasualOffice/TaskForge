@@ -8,7 +8,7 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use casual_task_model::{ProjectId, TeamId, permission};
+use casual_task_model::{ProjectId, permission};
 use casual_task_persistence::{Change, UnitOfWork, project, task};
 use uuid::Uuid;
 
@@ -83,11 +83,11 @@ pub async fn transition(
             ApiError::internal(&request_id)
         })?
         .ok_or_else(|| ApiError::missing(codes::TASK_NOT_FOUND, &request_id))?;
-    let team = project_row.team_id.map(TeamId::from_uuid);
+    let team = project_row.teams();
     let project = ProjectId::from_uuid(current.project_id);
     unit::authorized(
         ctx.authority
-            .may_in_project(permission::TASK_TRANSITION, project, team, &facts),
+            .may_in_project(permission::TASK_TRANSITION, project, &team, &facts),
         &request_id,
     )?;
 
@@ -115,7 +115,7 @@ pub async fn transition(
         .copied()
         .filter(|p| {
             ctx.authority
-                .may_in_project(*p, project, team, &facts)
+                .may_in_project(*p, project, &team, &facts)
                 .is_allowed()
         })
         .collect();

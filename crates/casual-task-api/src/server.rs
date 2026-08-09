@@ -258,6 +258,18 @@ pub fn router(state: AppState) -> Router {
         )
         // Environments. Also an authorization scope (`Scope::Environment`), so
         // these are part of the permission model and not merely a task field.
+        // A project involves many teams (`docs/03`). Authority is
+        // `project.member.manage`, evaluated against the project's EXISTING
+        // teams — evaluating against the incoming one would let anyone holding
+        // a grant on a team add that team to any project they can see.
+        .route(
+            "/api/v1/projects/{id}/teams",
+            get(crate::project_teams::list).post(crate::project_teams::add),
+        )
+        .route(
+            "/api/v1/projects/{id}/teams/{team_id}",
+            axum::routing::delete(crate::project_teams::remove),
+        )
         .route(
             "/api/v1/projects/{id}/environments",
             get(crate::environments::list).post(crate::environments::create),
@@ -655,6 +667,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/workflows/{id}/statuses/{sid}",
     "/api/v1/workflows/{id}/transitions",
     "/api/v1/workflows/{id}/transitions/{tid}",
+    "/api/v1/projects/{id}/teams",
+    "/api/v1/projects/{id}/teams/{team_id}",
     "/api/v1/projects/{id}/environments",
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",

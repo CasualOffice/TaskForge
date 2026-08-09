@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use casual_task_model::{ProjectId, TeamId, permission};
+use casual_task_model::{ProjectId, permission};
 use casual_task_persistence::project;
 use casual_task_persistence::tag::{self, NewTag, TagRow};
 use serde::{Deserialize, Serialize};
@@ -197,7 +197,7 @@ pub async fn create(
                 ctx.authority.may_in_project(
                     permission::TAG_MANAGE,
                     ProjectId::from_uuid(project_row.id),
-                    project_row.team_id.map(TeamId::from_uuid),
+                    &project_row.teams(),
                     &ctx.facts_in_project(is_member),
                 ),
                 &request_id,

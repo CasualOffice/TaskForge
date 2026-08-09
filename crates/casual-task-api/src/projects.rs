@@ -50,7 +50,7 @@ pub struct ProjectView {
     pub name: String,
     pub description: Option<String>,
     pub visibility: String,
-    pub team_id: Option<Uuid>,
+    pub team_ids: Vec<Uuid>,
     pub workflow_id: Uuid,
     pub created_at: String,
     pub created_by: Uuid,
@@ -70,7 +70,7 @@ impl From<&ProjectRow> for ProjectView {
             name: row.name.clone(),
             description: row.description.clone(),
             visibility: row.visibility.clone(),
-            team_id: row.team_id,
+            team_ids: row.team_ids.clone(),
             workflow_id: row.workflow_id,
             created_at: wire::timestamp(row.created_at),
             created_by: row.created_by,
@@ -92,8 +92,10 @@ pub struct CreateRequest {
     pub description: Option<String>,
     #[serde(default)]
     pub visibility: Option<String>,
+    /// The teams this project involves. `docs/03`: a project may involve any
+    /// number of them, and every one sits in the task's scope chain.
     #[serde(default)]
-    pub team_id: Option<Uuid>,
+    pub team_ids: Option<Vec<Uuid>>,
 }
 
 /// `PATCH /api/v1/projects/{id}`.
@@ -250,10 +252,10 @@ pub async fn create(
         name: name.to_owned(),
         description: body.description.clone(),
         visibility: visibility.to_owned(),
-        team_id: body.team_id,
         workflow_id: workflow,
         created_by: ctx.actor.as_uuid(),
     };
+    let wanted_teams = body.team_ids.clone().unwrap_or_default();
     let row = match project::insert(&mut scoped, &new).await {
         Ok(row) => row,
         Err(CreateError::KeyTaken) => {
@@ -280,6 +282,18 @@ pub async fn create(
         }
     };
 
+    // Teams go on through the same helper the dedicated endpoint uses, so
+    // create cannot grow a laxer check than add. It refuses a team that is not
+    // in this workspace with 422 rather than a foreign-key 500.
+    let attached = crate::project_teams::attach_all(
+        &mut scoped,
+        row.id,
+        ctx.actor.as_uuid(),
+        &wanted_teams,
+        &request_id,
+    )
+    .await?;
+
     // `project_membership` conveys belonging, never capability (migration
     // 0003). The creator belongs to what they created — without this, creating
     // a PRIVATE project would produce something its author cannot read back.
@@ -290,7 +304,11 @@ pub async fn create(
             ApiError::internal(&request_id)
         })?;
 
-    let view = ProjectView::from(&row);
+    // The row was read before the teams were attached, so the view carries
+    // what actually landed rather than an empty list the caller would have to
+    // re-fetch to correct.
+    let mut view = ProjectView::from(&row);
+    view.team_ids = attached;
     let payload = serde_json::to_value(&view).unwrap_or(serde_json::Value::Null);
     UnitOfWork::record(
         &mut scoped,
@@ -425,7 +443,7 @@ pub async fn update(
         ctx.authority.may_in_project(
             permission::PROJECT_UPDATE,
             ProjectId::from_uuid(current.id),
-            current.team_id.map(casual_task_model::TeamId::from_uuid),
+            &current.teams(),
             &ctx.facts_in_project(is_member),
         ),
         &request_id,

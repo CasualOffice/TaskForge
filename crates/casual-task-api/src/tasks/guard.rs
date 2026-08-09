@@ -5,7 +5,7 @@
 //! assembled two different ways in two handlers — which is how one endpoint
 //! ends up more permissive than its neighbour.
 
-use casual_task_model::{ProjectId, TeamId};
+use casual_task_model::ProjectId;
 use casual_task_persistence::task::TaskRow;
 use casual_task_persistence::{project, task};
 use uuid::Uuid;
@@ -95,11 +95,11 @@ pub(crate) async fn authorize_on_task(
             tracing::error!(%error, "reading the project failed");
             ApiError::internal(request_id)
         })?
-        .and_then(|p| p.team_id)
-        .map(TeamId::from_uuid);
+        .map(|p| p.teams())
+        .unwrap_or_default();
     unit::authorized(
         ctx.authority
-            .may_in_project(wanted, ProjectId::from_uuid(row.project_id), team, &facts),
+            .may_in_project(wanted, ProjectId::from_uuid(row.project_id), &team, &facts),
         request_id,
     )
 }

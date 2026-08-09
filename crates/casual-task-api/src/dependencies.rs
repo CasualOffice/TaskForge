@@ -37,7 +37,7 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use casual_task_model::{ProjectId, TeamId, permission};
+use casual_task_model::{ProjectId, permission};
 use casual_task_persistence::dependency::{self, DependencyError, RelatedTask};
 use casual_task_persistence::{Change, UnitOfWork, project, task};
 use serde::{Deserialize, Serialize};
@@ -200,12 +200,13 @@ pub async fn add(
             tracing::error!(%error, "reading the project failed");
             ApiError::internal(&request_id)
         })?
-        .and_then(|row| row.team_id);
+        .map(|row| row.teams())
+        .unwrap_or_default();
     unit::authorized(
         ctx.authority.may_in_project(
             permission::TASK_UPDATE,
             ProjectId::from_uuid(task_row.project_id),
-            team.map(TeamId::from_uuid),
+            &team,
             &ctx.facts_in_project(is_member),
         ),
         &request_id,

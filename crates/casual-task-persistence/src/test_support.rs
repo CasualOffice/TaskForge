@@ -564,6 +564,120 @@ pub async fn grant_at_workspace(
     Ok(role)
 }
 
+/// A team in `workspace`, returning its id.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_team(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    name: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query("INSERT INTO team (id, workspace_id, name) VALUES ($1,$2,$3)")
+        .bind(id)
+        .bind(workspace_id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(id)
+}
+
+/// Put a user in a team.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_team_member(
+    pool: &sqlx::PgPool,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    // `team_membership` carries no workspace_id: the team does, and a team is in
+    // exactly one workspace (migration 0002).
+    sqlx::query(
+        "INSERT INTO team_membership (team_id, user_id) VALUES ($1,$2)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(team_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Put a team on a project.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_project_team(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    team_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO project_team (workspace_id, project_id, team_id) VALUES ($1,$2,$3)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(workspace_id)
+    .bind(project_id)
+    .bind(team_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Grant a role carrying `permissions` to a **team**, scoped to that team.
+///
+/// Scoped to the *team*, not to the project, and that distinction is the whole
+/// point. A grant scoped to a project reaches it however the principal is
+/// expanded — the team is only who holds it. A grant scoped to the **team**
+/// reaches a project's tasks only when that team is in the project's scope
+/// chain, which is exactly what `project_team` decides.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn grant_to_team_at_team_scope(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    team_id: Uuid,
+    granted_by: Uuid,
+    permissions: &[&str],
+) -> Result<Uuid, sqlx::Error> {
+    let role = Uuid::now_v7();
+    sqlx::query("INSERT INTO role (id, workspace_id, name) VALUES ($1,$2,$3)")
+        .bind(role)
+        .bind(workspace_id)
+        .bind(format!("test-team-{role}"))
+        .execute(pool)
+        .await?;
+    for permission in permissions {
+        sqlx::query("INSERT INTO role_permission (role_id, permission) VALUES ($1,$2)")
+            .bind(role)
+            .bind(*permission)
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query(
+        "INSERT INTO role_assignment
+             (id, workspace_id, principal_type, principal_id, role_id,
+              scope_type, scope_id, granted_by)
+         VALUES ($1,$2,'TEAM'::principal_type,$3,$4,'TEAM'::scope_type,$3,$5)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(team_id)
+    .bind(role)
+    .bind(granted_by)
+    .execute(pool)
+    .await?;
+    Ok(role)
+}
+
 /// Grant a user a role carrying `permissions`, narrowed by `constraints`.
 ///
 /// The constrained form exists because a constrained grant and an unconstrained

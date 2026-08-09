@@ -33,7 +33,7 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use casual_task_model::{ProjectId, TeamId, permission};
+use casual_task_model::{ProjectId, permission};
 use casual_task_persistence::milestone::{
     self, MilestonePatch, MilestoneRow, NewMilestone, Progress,
 };
@@ -411,7 +411,7 @@ async fn authorize(
         ctx.authority.may_in_project(
             wanted,
             ProjectId::from_uuid(project_row.id),
-            project_row.team_id.map(TeamId::from_uuid),
+            &project_row.teams(),
             &ctx.facts_in_project(is_member),
         ),
         request_id,

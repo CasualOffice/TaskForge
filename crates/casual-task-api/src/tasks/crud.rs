@@ -118,7 +118,7 @@ pub async fn create(
         ctx.authority.may_in_project(
             permission::TASK_CREATE,
             ProjectId::from_uuid(project_row.id),
-            project_row.team_id.map(TeamId::from_uuid),
+            &project_row.teams(),
             &ctx.facts_in_project(is_member),
         ),
         &request_id,

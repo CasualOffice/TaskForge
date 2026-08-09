@@ -138,6 +138,16 @@ SELECT tf_seed_id(3, (w - 1) * :focus_projects + p),
        :tasks_per_project
   FROM generate_series(1, :n_workspaces) w, generate_series(1, tf_seed_project_count(w)) p;
 
+-- A project's teams live in `project_team` since migration 0029. Seeded from the
+-- column the same way the migration backfills it, so the probes above measure the
+-- plan a real workspace produces rather than one where every TEAM-visible project
+-- is invisible.
+INSERT INTO project_team (workspace_id, project_id, team_id)
+SELECT p.workspace_id, p.id, p.team_id
+  FROM project p
+ WHERE p.team_id IS NOT NULL
+ON CONFLICT (project_id, team_id) DO NOTHING;
+
 INSERT INTO project_membership (project_id, user_id, workspace_id)
 SELECT tf_seed_id(3, (w - 1) * :focus_projects + p),
        tf_seed_id(2, (w * 7 + k) % :n_users + 1),
