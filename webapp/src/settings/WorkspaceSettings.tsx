@@ -14,6 +14,7 @@
  * `docs/24` exists for. The version comes from the `ETag` — `WorkspaceBody`
  * carries no `version` field, so the header is the only source.
  */
+import { Badge, Button, Input } from '@schnsrw/design-system'
 import { useEffect, useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -74,7 +75,9 @@ function Identity({
         // Refusing here rather than sending: without a version the request is
         // unconditional, the server answers 428, and the user reads a
         // precondition error for a form they filled in correctly.
-        throw new Error('This workspace was read without a version, so it cannot be renamed safely.')
+        throw new Error(
+          'This workspace was read without a version, so it cannot be renamed safely.',
+        )
       }
       return renameWorkspace(workspaceId, version, next)
     },
@@ -91,9 +94,9 @@ function Identity({
         {mayManage ? null : <NeedsPermission permission="workspace.manage" />}
         <Form onSubmit={() => rename.submit(name.trim())}>
           <Field label="Name" id="ws-name">
-            <input
+            <Input
+              full
               id="ws-name"
-              className="input"
               value={name}
               maxLength={200}
               disabled={!mayManage}
@@ -105,18 +108,18 @@ function Identity({
             id="ws-slug"
             hint="Permanent. It is in every link anyone has shared, so there is no rename for it."
           >
-            <input id="ws-slug" className="input" value={workspace.slug} readOnly disabled />
+            <Input full id="ws-slug" value={workspace.slug} readOnly disabled />
           </Field>
           <WriteError error={rename.error} />
-          <button
+          <Button
+            variant="primary"
             type="submit"
-            className="button button--primary"
             disabled={
               !mayManage || rename.pending || name.trim() === '' || name.trim() === workspace.name
             }
           >
             {rename.pending ? 'Renaming…' : 'Rename workspace'}
-          </button>
+          </Button>
         </Form>
       </Section>
       <Switcher />
@@ -145,15 +148,11 @@ function Switcher(): ReactElement {
             <span className="settings__row-main">{candidate.name}</span>
             <span className="settings__row-meta">{candidate.slug}</span>
             {candidate.id === workspace?.id ? (
-              <span className="badge">selected</span>
+              <Badge tone="accent">selected</Badge>
             ) : (
-              <button
-                type="button"
-                className="button button--quiet"
-                onClick={() => chooseWorkspace(candidate.id)}
-              >
+              <Button variant="subtle" onClick={() => chooseWorkspace(candidate.id)}>
                 Switch to it
-              </button>
+              </Button>
             )}
           </li>
         ))}

@@ -12,6 +12,7 @@
  * So there is exactly one failure sentence here, it comes from the registry
  * (`TF-AUT-0001`), and nothing branches on which field was wrong.
  */
+import { Button, Input } from '@schnsrw/design-system'
 import { useState, type FormEvent, type ReactElement } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -51,9 +52,9 @@ export function SignIn(): ReactElement {
           <label className="field__label" htmlFor="signin-email">
             Email
           </label>
-          <input
+          <Input
+            full
             id="signin-email"
-            className="input"
             type="email"
             name="email"
             autoComplete="username"
@@ -67,9 +68,9 @@ export function SignIn(): ReactElement {
           <label className="field__label" htmlFor="signin-password">
             Password
           </label>
-          <input
+          <Input
+            full
             id="signin-password"
-            className="input"
             type="password"
             name="password"
             autoComplete="current-password"
@@ -81,9 +82,14 @@ export function SignIn(): ReactElement {
 
         {attempt.isError ? <ErrorNotice error={attempt.error} /> : null}
 
-        <button className="button button--primary signin__submit" type="submit" disabled={attempt.isPending}>
+        <Button
+          variant="primary"
+          className="signin__submit"
+          type="submit"
+          disabled={attempt.isPending}
+        >
           {attempt.isPending ? 'Signing in…' : 'Sign in'}
-        </button>
+        </Button>
       </form>
     </main>
   )

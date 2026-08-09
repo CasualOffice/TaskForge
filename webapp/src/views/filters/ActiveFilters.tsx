@@ -16,6 +16,7 @@
  * narrowing was, and keeps the address bar as the single source of truth: a chip
  * writes `undefined` to one search parameter and nothing else.
  */
+import { Button } from '@schnsrw/design-system'
 import type { ReactElement } from 'react'
 
 import type { AppSearch } from '../../router'
@@ -60,9 +61,9 @@ export function ActiveFilters({
           </span>
         </button>
       ))}
-      <button type="button" className="button button--quiet chip__clear" onClick={onClear}>
+      <Button variant="subtle" className="chip__clear" onClick={onClear}>
         Clear all
-      </button>
+      </Button>
     </div>
   )
 }

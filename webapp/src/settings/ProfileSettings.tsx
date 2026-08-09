@@ -17,6 +17,7 @@
  * they have been signed out of their phone is a support ticket; telling them
  * before is a decision they made.
  */
+import { Badge, Button, Input } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -91,9 +92,9 @@ function Identity({
     >
       <Form onSubmit={() => save.submit(undefined)}>
         <Field label="Display name" id="profile-name">
-          <input
+          <Input
+            full
             id="profile-name"
-            className="input"
             value={name}
             maxLength={200}
             onChange={(event) => setName(event.target.value)}
@@ -104,9 +105,9 @@ function Identity({
           id="profile-zone"
           hint="Relative dates — today, overdue, next week — are resolved in this zone. Empty means UTC."
         >
-          <input
+          <Input
+            full
             id="profile-zone"
-            className="input"
             value={zone}
             placeholder={detected}
             onChange={(event) => setZone(event.target.value)}
@@ -115,19 +116,19 @@ function Identity({
         {zone.trim() === '' && detected !== '' ? (
           <p className="field__hint">
             Your browser reports <code>{detected}</code>.{' '}
-            <button type="button" className="button button--quiet" onClick={() => setZone(detected)}>
+            <Button variant="subtle" onClick={() => setZone(detected)}>
               Use it
-            </button>
+            </Button>
           </p>
         ) : null}
         <WriteError error={save.error} />
-        <button
+        <Button
+          variant="primary"
           type="submit"
-          className="button button--primary"
           disabled={save.pending || unchanged || name.trim() === ''}
         >
           {save.pending ? 'Saving…' : 'Save profile'}
-        </button>
+        </Button>
       </Form>
     </Section>
   )
@@ -158,9 +159,9 @@ function Password(): ReactElement {
     >
       <Form onSubmit={() => change.submit(undefined)}>
         <Field label="Current password" id="pw-current">
-          <input
+          <Input
+            full
             id="pw-current"
-            className="input"
             type="password"
             autoComplete="current-password"
             value={current}
@@ -168,9 +169,9 @@ function Password(): ReactElement {
           />
         </Field>
         <Field label="New password" id="pw-new" hint="At least 12 characters.">
-          <input
+          <Input
+            full
             id="pw-new"
-            className="input"
             type="password"
             autoComplete="new-password"
             value={next}
@@ -178,9 +179,9 @@ function Password(): ReactElement {
           />
         </Field>
         <Field label="New password again" id="pw-confirm">
-          <input
+          <Input
+            full
             id="pw-confirm"
-            className="input"
             type="password"
             autoComplete="new-password"
             value={confirm}
@@ -193,13 +194,13 @@ function Password(): ReactElement {
             change to a password the user did not mean to type. */}
         {mismatch ? <p className="field__hint">The two new passwords do not match.</p> : null}
         <WriteError error={change.error} />
-        <button
+        <Button
+          variant="secondary"
           type="submit"
-          className="button"
           disabled={change.pending || current === '' || next === '' || next !== confirm}
         >
           {change.pending ? 'Changing…' : 'Change password'}
-        </button>
+        </Button>
       </Form>
     </Section>
   )
@@ -231,14 +232,13 @@ function Sessions(): ReactElement {
       description="Every live session on this account. Signing one out takes effect on its next request."
       actions={
         others === 0 ? undefined : (
-          <button
-            type="button"
-            className="button"
+          <Button
+            variant="secondary"
             onClick={() => revokeRest.submit(undefined)}
             disabled={revokeRest.pending}
           >
             Sign out {others} other {others === 1 ? 'session' : 'sessions'}
-          </button>
+          </Button>
         )
       }
     >
@@ -246,7 +246,9 @@ function Sessions(): ReactElement {
       {sessions.isPending ? <Loading label="Loading sessions" /> : null}
       {sessions.error ? <ErrorNotice error={sessions.error} /> : null}
       {!sessions.isPending && rows.length === 0 ? (
-        <p className="empty">No sessions — which should be impossible while you are reading this.</p>
+        <p className="empty">
+          No sessions — which should be impossible while you are reading this.
+        </p>
       ) : null}
       <ul className="settings__rows">
         {rows.map((row) => (
@@ -278,7 +280,7 @@ function SessionRow({
             and it is attacker-controlled text, so React escapes it and nothing
             here parses it into a friendly name it might be lying about. */}
         {session.user_agent ?? 'An unnamed client'}
-        {session.current ? <span className="badge"> this session</span> : null}
+        {session.current ? <Badge tone="accent">this session</Badge> : null}
       </span>
       <span className="settings__row-meta">
         {session.ip_address ?? 'no address recorded'} · last seen{' '}
@@ -286,9 +288,9 @@ function SessionRow({
         {session.auth_method.toLowerCase()}
       </span>
       {session.current ? null : (
-        <button type="button" className="button button--quiet" onClick={onRevoke} disabled={busy}>
+        <Button variant="subtle" onClick={onRevoke} disabled={busy}>
           Sign out
-        </button>
+        </Button>
       )}
     </li>
   )

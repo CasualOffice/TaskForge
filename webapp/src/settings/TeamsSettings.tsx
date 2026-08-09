@@ -15,6 +15,7 @@
  * Expanding fetches; collapsing keeps what it fetched, so opening the same team
  * twice is free.
  */
+import { Badge, Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -64,22 +65,18 @@ export function TeamsSettings(): ReactElement {
       {mayManage ? (
         <Form onSubmit={() => create.submit(undefined)}>
           <Field label="New team" id="team-name">
-            <input
+            <Input
+              full
               id="team-name"
-              className="input"
               value={name}
               maxLength={200}
               onChange={(event) => setName(event.target.value)}
             />
           </Field>
           <WriteError error={create.error} />
-          <button
-            type="submit"
-            className="button button--primary"
-            disabled={create.pending || name.trim() === ''}
-          >
+          <Button variant="primary" type="submit" disabled={create.pending || name.trim() === ''}>
             {create.pending ? 'Creating…' : 'Create team'}
-          </button>
+          </Button>
         </Form>
       ) : (
         <NeedsPermission permission="workspace.manage" />
@@ -108,14 +105,9 @@ function TeamRow({ team, mayManage }: { team: Team; mayManage: boolean }): React
     <li className="settings__row settings__row--stacked">
       <div className="settings__row-head">
         <span className="settings__row-main">{team.name}</span>
-        <button
-          type="button"
-          className="button button--quiet"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
+        <Button variant="subtle" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? 'Hide members' : 'Members'}
-        </button>
+        </Button>
       </div>
       {open ? <TeamMembers teamId={team.id} teamName={team.name} mayManage={mayManage} /> : null}
     </li>
@@ -167,9 +159,7 @@ function TeamMembers({
       {members.isPending ? <Loading rows={2} label={`Loading ${teamName}`} /> : null}
       {members.error ? <ErrorNotice error={members.error} /> : null}
       {!members.isPending && inTeam.length === 0 ? (
-        <p className="field__hint">
-          Nobody is in this team, so a grant on it reaches nobody.
-        </p>
+        <p className="field__hint">Nobody is in this team, so a grant on it reaches nobody.</p>
       ) : null}
 
       <ul className="settings__rows">
@@ -177,18 +167,17 @@ function TeamMembers({
           <li className="settings__row" key={member.user_id}>
             <span className="settings__row-main">
               {member.display_name}
-              {member.member_type === 'GUEST' ? <span className="badge"> guest</span> : null}
+              {member.member_type === 'GUEST' ? <Badge tone="neutral">guest</Badge> : null}
             </span>
             <span className="settings__row-meta">{member.email ?? 'address removed'}</span>
             {mayManage ? (
-              <button
-                type="button"
-                className="button button--quiet"
+              <Button
+                variant="subtle"
                 onClick={() => remove.submit(member.user_id)}
                 disabled={remove.pending}
               >
                 Remove
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
@@ -199,9 +188,9 @@ function TeamMembers({
       {mayManage && addable.length > 0 ? (
         <Form onSubmit={() => (chosen === '' ? undefined : add.submit(chosen))}>
           <Field label={`Add someone to ${teamName}`} id={`team-add-${teamId}`}>
-            <select
+            <Select
+              full
               id={`team-add-${teamId}`}
-              className="select"
               value={chosen}
               onChange={(event) => setChosen(event.target.value)}
             >
@@ -211,11 +200,11 @@ function TeamMembers({
                   {member.display_name} · {member.email ?? 'address removed'}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
-          <button type="submit" className="button" disabled={add.pending || chosen === ''}>
+          <Button variant="secondary" type="submit" disabled={add.pending || chosen === ''}>
             {add.pending ? 'Adding…' : 'Add to team'}
-          </button>
+          </Button>
         </Form>
       ) : null}
     </div>

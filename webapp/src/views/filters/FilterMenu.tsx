@@ -12,25 +12,23 @@
  * A `role="listbox"` with `aria-multiselectable` has to reimplement roving
  * focus, type-ahead, and selection announcement — three things a browser already
  * does for a checkbox, and the third is where hand-rolled widgets usually fail
- * silently. So the popover holds ordinary `<input type="checkbox">` elements
- * with real `<label>`s: Tab moves, Space toggles, the screen reader says
- * "checked", and none of that is this file's code.
+ * silently.
  *
- * What this file *does* own is the part a checkbox list does not give for free:
- * the popover closes on `Escape` and on a click outside, and the trigger reports
- * how many are selected so the state is legible without opening it.
+ * # The list is the design system's Menu
  *
- * # This presentation is temporary, and shaped to be replaced
+ * Its entries take `{ label, checked, onClick }`, which is precisely what a
+ * multi-select menu is, so the options are built in that shape and handed over
+ * whole. "Clear" is an entry in the same menu rather than a button parked
+ * beneath it: it acts on the selection, so it belongs where the selection is.
  *
- * AGENTS.md makes `@schnsrw/design-system` a consumed dependency, and its `Menu`
- * already takes `{ label, checked, onClick }` entries — which is precisely a
- * multi-select menu. The package is not resolvable in this checkout yet, so
- * rather than hand-roll a second set of primitives that would only be deleted,
- * the options below are built as an [`items`] array in exactly that shape. When
- * the dependency lands, the `<ul>` becomes `<Menu items={items} />` and nothing
- * else in this file moves.
+ * What this file owns is the part the Menu does not: the popover closes on
+ * `Escape` and on a click outside, and the trigger reports how many are
+ * selected so the state is legible without opening it.
  */
+import { Button, Menu, Select, type MenuEntry } from '@schnsrw/design-system'
 import { useEffect, useId, useRef, useState, type ReactElement } from 'react'
+
+import { CONTROL, narrowing } from '../../shell/controls'
 
 export interface FilterOption {
   readonly value: string
@@ -94,9 +92,10 @@ export function FilterMenu({
 
   return (
     <div className="filter" ref={host}>
-      <button
-        type="button"
-        className={`button filter__trigger${chosen.length > 0 ? ' filter__trigger--on' : ''}`}
+      <Button
+        variant="secondary"
+        iconRight="expand_more"
+        style={narrowing(chosen.length > 0)}
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={`${id}-list`}
@@ -104,31 +103,29 @@ export function FilterMenu({
       >
         {label}
         {chosen.length > 0 ? <span className="filter__count">{chosen.length}</span> : null}
-      </button>
+      </Button>
 
       {open ? (
         <div className="filter__popover" id={`${id}-list`}>
-          {/* Replace with `<Menu items={items} />` when the design system is
-              wired — the entries already carry its `label`/`checked`/`onClick`. */}
-          <ul className="filter__options">
-            {items.map((item) => (
-              <li key={item.value}>
-                <label className="filter__option">
-                  <input type="checkbox" checked={item.checked} onChange={item.onClick} />
-                  <span>{item.label}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-          {chosen.length > 0 ? (
-            <button
-              type="button"
-              className="button button--quiet filter__clear"
-              onClick={() => onChange(undefined)}
-            >
-              Clear {label.toLowerCase()}
-            </button>
-          ) : null}
+          {/* The entries already carried the design system's shape — `label`,
+              `checked`, `onClick` — so the popover is now its Menu, and
+              "Clear" is an entry in it rather than a button parked underneath. */}
+          <Menu
+            width={232}
+            items={[
+              ...items,
+              ...(chosen.length > 0
+                ? ([
+                    { divider: true },
+                    {
+                      label: `Clear ${label.toLowerCase()}`,
+                      icon: 'backspace',
+                      onClick: () => onChange(undefined),
+                    },
+                  ] as MenuEntry[])
+                : []),
+            ]}
+          />
         </div>
       ) : null}
     </div>
@@ -159,9 +156,14 @@ export function FilterSelect({
       <label className="visually-hidden" htmlFor={id}>
         {label}
       </label>
-      <select
+      <Select
+        // Content-sized, with a ceiling. A toolbar control that stretches to
+        // fill the row makes the row's width, not its own contents, decide how
+        // important it looks.
+        width="auto"
+        containerStyle={{ maxWidth: 200 }}
         id={id}
-        className={`select filter__select${value !== undefined && value !== '' ? ' filter__select--on' : ''}`}
+        style={{ height: CONTROL, ...narrowing(value !== undefined && value !== '') }}
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value === '' ? undefined : event.target.value)}
       >
@@ -170,7 +172,7 @@ export function FilterSelect({
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
     </>
   )
 }

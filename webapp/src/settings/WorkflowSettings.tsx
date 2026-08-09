@@ -24,6 +24,7 @@
  * flat list of edges makes them scan for a pair. Rows are sources, columns are
  * destinations, and the absent cells are as informative as the present ones.
  */
+import { Badge, Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -161,31 +162,29 @@ function Statuses({
           <li className="settings__row" key={status.id}>
             <span className="settings__row-main">
               {status.name}
-              {status.is_initial ? <span className="badge"> new tasks start here</span> : null}
+              {status.is_initial ? <Badge tone="info">new tasks start here</Badge> : null}
             </span>
             <span className="settings__row-meta">
               {status.state.toLowerCase()} · {counts.get(status.id) ?? 0} tasks
             </span>
             {mayManage ? (
               <>
-                <button
-                  type="button"
-                  className="button button--quiet"
+                <Button
+                  variant="subtle"
                   aria-label={`Move ${status.name} earlier`}
                   disabled={index === 0 || move.pending}
                   onClick={() => swap(index, -1)}
                 >
                   ↑
-                </button>
-                <button
-                  type="button"
-                  className="button button--quiet"
+                </Button>
+                <Button
+                  variant="subtle"
                   aria-label={`Move ${status.name} later`}
                   disabled={index === ordered.length - 1 || move.pending}
                   onClick={() => swap(index, 1)}
                 >
                   ↓
-                </button>
+                </Button>
                 <DeleteStatus
                   workflow={workflow}
                   version={version}
@@ -201,9 +200,9 @@ function Statuses({
       {mayManage ? (
         <Form onSubmit={() => add.submit(undefined)}>
           <Field label="New status" id="status-name">
-            <input
+            <Input
+              full
               id="status-name"
-              className="input"
               value={name}
               maxLength={200}
               onChange={(event) => setName(event.target.value)}
@@ -214,9 +213,9 @@ function Statuses({
             id="status-state"
             hint="What this status means to reports and filters. It cannot be inferred from the name."
           >
-            <select
+            <Select
+              full
               id="status-state"
-              className="select"
               value={state}
               onChange={(event) => setState(event.target.value as TaskState)}
             >
@@ -225,16 +224,12 @@ function Statuses({
                   {option.toLowerCase()}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <WriteError error={add.error} />
-          <button
-            type="submit"
-            className="button button--primary"
-            disabled={add.pending || name.trim() === ''}
-          >
+          <Button variant="primary" type="submit" disabled={add.pending || name.trim() === ''}>
             {add.pending ? 'Adding…' : 'Add status'}
-          </button>
+          </Button>
         </Form>
       ) : null}
     </Section>
@@ -264,8 +259,7 @@ function DeleteStatus({
   const [destination, setDestination] = useState('')
 
   const remove = useWrite({
-    run: () =>
-      deleteStatus(workspaceId, workflow.id, status.id, version ?? 0, destination),
+    run: () => deleteStatus(workspaceId, workflow.id, status.id, version ?? 0, destination),
     announce: () => `Deleted ${status.name}.`,
     invalidates: [keys.workflow(workspaceId, workflow.id), keys.taskLists(workspaceId)],
     onDone: () => setAsking(false),
@@ -275,14 +269,9 @@ function DeleteStatus({
 
   if (!asking) {
     return (
-      <button
-        type="button"
-        className="button button--quiet"
-        onClick={() => setAsking(true)}
-        disabled={elsewhere.length === 0}
-      >
+      <Button variant="subtle" onClick={() => setAsking(true)} disabled={elsewhere.length === 0}>
         Delete
-      </button>
+      </Button>
     )
   }
 
@@ -296,9 +285,9 @@ function DeleteStatus({
         }
         id={`migrate-${status.id}`}
       >
-        <select
+        <Select
+          full
           id={`migrate-${status.id}`}
-          className="select"
           value={destination}
           onChange={(event) => setDestination(event.target.value)}
         >
@@ -308,15 +297,15 @@ function DeleteStatus({
               {candidate.name}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       <WriteError error={remove.error} />
-      <button type="submit" className="button" disabled={remove.pending || destination === ''}>
+      <Button variant="secondary" type="submit" disabled={remove.pending || destination === ''}>
         {remove.pending ? 'Deleting…' : 'Delete and move'}
-      </button>
-      <button type="button" className="button button--quiet" onClick={() => setAsking(false)}>
+      </Button>
+      <Button variant="subtle" onClick={() => setAsking(false)}>
         Cancel
-      </button>
+      </Button>
     </Form>
   )
 }
@@ -383,9 +372,8 @@ function Transitions({
                       {from.id === to.id ? (
                         <span aria-hidden="true">·</span>
                       ) : (
-                        <button
-                          type="button"
-                          className="button button--quiet"
+                        <Button
+                          variant="subtle"
                           aria-pressed={existing !== undefined}
                           aria-label={`${from.name} to ${to.name}${existing === undefined ? ': not allowed' : ': allowed'}`}
                           disabled={!mayManage || add.pending || remove.pending}
@@ -396,7 +384,7 @@ function Transitions({
                           }
                         >
                           {existing === undefined ? '—' : '✓'}
-                        </button>
+                        </Button>
                       )}
                     </td>
                   )

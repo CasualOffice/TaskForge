@@ -8,6 +8,18 @@
  * main-thread time on a board that must hold 60 fps while dragging.
  */
 
+/* The design system's tokens, first, so everything below resolves against the
+ * real vocabulary rather than a local imitation of it.
+ *
+ * AGENTS.md: "The design system is a consumed dependency
+ * (@schnsrw/design-system, ../design-system locally), not a work surface." This
+ * product spent months not consuming it — the `--color-*`, `--space-*`,
+ * `--radius-*` and `--shadow-*` names every rule here already uses were being
+ * supplied by a local `compat.css` that *imitated* those names with different
+ * values. Importing the real file makes the imitation redundant and makes this
+ * product part of the suite instead of a lookalike of it. */
+@import '@schnsrw/design-system/tokens.css';
+@import '@schnsrw/design-system/dark-tokens.css';
 @import './tokens.css';
 /* Product patterns — toast, popover, first-class states, detail surface. Its
  * own file so the surfaces being built in parallel are not one merge
@@ -181,18 +193,6 @@ body {
 .shell__account:hover {
   border-color: var(--tf-border-strong);
 }
-.avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  /* Dark ink on every disc: the hue varies, the lightness does not, so one
-     person's initials are never less legible than another's. */
-  color: #172b4d;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
 /* ── Sidebar ──────────────────────────────────────────────────────────────
  * A 240 px labelled sidebar, on the sunken ground so the content beside it
  * reads as the surface it sits on. It replaced a 60 px icon rail: the rail
@@ -355,75 +355,14 @@ body {
  * to land nearby. This is the rule the toolbar broke: a row of native selects
  * beside buttons gave five different heights and four different corner radii,
  * which is the single loudest thing that made the product look unfinished. */
-.button,
-.input,
-.select,
 .textarea {
   min-height: var(--tf-control-default);
   border-radius: var(--tf-radius-control);
   font: var(--tf-control-text);
 }
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--tf-space-2);
-  padding: 0 var(--tf-space-3);
-  border: 1px solid var(--tf-border-strong);
-  background: var(--tf-surface);
-  color: var(--tf-text);
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background var(--tf-motion-hover) var(--tf-ease),
-    border-color var(--tf-motion-hover) var(--tf-ease);
-}
-.button:hover:not(:disabled) {
-  background: var(--tf-hover);
-}
-.button:active:not(:disabled) {
-  background: var(--tf-pressed);
-}
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.button--primary {
-  background: var(--tf-accent);
-  border-color: var(--tf-accent);
-  color: var(--tf-accent-fg);
-  font-weight: 600;
-}
-.button--primary:hover:not(:disabled) {
-  background: var(--tf-accent-hover);
-  border-color: var(--tf-accent-hover);
-}
-.button--primary:active:not(:disabled) {
-  background: var(--tf-accent-pressed);
-  border-color: var(--tf-accent-pressed);
-}
-.button--quiet {
-  border-color: transparent;
-  background: transparent;
-  color: var(--tf-text-secondary);
-}
-.button--quiet:hover:not(:disabled) {
-  background: var(--tf-hover);
-  color: var(--tf-text);
-}
 /* A destructive control is outlined, not filled: a red block in a row of
    controls draws the eye to the one thing nobody should press by accident. */
-.button--danger {
-  border-color: var(--tf-danger);
-  color: var(--tf-danger);
-}
-.button--danger:hover:not(:disabled) {
-  background: var(--tf-danger-subtle);
-}
-
-.input,
-.select,
 .textarea {
   width: 100%;
   padding: 0 var(--tf-space-2);
@@ -431,12 +370,9 @@ body {
   background: var(--tf-surface);
   color: var(--tf-text);
 }
-.input::placeholder,
 .textarea::placeholder {
   color: var(--tf-text-muted);
 }
-.input:hover,
-.select:hover,
 .textarea:hover {
   border-color: var(--tf-text-muted);
 }
@@ -452,32 +388,20 @@ body {
  * looks like it belongs to the application around it. The appearance is reset
  * and the chevron is drawn here, so a select is a control of this product with
  * the same border, height and radius as the button beside it. */
-.select {
-  appearance: none;
-  padding-right: var(--tf-space-6);
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    right 14px center,
-    right 9px center;
-  background-size:
-    5px 5px,
-    5px 5px;
-  background-repeat: no-repeat;
-  cursor: pointer;
-}
 /* The chevron is drawn from `currentColor`, so it follows the text colour
    rather than needing its own value per theme. */
-.select:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   margin-bottom: var(--space-3);
+  /* A name is not 700 characters long, and a field as wide as the window says
+   * it might be. The cap is the field's promise about the answer's size. */
+  max-width: 44ch;
+}
+/* Except where the answer really is long-form. */
+.field--wide {
+  max-width: 72ch;
 }
 .field__label {
   font-size: var(--text-sm);
@@ -697,6 +621,46 @@ kbd {
   color: var(--tf-text-muted);
 }
 
+/* ── Home: the courts ─────────────────────────────────────────────────────
+ * One block per court, each headed by what it is and *why* these tasks are in
+ * it. A heading alone names the list; the sentence is what makes it actionable
+ * at a glance, which is the whole budget this surface has. */
+.court {
+  margin-bottom: var(--tf-space-6);
+}
+.court__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--tf-space-2);
+}
+.court__title {
+  margin: 0;
+  font: var(--tf-card-title);
+  font-size: 15px;
+}
+.court__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--tf-surface-sunken);
+  font: var(--tf-meta);
+  font-weight: 600;
+  color: var(--tf-text-secondary);
+  text-align: center;
+}
+.court__why {
+  font: var(--tf-meta);
+  color: var(--tf-text-muted);
+}
+/* A grid, not a column: a court with nine cards should not be nine screens. */
+.court__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: var(--tf-space-2);
+}
+
 /* ── Page header ──────────────────────────────────────────────────────────
  * Breadcrumb, title with its primary action, and the project's tabs. Every
  * view began with a row of dropdowns before this: nothing said which project
@@ -814,10 +778,6 @@ kbd {
   margin-top: var(--space-3);
 }
 
-.workspace__select {
-  width: auto;
-  max-width: 220px;
-}
 .workspace__single {
   font-weight: 600;
 }
@@ -1392,18 +1352,8 @@ kbd {
   position: relative;
 }
 
-.filter__trigger {
-  gap: var(--space-1);
-  white-space: nowrap;
-}
 /* A filter that is ON must be legible as ON without opening it — otherwise a
  * user wonders why the board is missing rows and has no way to find out. */
-.filter__trigger--on,
-.filter__select--on {
-  border-color: var(--color-accent);
-  background: var(--color-selected);
-  color: var(--color-accent);
-}
 .filter__count {
   display: inline-flex;
   align-items: center;
@@ -1449,15 +1399,6 @@ kbd {
 .filter__option:hover {
   background: var(--color-hover);
 }
-.filter__clear {
-  width: 100%;
-  justify-content: center;
-  margin-top: var(--space-1);
-}
-.filter__select {
-  width: auto;
-}
-
 /* ── Task presentation ───────────────────────────────────────────────────
  * Priority and type carry meaning through colour, so the word is always
  * present too (WCAG 2.2 §1.4.1 — colour is never the only channel).
@@ -1465,64 +1406,9 @@ kbd {
 
 /* A lozenge: small, quiet, and the same size everywhere. It used to be 700
    weight on a filled ground, which made "TASK" the loudest thing on a card. */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 5px;
-  border-radius: var(--tf-radius-badge);
-  font: var(--tf-meta);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: var(--tf-surface-subtle);
-  color: var(--tf-text-muted);
-  border: 1px solid var(--tf-border);
-  white-space: nowrap;
-}
-.badge--BUG {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-  border-color: transparent;
-}
-.badge--INCIDENT {
-  background: var(--color-danger);
-  color: var(--color-accent-fg);
-  border-color: transparent;
-}
-.badge--FEATURE {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-  border-color: transparent;
-}
-.badge--REQUEST {
-  background: var(--color-info-soft);
-  color: var(--color-text-secondary);
-  border-color: transparent;
-}
-
 /* Five steps that are actually distinguishable. The old scale painted URGENT
  * and HIGH identically and gave NONE a pill of its own, so the loudest thing on
  * a board was the absence of a priority. */
-.pill--priority-URGENT {
-  background: var(--color-danger);
-  color: var(--color-accent-fg);
-  border-color: transparent;
-}
-.pill--priority-HIGH {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-  border-color: transparent;
-}
-.pill--priority-MEDIUM {
-  background: var(--color-warning-soft);
-  color: var(--color-warning);
-  border-color: transparent;
-}
-.pill--priority-LOW {
-  background: var(--color-surface-alt);
-  color: var(--color-text-muted);
-}
 /* `NONE` is never rendered — see tasks/TaskCard.tsx. */
 
 .card__host {
@@ -1622,31 +1508,63 @@ kbd {
   flex-wrap: wrap;
   gap: 8px;
 }
-.toolbar__identity {
-  width: auto;
-  max-width: 260px;
-  font-weight: 600;
+/* ── Link that looks like a button ───────────────────────────────────────
+ *
+ * Three navigations are presented as buttons: "Back to list" on a task, the
+ * open-in-full action in the peek, and the escape from a task that would not
+ * load. They must stay anchors — ⌘-click on them opens a tab, and a <button>
+ * that calls navigate() takes that away — and the design system's Button is
+ * not polymorphic, so this is the one place its look is restated. Kept to the
+ * same tokens so the two cannot drift apart in colour.
+ */
+.linkbutton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 15px;
+  border-radius: var(--radius-md);
+  font: var(--tf-control-text);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-1);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
-.toolbar__search {
-  width: min(240px, 34vw);
+.linkbutton:hover {
+  background: var(--color-hover);
+  border-color: var(--color-text-secondary);
 }
-.toolbar__sort {
-  width: auto;
-  max-width: 180px;
+.linkbutton--primary {
+  background: var(--accent-gradient);
+  color: var(--color-accent-fg);
+  border-color: transparent;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.linkbutton--primary:hover {
+  filter: brightness(1.06) saturate(1.05);
+  background: var(--accent-gradient);
+}
+.linkbutton--quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.linkbutton--quiet:hover {
+  background: var(--color-hover);
+  border-color: var(--color-text-secondary);
 }
 
-/* Default control tier: 32 px, 6 px radius (DESIGN-FOUNDATION §2, §6). */
-.toolbar .button,
-.toolbar .select,
-.toolbar .input,
-.filter__trigger {
-  height: 32px;
-  border-radius: 6px;
-}
-/* Comfortable tier for the one prominent action (§2). */
-.toolbar .button--primary {
-  height: 36px;
-}
+/* The control tier is the design system's now (34 px at `md`), set on the
+ * components themselves. Stating it again here would be a second opinion. */
 
 .filter__popover {
   border-radius: 10px;
@@ -1658,7 +1576,6 @@ kbd {
   min-height: 32px;
 }
 /* Badge radius is 5 px (§6). */
-.badge,
 .pill {
   border-radius: 5px;
 }
@@ -1687,10 +1604,6 @@ kbd {
 .filter__count {
   border-radius: 999px;
   background: var(--tf-focus, var(--color-accent));
-}
-.filter__trigger--on,
-.filter__select--on {
-  border-color: var(--tf-focus, var(--color-accent));
 }
 :focus-visible {
   outline-color: var(--tf-focus, var(--color-focus-ring));

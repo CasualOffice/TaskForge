@@ -21,6 +21,8 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { Link, Outlet } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { Avatar, Button, Icon, Kbd } from '@schnsrw/design-system'
+
 import { keys } from '../api/keys'
 import { readMe } from '../api/me'
 import { listProjects } from '../api/projects'
@@ -59,7 +61,7 @@ export function AppFrame(): ReactElement {
         {/* The mark lives here, with the wordmark: a product's identity belongs
             on the bar that spans the window. It is the same file the favicon
             uses, so the two cannot drift into two different marks. */}
-        <Link to="/my-work" className="shell__brand" aria-label="TaskForge — My Work">
+        <Link to="/home" className="shell__brand" aria-label="TaskForge — Home">
           <img src="/brand/taskforge-mark.svg" alt="" width={22} height={22} />
           <span className="shell__wordmark">TaskForge</span>
         </Link>
@@ -70,7 +72,6 @@ export function AppFrame(): ReactElement {
       </header>
 
       <Sidebar />
-
 
       <main className="shell__main" id="main">
         {workspace === undefined ? (
@@ -136,11 +137,12 @@ function Sidebar(): ReactElement {
       </div>
 
       <ul className="side__group">
-        <SideLink to="/my-work" label="My work" icon={<IconMyWork />} />
-        <SideLink to="/" label="All tasks" icon={<IconTasks />} exact />
-        <SideLink to="/board" label="Board" icon={<IconBoard />} />
-        <SideLink to="/environments" label="Environments" icon={<IconEnvironments />} />
-        <SideLink to="/reports" label="Reports" icon={<IconReports />} />
+        <SideLink to="/home" label="Home" icon="home" />
+        <SideLink to="/my-work" label="My work" icon="person" />
+        <SideLink to="/" label="All tasks" icon="checklist" exact />
+        <SideLink to="/board" label="Board" icon="view_kanban" />
+        <SideLink to="/environments" label="Environments" icon="lan" />
+        <SideLink to="/reports" label="Reports" icon="monitoring" />
       </ul>
 
       {all.length === 0 ? null : (
@@ -188,7 +190,7 @@ function Sidebar(): ReactElement {
       )}
 
       <ul className="side__group side__group--foot">
-        <SideLink to="/settings" label="Settings" icon={<IconSettings />} />
+        <SideLink to="/settings" label="Settings" icon="settings" />
       </ul>
     </nav>
   )
@@ -205,7 +207,8 @@ function SideLink({
 }: {
   to: string
   label: string
-  icon: ReactElement
+  /** A Material Symbols ligature name — the suite's icon convention. */
+  icon: string
   exact?: boolean
 }): ReactElement {
   return (
@@ -217,7 +220,7 @@ function SideLink({
         activeProps={{ 'aria-current': 'page' }}
       >
         <span className="side__icon" aria-hidden="true">
-          {icon}
+          <Icon name={icon} size="md" />
         </span>
         <span className="side__label">{label}</span>
       </Link>
@@ -230,16 +233,18 @@ function SearchButton(): ReactElement {
     <button
       type="button"
       className="shell__search"
-      onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+      onClick={() =>
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+      }
     >
-      <span className="shell__search-icon" aria-hidden="true">
-        <IconSearch />
-      </span>
-      {/* Shaped like the field it opens. A button that looks like a button
-          says "something will happen"; one shaped like a search box says what.
-          It is still a button, so it is one tab stop and one Enter. */}
+      {/* Material Symbols, from the design system, rather than a hand-drawn
+          path: the suite has one icon convention and a product that draws its
+          own magnifier has a magnifier that does not match anyone else's. */}
+      <Icon name="search" size="sm" />
+      {/* Shaped like the field it opens. A button that looks like a button says
+          "something will happen"; one shaped like a search box says what. */}
       <span className="shell__search-text">Search tasks, projects and people</span>
-      <kbd aria-hidden="true">⌘K</kbd>
+      <Kbd keys="⌘K" size="sm" />
     </button>
   )
 }
@@ -251,19 +256,21 @@ function ThemeToggle(): ReactElement {
     apply(choice)
   }, [choice])
 
-  const label = choice === 'system' ? 'System theme' : choice === 'light' ? 'Light theme' : 'Dark theme'
+  const label =
+    choice === 'system' ? 'System theme' : choice === 'light' ? 'Light theme' : 'Dark theme'
 
   return (
-    <button
-      type="button"
-      className="button button--quiet"
+    <Button
+      variant="subtle"
+      size="sm"
+      icon={choice === 'dark' ? 'dark_mode' : choice === 'light' ? 'light_mode' : 'contrast'}
       onClick={() => setChoice(nextChoice(choice))}
-      // The button's own text is an icon-free word, but the *state* is what a
-      // screen reader needs and "Theme" alone would not carry it.
+      // The label carries the *state*, which is what a screen reader needs;
+      // "Theme" alone would not.
       aria-label={`${label}. Activate to change.`}
     >
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -330,127 +337,5 @@ function AccountMenu({ onSignedOut }: { onSignedOut: () => void }): ReactElement
         </div>
       )}
     </Popover>
-  )
-}
-
-/**
- * Initials on a tinted disc.
- *
- * Derived from the name rather than fetched: there is no avatar image in the
- * product yet, and a grey circle with nothing in it identifies nobody. The hue
- * is a hash of the name, so the same person is the same colour on every
- * surface — which is the only property that makes an avatar useful at a glance.
- */
-export function Avatar({ name, size = 24 }: { name: string; size?: number }): ReactElement {
-  const initials = name
-    .split(/\s+/)
-    .filter((part) => part !== '')
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
-  let hash = 0
-  for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) % 360
-  return (
-    <span
-      className="avatar"
-      style={{
-        width: size,
-        height: size,
-        // `oklch` keeps every hue at the same lightness and chroma, so no
-        // person's disc is darker than another's and the ink stays legible.
-        background: `oklch(0.72 0.11 ${hash})`,
-        fontSize: Math.round(size * 0.42),
-      }}
-      aria-hidden="true"
-    >
-      {initials === '' ? '?' : initials}
-    </span>
-  )
-}
-
-/* The navigation glyphs.
- *
- * Inline, and drawn here rather than pulled from an icon package: ADR-024
- * budgets the initial shell, and six paths are cheaper than any library's entry
- * point. `stroke="currentColor"` so a destination's colour is decided by the
- * link's state in CSS, not by six copies of a hex value.
- *
- * 18 px inside a 32 px row: the foundation §3 keeps the glyph and its
- * interaction target on separate scales.
- */
-const GLYPH = {
-  width: 18,
-  height: 18,
-  viewBox: '0 0 20 20',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.6,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-} as const
-
-function IconMyWork(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <circle cx="10" cy="6" r="3" />
-      <path d="M4 16.5a6 6 0 0 1 12 0" />
-    </svg>
-  )
-}
-
-function IconTasks(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <path d="M3 5.5h2l1.5 1.5L9 4.5" />
-      <path d="M3 13.5h2L6.5 15 9 12.5" />
-      <path d="M11.5 6h5.5M11.5 14h5.5" />
-    </svg>
-  )
-}
-
-function IconBoard(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <rect x="3" y="3.5" width="4.5" height="13" rx="1" />
-      <rect x="9.5" y="3.5" width="4.5" height="8.5" rx="1" />
-      <path d="M16 3.5h1" />
-    </svg>
-  )
-}
-
-function IconSearch(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <circle cx="9" cy="9" r="5" />
-      <path d="M12.8 12.8 17 17" />
-    </svg>
-  )
-}
-
-function IconEnvironments(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <rect x="3" y="3.5" width="14" height="4" rx="1" />
-      <rect x="3" y="12.5" width="14" height="4" rx="1" />
-      <path d="M10 7.5v5" />
-    </svg>
-  )
-}
-
-function IconReports(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <path d="M3 16.5h14" />
-      <path d="M6 16.5V10M10 16.5V5M14 16.5v-4" />
-    </svg>
-  )
-}
-
-function IconSettings(): ReactElement {
-  return (
-    <svg {...GLYPH}>
-      <circle cx="10" cy="10" r="2.6" />
-      <path d="M10 3v1.8M10 15.2V17M17 10h-1.8M4.8 10H3M14.9 5.1l-1.3 1.3M6.4 13.6l-1.3 1.3M14.9 14.9l-1.3-1.3M6.4 6.4 5.1 5.1" />
-    </svg>
   )
 }

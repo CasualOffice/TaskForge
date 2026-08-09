@@ -30,6 +30,7 @@
  * yet. It is offered where it is used: inside the menu, under the moves.
  */
 import { useState, type ReactElement } from 'react'
+import { Input } from '@schnsrw/design-system'
 
 import { PERMISSIONS } from '../api/permissions'
 import type { Task } from '../api/tasks'
@@ -91,7 +92,11 @@ export function StatusControl({
     <>
       <span className={`dot dot--${task.state}`} aria-hidden="true" />
       <span className="statusctl__name">{label}</span>
-      {why === undefined ? <span className="statusctl__caret" aria-hidden="true">▾</span> : null}
+      {why === undefined ? (
+        <span className="statusctl__caret" aria-hidden="true">
+          ▾
+        </span>
+      ) : null}
     </>
   )
 
@@ -107,18 +112,12 @@ export function StatusControl({
   }
 
   return (
-    <Popover
-      label={chip}
-      ariaLabel={`Status: ${label}. Change status.`}
-      triggerClass="statusctl"
-    >
+    <Popover label={chip} ariaLabel={`Status: ${label}. Change status.`} triggerClass="statusctl">
       {(close) => (
         <div className="statusctl__menu">
           <p className="pop__section">Move to</p>
           {targets.length === 0 ? (
-            <p className="field__hint pop__section">
-              This workflow has no move out of {label}.
-            </p>
+            <p className="field__hint pop__section">This workflow has no move out of {label}.</p>
           ) : (
             <ul className="pop__list">
               {targets.map(({ status: target, permitted, needed }) => (
@@ -164,20 +163,16 @@ export function StatusControl({
               <label className="field__label" htmlFor="transition-note">
                 Note
               </label>
-              <input
+              <Input
+                full
                 id="transition-note"
-                className="input"
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
               />
               <span className="field__hint">Posted as a comment with the move.</span>
             </div>
           ) : (
-            <button
-              type="button"
-              className="pop__item"
-              onClick={() => setNoteOpen(true)}
-            >
+            <button type="button" className="pop__item" onClick={() => setNoteOpen(true)}>
               Add a note with the move…
             </button>
           )}

@@ -14,6 +14,9 @@ importers:
       '@dnd-kit/sortable':
         specifier: 10.0.0
         version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
+      '@schnsrw/design-system':
+        specifier: github:CasualOffice/design-book#b75531b8fb5e683f4606728167fb1e878b96cfe4
+        version: https://codeload.github.com/CasualOffice/design-book/tar.gz/b75531b8fb5e683f4606728167fb1e878b96cfe4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tanstack/react-query':
         specifier: 5.101.4
         version: 5.101.4(react@19.2.8)
@@ -704,6 +707,13 @@ packages:
     resolution: {integrity: sha512-zD6NdeWEByGE9QF9vCrlJ5YQB4oq9q91kPZS37Jwj5hOkvR1lTBSpsKhKDw4IJtbQ35LsTS1HD9DZYGKIshU1Q==}
     cpu: [x64]
     os: [win32]
+
+  '@schnsrw/design-system@https://codeload.github.com/CasualOffice/design-book/tar.gz/b75531b8fb5e683f4606728167fb1e878b96cfe4':
+    resolution: {gitHosted: true, integrity: sha512-5dSSmoKKW/7VstNB4g5NvCapDJ6TLwbsDmarLixjh7RiA5FhJIepwlkvtKH9y2KQUl9Q9ZtJjd/NI6deZEcJOw==, tarball: https://codeload.github.com/CasualOffice/design-book/tar.gz/b75531b8fb5e683f4606728167fb1e878b96cfe4}
+    version: 0.1.0
+    peerDependencies:
+      react: '>=18.0.0 <20.0.0'
+      react-dom: '>=18.0.0 <20.0.0'
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -2733,6 +2743,11 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
+
+  '@schnsrw/design-system@https://codeload.github.com/CasualOffice/design-book/tar.gz/b75531b8fb5e683f4606728167fb1e878b96cfe4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   '@standard-schema/spec@1.1.0': {}
 

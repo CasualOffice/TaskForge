@@ -83,7 +83,7 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
         <EmptyState
           title="That task could not be opened."
           actions={
-            <Link to="/" className="button">
+            <Link to="/" className="linkbutton">
               Back to tasks
             </Link>
           }
@@ -114,7 +114,7 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
         <Link
           to="/"
           search={{ project: current.project_id }}
-          className="button button--quiet"
+          className="linkbutton linkbutton--quiet"
         >
           ← {project?.key ?? 'Tasks'}
         </Link>
@@ -136,26 +136,23 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
                 is usually the moment they are about to pass it on. */}
             <Custody task={current} authority={authority} />
             <Subtasks taskId={current.id} />
-            <RelationsPanel
-              taskId={current.id}
-              taskKey={current.key}
-              authority={authority}
-            />
+            <RelationsPanel taskId={current.id} taskKey={current.key} authority={authority} />
             <Activity taskId={current.id} authority={authority} />
 
             {/* Whatever the registry declares and nothing serves. One line, not
                 one box each. */}
             {missing === undefined ? null : <GapNotice what={missing} />}
-          </div>
 
-          <section className="detail__comments" aria-labelledby="comments-heading">
-            <h2 id="comments-heading" className="narr__heading">
-              Comments
-            </h2>
-            {/* The one scrolling region on the surface. A conversation is a
-                genuine tail; everything above it is not. */}
-            <CommentThread taskId={current.id} authority={authority} />
-          </section>
+            {/* Inside the scroll region, not below it. A conversation is the
+                end of the page, and a second scroller pinned under the first
+                only ever cut the section above it in half. */}
+            <section className="detail__comments" aria-labelledby="comments-heading">
+              <h2 id="comments-heading" className="narr__heading">
+                Comments
+              </h2>
+              <CommentThread taskId={current.id} authority={authority} />
+            </section>
+          </div>
         </div>
 
         <aside className="detail__side" aria-label="Task metadata">

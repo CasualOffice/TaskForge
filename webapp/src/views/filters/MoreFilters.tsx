@@ -26,7 +26,9 @@
  * rather than in a backlog, because a field silently absent from a filter panel
  * reads as a field the product does not have.
  */
+import { narrowing } from '../../shell/controls'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { Button, Checkbox, Input, Select } from '@schnsrw/design-system'
 
 import { TASK_STATES } from '../../api/tasks'
 import type { AppSearch } from '../../router'
@@ -90,16 +92,17 @@ export function MoreFilters({
 
   return (
     <div className="filter" ref={host}>
-      <button
-        type="button"
-        className={`button filter__trigger${count > 0 ? ' filter__trigger--on' : ''}`}
+      <Button
+        variant="secondary"
+        iconRight="expand_more"
+        style={narrowing(count > 0)}
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen(!open)}
       >
         More
         {count > 0 ? <span className="filter__count">{count}</span> : null}
-      </button>
+      </Button>
 
       {open ? (
         <div className="filter__popover more__popover">
@@ -108,21 +111,22 @@ export function MoreFilters({
             <ul className="filter__options">
               {TASK_STATES.map((state) => (
                 <li key={state}>
-                  <label className="filter__option">
-                    <input
-                      type="checkbox"
+                  <div className="filter__option">
+                    <Checkbox
+                      style={{ flex: 1 }}
+                      label={stateLabel(state)}
                       checked={chosenStates.includes(state)}
                       onChange={() => toggleState(state)}
                     />
-                    <span>{stateLabel(state)}</span>
-                  </label>
+                  </div>
                 </li>
               ))}
             </ul>
             {chosenStates.length === 0 ? null : (
-              <label className="filter__option">
-                <input
-                  type="checkbox"
+              <div className="filter__option">
+                <Checkbox
+                  style={{ flex: 1 }}
+                  label="Exclude these instead"
                   checked={negated}
                   onChange={() =>
                     // `field=!a,b` is the grammar's `not_in`. Exposed as a switch
@@ -131,14 +135,13 @@ export function MoreFilters({
                     onChange({ state: `${negated ? '' : '!'}${chosenStates.join(',')}` })
                   }
                 />
-                <span>Exclude these instead</span>
-              </label>
+              </div>
             )}
           </fieldset>
 
           <Labelled label="Title contains">
-            <input
-              className="input"
+            <Input
+              full
               type="search"
               value={search.title ?? ''}
               placeholder="substring…"
@@ -157,8 +160,8 @@ export function MoreFilters({
           </Labelled>
 
           <Labelled label="Nesting">
-            <select
-              className="select"
+            <Select
+              full
               value={search.parent ?? '__any'}
               onChange={(event) => {
                 const chosen = event.target.value
@@ -170,22 +173,23 @@ export function MoreFilters({
             >
               <option value="__any">Everything</option>
               <option value="">Top-level tasks only</option>
-            </select>
+            </Select>
           </Labelled>
 
-          <label className="filter__option">
-            <input
-              type="checkbox"
+          <div className="filter__option">
+            <Checkbox
+              style={{ flex: 1 }}
+              label="Include archived"
               checked={search.archived === 'true'}
-              onChange={(event) => onChange({ archived: event.target.checked ? 'true' : undefined })}
+              onChange={(event) =>
+                onChange({ archived: event.target.checked ? 'true' : undefined })
+              }
             />
-            <span>Include archived</span>
-          </label>
+          </div>
 
           <p className="views__note">
-            <code>tag</code>, <code>milestone</code> and <code>environment</code> are filterable
-            and have no endpoint that lists their values. <code>is_blocked</code> answers
-            TF-SYS-0001.
+            <code>tag</code>, <code>milestone</code> and <code>environment</code> are filterable and
+            have no endpoint that lists their values. <code>is_blocked</code> answers TF-SYS-0001.
           </p>
         </div>
       ) : null}
@@ -210,8 +214,8 @@ function Preset({
   onChange: (next: string | undefined) => void
 }): ReactElement {
   return (
-    <select
-      className="select"
+    <Select
+      full
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value === '' ? undefined : event.target.value)}
     >
@@ -220,6 +224,6 @@ function Preset({
           {preset.label}
         </option>
       ))}
-    </select>
+    </Select>
   )
 }

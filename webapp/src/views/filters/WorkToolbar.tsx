@@ -40,6 +40,7 @@
  */
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Input, Select } from '@schnsrw/design-system'
 
 import { keys } from '../../api/keys'
 import { listProjects } from '../../api/projects'
@@ -54,6 +55,7 @@ import type { BuiltinView } from '../../tasks/builtinViews'
 import { useProjectWorkflow } from '../../tasks/useWorkflow'
 import { ActiveFilters } from './ActiveFilters'
 import { describeFilters } from './describe'
+import { CONTROL, narrowing } from '../../shell/controls'
 import { FilterMenu, FilterSelect, type FilterOption } from './FilterMenu'
 import { MoreFilters } from './MoreFilters'
 import { ViewsMenu } from './ViewsMenu'
@@ -164,9 +166,11 @@ export function WorkToolbar({
       <label className="visually-hidden" htmlFor="scope-project">
         Project
       </label>
-      <select
+      <Select
+        width="auto"
+        containerStyle={{ maxWidth: 260 }}
+        style={{ height: CONTROL, fontWeight: 600 }}
         id="scope-project"
-        className="select toolbar__identity"
         value={search.project ?? ''}
         onChange={(event) =>
           // Statuses belong to a project's workflow, so a status id from the old
@@ -184,16 +188,16 @@ export function WorkToolbar({
             {project.key} — {project.name}
           </option>
         ))}
-      </select>
+      </Select>
 
       {/* ── Filter ─────────────────────────────────────────────────────── */}
       <div className="toolbar__group">
         <label className="visually-hidden" htmlFor="scope-search">
           Search tasks
         </label>
-        <input
+        <Input
+          style={{ width: 'min(240px, 34vw)' }}
           id="scope-search"
-          className="input toolbar__search"
           type="search"
           placeholder="Search…"
           value={term}
@@ -226,9 +230,10 @@ export function WorkToolbar({
         <label className="visually-hidden" htmlFor="filter-assignee">
           Assignee
         </label>
-        <select
+        <Select
+          full
           id="filter-assignee"
-          className={`select filter__select${search.assignee === undefined ? '' : ' filter__select--on'}`}
+          style={{ height: CONTROL, ...narrowing(search.assignee !== undefined) }}
           value={assignee}
           onChange={(event) => {
             const chosen = event.target.value
@@ -248,7 +253,7 @@ export function WorkToolbar({
               {member.display_name}
             </option>
           ))}
-        </select>
+        </Select>
 
         <FilterSelect
           label="Due"
@@ -266,9 +271,11 @@ export function WorkToolbar({
           <label className="visually-hidden" htmlFor="toolbar-group">
             Group by
           </label>
-          <select
+          <Select
+            width="auto"
+            containerStyle={{ maxWidth: 180 }}
+            style={{ height: CONTROL, ...narrowing(group !== undefined) }}
             id="toolbar-group"
-            className={`select toolbar__sort${group === undefined ? '' : ' filter__select--on'}`}
             value={group ?? ''}
             onChange={(event) =>
               onGroup(event.target.value === '' ? undefined : (event.target.value as GroupKey))
@@ -287,7 +294,7 @@ export function WorkToolbar({
                 </option>
               )
             })}
-          </select>
+          </Select>
         </>
       )}
 
@@ -297,9 +304,11 @@ export function WorkToolbar({
           <label className="visually-hidden" htmlFor="toolbar-sort">
             Sort by
           </label>
-          <select
+          <Select
+            width="auto"
+            containerStyle={{ maxWidth: 200 }}
+            style={{ height: CONTROL }}
             id="toolbar-sort"
-            className="select toolbar__sort"
             value={`${sort.descending ? '-' : ''}${sort.key}`}
             onChange={(event) => {
               const raw = event.target.value
@@ -315,7 +324,7 @@ export function WorkToolbar({
                 {SORT_LABELS[key]} ↑
               </option>,
             ])}
-          </select>
+          </Select>
         </>
       )}
 

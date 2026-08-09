@@ -28,18 +28,13 @@
  * `GET /tasks/{id}/assignees`, and a write updates that cache directly rather
  * than re-reading what it was just told.
  */
+import { Button, Input } from '@schnsrw/design-system'
 import { type ReactElement } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
-import {
-  PRIORITIES,
-  TASK_TYPES,
-  type Priority,
-  type Task,
-  type TaskType,
-} from '../api/tasks'
+import { PRIORITIES, TASK_TYPES, type Priority, type Task, type TaskType } from '../api/tasks'
 import { assignTask, readAssignees, unassignTask } from '../api/tasks'
 import { directory, listMembers } from '../api/workspaces'
 import { useAnnounce } from '../shell/announce'
@@ -130,7 +125,9 @@ export function TaskMeta({
           value={task.due_at}
           late={isOverdue(task)}
           disabled={!mayEdit}
-          onChange={(next) => save({ due_at: next }, next === null ? 'Due date cleared' : 'Due date saved')}
+          onChange={(next) =>
+            save({ due_at: next }, next === null ? 'Due date cleared' : 'Due date saved')
+          }
         />
       </Row>
 
@@ -140,7 +137,9 @@ export function TaskMeta({
           value={task.start_at}
           late={false}
           disabled={!mayEdit}
-          onChange={(next) => save({ start_at: next }, next === null ? 'Start date cleared' : 'Start date saved')}
+          onChange={(next) =>
+            save({ start_at: next }, next === null ? 'Start date cleared' : 'Start date saved')
+          }
         />
       </Row>
 
@@ -190,11 +189,7 @@ function Choice({
 }): ReactElement {
   if (disabled) return <span className={className}>{render(value)}</span>
   return (
-    <Popover
-      label={render(value)}
-      triggerClass={`meta2__button ${className}`}
-      align="end"
-    >
+    <Popover label={render(value)} triggerClass={`meta2__button ${className}`} align="end">
       {(close) => (
         <ChoiceList
           options={options.map((option) => ({ value: option, label: render(option) }))}
@@ -242,9 +237,9 @@ function DateValue({
           <label className="field__label" htmlFor={id}>
             Date
           </label>
-          <input
+          <Input
+            full
             id={id}
-            className="input"
             type="date"
             value={toDateInput(value)}
             onChange={(event) => {
@@ -253,16 +248,15 @@ function DateValue({
             }}
           />
           {value === null ? null : (
-            <button
-              type="button"
-              className="button button--quiet"
+            <Button
+              variant="subtle"
               onClick={() => {
                 onChange(null)
                 close()
               }}
             >
               Clear
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -330,7 +324,13 @@ function AssigneeField({
 
   const people = members.data?.data ?? []
   const label =
-    known === undefined ? (assigned.isPending ? '…' : '—') : known.length === 0 ? 'Nobody' : known.map(nameOf).join(', ')
+    known === undefined
+      ? assigned.isPending
+        ? '…'
+        : '—'
+      : known.length === 0
+        ? 'Nobody'
+        : known.map(nameOf).join(', ')
 
   const value = (
     <span className={known === undefined || known.length === 0 ? 'meta2__unset' : ''}>{label}</span>

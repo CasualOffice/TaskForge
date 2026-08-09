@@ -27,6 +27,7 @@
  * that it is empty — and the set of groups is closed and known, so their absence
  * carries no information the presence does not carry better.
  */
+import { Button } from '@schnsrw/design-system'
 import { useMemo, useState, type ReactElement } from 'react'
 
 import type { Sort, TaskQuery } from '../../api/tasks'
@@ -116,14 +117,14 @@ export function TaskGroup({
           {feed.hasMore ? (
             <tr>
               <td colSpan={6}>
-                <button
-                  type="button"
-                  className="button button--quiet group__more"
+                <Button
+                  variant="subtle"
+                  className="group__more"
                   onClick={feed.fetchMore}
                   disabled={feed.isFetchingMore}
                 >
                   {feed.isFetchingMore ? 'Loading…' : `Load more ${group.title.toLowerCase()}`}
-                </button>
+                </Button>
               </td>
             </tr>
           ) : null}

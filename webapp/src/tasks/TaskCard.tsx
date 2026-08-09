@@ -22,6 +22,7 @@
  * position where a signal would be, so the eye stops checking that position and
  * misses the URGENT. Absence *is* the display of `NONE`.
  */
+import { Badge, type BadgeTone } from '@schnsrw/design-system'
 import type { ReactElement } from 'react'
 
 import type { Task } from '../api/tasks'
@@ -110,13 +111,37 @@ export function TaskMeta({ task }: { task: Task }): ReactElement | null {
  * red-green deficiency reads "Urgent"; everyone else sees it before they read
  * anything.
  */
+const PRIORITY_TONE: Record<string, { tone: BadgeTone; solid?: boolean }> = {
+  URGENT: { tone: 'danger', solid: true },
+  HIGH: { tone: 'danger' },
+  MEDIUM: { tone: 'warning' },
+  LOW: { tone: 'info' },
+}
+
 export function PriorityBadge({ priority }: { priority: string }): ReactElement {
-  return <span className={`pill pill--priority-${priority}`}>{priorityLabel(priority)}</span>
+  const { tone, solid } = PRIORITY_TONE[priority] ?? { tone: 'neutral' as BadgeTone }
+  return (
+    <Badge tone={tone} solid={solid} dot={priority === 'URGENT'}>
+      {priorityLabel(priority)}
+    </Badge>
+  )
 }
 
 /** The kind of work. A bug and a feature are scanned differently, so they look different. */
+const TYPE_TONE: Record<string, { tone: BadgeTone; solid?: boolean }> = {
+  BUG: { tone: 'danger' },
+  INCIDENT: { tone: 'danger', solid: true },
+  FEATURE: { tone: 'accent' },
+  REQUEST: { tone: 'info' },
+}
+
 export function TypeBadge({ type }: { type: string }): ReactElement {
-  return <span className={`badge badge--${type}`}>{typeLabel(type)}</span>
+  const { tone, solid } = TYPE_TONE[type] ?? { tone: 'neutral' as BadgeTone }
+  return (
+    <Badge tone={tone} solid={solid}>
+      {typeLabel(type)}
+    </Badge>
+  )
 }
 
 /**

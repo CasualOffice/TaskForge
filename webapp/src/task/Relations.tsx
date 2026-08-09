@@ -19,6 +19,8 @@
  * its title. Dropping the row would show a task as blocked by nothing, which
  * reads as "you may move this" — the opposite of true.
  */
+import { FLUSH } from '../shell/controls'
+import { Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -56,8 +58,7 @@ export function RelationsPanel({
   })
 
   const set = relations.data
-  const nothing =
-    set !== undefined && set.blocked_by.length === 0 && set.blocks.length === 0
+  const nothing = set !== undefined && set.blocked_by.length === 0 && set.blocks.length === 0
 
   return (
     <section className="rel" aria-labelledby="relations-heading">
@@ -112,7 +113,12 @@ function RelationList({
       ) : (
         <ul className="rel__list">
           {rows.map((row) => (
-            <RelationRow key={row.id ?? `restricted-${title}`} row={row} taskId={taskId} may={may} />
+            <RelationRow
+              key={row.id ?? `restricted-${title}`}
+              row={row}
+              taskId={taskId}
+              may={may}
+            />
           ))}
         </ul>
       )}
@@ -166,15 +172,14 @@ function RelationRow({
         <span className="key">{row.key}</span> {row.title}
       </Link>
       {may ? (
-        <button
-          type="button"
-          className="button button--quiet"
+        <Button
+          variant="subtle"
           aria-label={`Remove the dependency on ${row.key}`}
           disabled={remove.isPending}
           onClick={() => remove.mutate(row.id as string)}
         >
           Remove
-        </button>
+        </Button>
       ) : null}
     </li>
   )
@@ -223,9 +228,9 @@ function AddRelation({ taskId, taskKey }: { taskId: string; taskKey: string }): 
 
   if (!open) {
     return (
-      <button type="button" className="button button--quiet" onClick={() => setOpen(true)}>
+      <Button variant="subtle" style={FLUSH} onClick={() => setOpen(true)}>
         Add a blocker
-      </button>
+      </Button>
     )
   }
 
@@ -241,22 +246,22 @@ function AddRelation({ taskId, taskKey }: { taskId: string; taskKey: string }): 
       <label className="field__label" htmlFor="rel-direction">
         Direction
       </label>
-      <select
+      <Select
+        full
         id="rel-direction"
-        className="select"
         value={direction}
         onChange={(event) => setDirection(event.target.value as 'blocked_by' | 'blocks')}
       >
         <option value="blocked_by">Something blocks {taskKey}</option>
         <option value="blocks">{taskKey} blocks something</option>
-      </select>
+      </Select>
 
       <label className="field__label" htmlFor="rel-other">
         The other task, by key
       </label>
-      <input
+      <Input
+        full
         id="rel-other"
-        className="input"
         value={other}
         placeholder={`${taskKey.split('-')[0] ?? 'WR'}-125`}
         onChange={(event) => setOther(event.target.value)}
@@ -264,12 +269,12 @@ function AddRelation({ taskId, taskKey }: { taskId: string; taskKey: string }): 
 
       {add.error ? <ErrorNotice error={add.error} /> : null}
 
-      <button type="submit" className="button" disabled={add.isPending || other.trim() === ''}>
+      <Button variant="secondary" type="submit" disabled={add.isPending || other.trim() === ''}>
         {add.isPending ? 'Adding…' : 'Add'}
-      </button>
-      <button type="button" className="button button--quiet" onClick={() => setOpen(false)}>
+      </Button>
+      <Button variant="subtle" onClick={() => setOpen(false)}>
         Cancel
-      </button>
+      </Button>
     </form>
   )
 }

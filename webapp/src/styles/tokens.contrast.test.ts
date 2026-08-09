@@ -31,7 +31,36 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const CSS = readFileSync(resolve(HERE, 'tokens.css'), 'utf8')
+
+/**
+ * The **design system's** colours, not this product's.
+ *
+ * `tokens.css` used to declare every hex here; it now aliases
+ * `@schnsrw/design-system`, so the values live one package away and a test
+ * reading local `var(...)` references would assert nothing while appearing to
+ * pass. The pairs below are still TaskForge's — they name the combinations this
+ * product actually renders — but the numbers come from the source.
+ *
+ * That makes this a check on a *dependency*, deliberately: adopting a shared
+ * palette does not transfer responsibility for whether this product's screens
+ * are legible, and a design system bump that dimmed muted text should fail here
+ * rather than ship.
+ */
+const DESIGN_SYSTEM = resolve(
+  HERE,
+  '../../node_modules/@schnsrw/design-system/dist/tokens/colors.css',
+)
+/**
+ * Both sources, in cascade order.
+ *
+ * Most tokens are the suite's. A few are genuinely this product's — the forge
+ * orange mark, and any value TaskForge deviates on for a stated reason — and
+ * those live in `tokens.css`. Reading the local file *second* mirrors the
+ * import order in `app.css`, so what the test measures is what the browser
+ * resolves.
+ */
+const SUITE_CSS = readFileSync(DESIGN_SYSTEM, 'utf8')
+const LOCAL_CSS = readFileSync(resolve(HERE, 'tokens.css'), 'utf8')
 
 /**
  * The custom properties of one theme block.
@@ -41,12 +70,24 @@ const CSS = readFileSync(resolve(HERE, 'tokens.css'), 'utf8')
  * tokens and inherits the rest, and a pair that reads an inherited token must
  * be checked against the value the browser would actually use.
  */
-function block(selector: string): Map<string, string> {
-  const start = CSS.indexOf(selector)
-  if (start === -1) throw new Error(`no ${selector} block in tokens.css`)
-  const open = CSS.indexOf('{', start)
-  const end = CSS.indexOf('\n}', open)
-  const body = CSS.slice(open + 1, end)
+function block(source: string, selector: string, required = true): Map<string, string> {
+  // Anchored to the start of a line, because both files *mention* their own
+  // selectors in prose above them — the design system's colours file opens with
+  // "dark theme under [data-theme='dark']". A plain `indexOf` matched that
+  // comment, parsed from the wrong brace, and produced a map missing every dark
+  // value while appearing to succeed: the dark run then measured the mark
+  // against the *light* canvas and failed for a reason that was not real.
+  const anchored = new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'm')
+  const start = source.search(anchored)
+  if (start === -1) {
+    // The local file has no dark block worth parsing when it overrides nothing
+    // there, and that is not a failure — the suite's dark values stand.
+    if (!required) return new Map()
+    throw new Error(`no ${selector} block`)
+  }
+  const open = source.indexOf('{', start)
+  const end = source.indexOf('\n}', open)
+  const body = source.slice(open + 1, end)
   const out = new Map<string, string>()
   for (const match of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
     const name = match[1]
@@ -57,8 +98,68 @@ function block(selector: string): Map<string, string> {
   return out
 }
 
-const LIGHT = block(':root {')
-const DARK = new Map([...LIGHT, ...block(":root[data-theme='dark']")])
+/**
+ * The suite first, this product's overrides second — the order `app.css`
+ * imports them in, so what is measured is what the browser resolves. Parsed per
+ * file rather than from a concatenation: `indexOf(':root {')` finds only the
+ * first one, so a merged string would silently discard every local override.
+ */
+const LIGHT = new Map([...block(SUITE_CSS, ':root {'), ...block(LOCAL_CSS, ':root {')])
+// The design system scopes dark to `[data-theme='dark']` without a `:root`
+// prefix, so it applies to any element carrying the attribute. Matched exactly
+// rather than loosely: a substring search for `data-theme` would also hit the
+// file's own comment about it.
+/**
+ * Follow a `var(--x)` alias to the value it names.
+ *
+ * TaskForge's tokens are now mostly aliases onto the suite's, so a raw lookup
+ * returns the literal string `var(--color-text)` and every ratio would be
+ * measured against nonsense. Following the reference is what the browser does,
+ * and it is what makes an alias testable at all.
+ *
+ * Bounded, because a token that referred to itself would otherwise hang the
+ * suite rather than fail it.
+ */
+/**
+ * Composite a translucent token over the ground it is drawn on.
+ *
+ * The suite's dark tints are `rgba(96, 165, 250, 0.16)` — a wash over whatever
+ * is behind them, which is how a tint should be built. A ratio computed against
+ * the literal string is not a ratio at all, and five pairs "failed" for that
+ * reason alone rather than because anything was illegible.
+ *
+ * Compositing is what the browser does, so it is what the gate must do.
+ */
+function flatten(value: string, under: string): string {
+  const rgba = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(value)
+  if (rgba === null) return value
+  const alpha = rgba[4] === undefined ? 1 : Number(rgba[4])
+  const back = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(under)
+  if (back === null) return value
+  const mix = (channel: number, behind: number): number =>
+    Math.round(channel * alpha + behind * (1 - alpha))
+  const parts = [1, 2, 3].map((index) =>
+    mix(Number(rgba[index]), parseInt(back[index] as string, 16)),
+  )
+  return `#${parts.map((c) => c.toString(16).padStart(2, '0')).join('')}`
+}
+
+function resolve_alias(tokens: Map<string, string>, name: string): string | undefined {
+  let value = tokens.get(name)
+  for (let hop = 0; hop < 8; hop += 1) {
+    if (value === undefined) return undefined
+    const alias = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value)
+    if (alias === null) return value
+    value = tokens.get(alias[1] as string)
+  }
+  return undefined
+}
+
+const DARK = new Map([
+  ...LIGHT,
+  ...block(SUITE_CSS, "[data-theme='dark']"),
+  ...block(LOCAL_CSS, ":root[data-theme='dark']", false),
+])
 
 /** `#rgb` or `#rrggbb` to linear-light channels. */
 function channels(hex: string): [number, number, number] {
@@ -71,10 +172,8 @@ function channels(hex: string): [number, number, number] {
           .join('')
       : raw
   if (!/^[0-9a-fA-F]{6}$/.test(full)) throw new Error(`not a hex colour: ${hex}`)
-  const toLinear = (c: number): number =>
-    c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  const channel = (i: number): number =>
-    toLinear(Number.parseInt(full.slice(i, i + 2), 16) / 255)
+  const toLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  const channel = (i: number): number => toLinear(Number.parseInt(full.slice(i, i + 2), 16) / 255)
   return [channel(0), channel(2), channel(4)]
 }
 
@@ -101,6 +200,36 @@ type Pair = readonly [fg: string, bg: string, min: number, why: string]
  * not worth constraining, and constraining it would eventually block a
  * legitimate palette change for a surface that does not exist.
  */
+/**
+ * The suite's name for each token this product used to own.
+ *
+ * Written out rather than inferred by stripping a prefix: `--tf-surface-subtle`
+ * is the suite's `--color-surface-alt`, and `--tf-accent-fg` is
+ * `--color-accent-fg`. A rule that guessed would silently test the wrong pair.
+ */
+const SUITE: Readonly<Record<string, string>> = {
+  '--tf-bg': '--color-bg',
+  '--tf-surface': '--color-surface',
+  '--tf-surface-subtle': '--color-surface-alt',
+  '--tf-surface-sunken': '--color-surface-strip',
+  '--tf-text': '--color-text',
+  '--tf-text-secondary': '--color-text-secondary',
+  '--tf-text-muted': '--color-text-muted',
+  '--tf-border-strong': '--color-border-strong',
+  '--tf-focus': '--color-focus-ring',
+  '--tf-info': '--color-info',
+  '--tf-info-subtle': '--color-info-soft',
+  '--tf-success': '--color-success',
+  '--tf-success-subtle': '--color-success-soft',
+  '--tf-warning': '--color-warning',
+  '--tf-warning-subtle': '--color-warning-soft',
+  '--tf-danger': '--color-danger',
+  '--tf-danger-subtle': '--color-danger-soft',
+  '--tf-accent': '--color-accent',
+  '--tf-accent-fg': '--color-accent-fg',
+  '--tf-accent-subtle': '--color-accent-soft',
+}
+
 const PAIRS: readonly Pair[] = [
   // Body and secondary text on each of the three canvases (§5).
   ['--tf-text', '--tf-bg', 4.5, 'body text on the canvas'],
@@ -195,8 +324,13 @@ describe.each([
   ['dark', DARK],
 ])('%s theme clears WCAG AA', (_theme, tokens) => {
   it.each(PAIRS)('%s on %s >= %s:1 — %s', (fg, bg, min, _why) => {
-    const foreground = tokens.get(fg)
-    const background = tokens.get(bg)
+    // The canvas every translucent token is ultimately drawn over.
+    const canvas = resolve_alias(tokens, '--color-bg') ?? '#ffffff'
+    const rawForeground = resolve_alias(tokens, fg) ?? resolve_alias(tokens, SUITE[fg] ?? fg)
+    const rawBackground = resolve_alias(tokens, bg) ?? resolve_alias(tokens, SUITE[bg] ?? bg)
+    const background = rawBackground === undefined ? undefined : flatten(rawBackground, canvas)
+    const foreground =
+      rawForeground === undefined ? undefined : flatten(rawForeground, background ?? canvas)
     expect(foreground, `${fg} is not declared`).toBeDefined()
     expect(background, `${bg} is not declared`).toBeDefined()
     const ratio = contrast(foreground as string, background as string)
@@ -210,7 +344,10 @@ describe.each([
   it.each(KNOWN_CONFLICTS)(
     '%s on %s still conflicts with the §7 %s:1 rule — %s',
     (fg, bg, min, _why) => {
-      const ratio = contrast(tokens.get(fg) as string, tokens.get(bg) as string)
+      const ratio = contrast(
+        (resolve_alias(tokens, fg) ?? resolve_alias(tokens, SUITE[fg] ?? fg)) as string,
+        (resolve_alias(tokens, bg) ?? resolve_alias(tokens, SUITE[bg] ?? bg)) as string,
+      )
       expect(
         Number(ratio.toFixed(2)),
         `${fg} now clears ${min}:1 — move this pair into PAIRS`,

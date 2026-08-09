@@ -328,7 +328,9 @@
 }
 .detail__main {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* Title, then everything else. Two rows, because there are two scroll
+   * regions' worth of ambition here and only one is honest. */
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   padding: 20px 24px;
   gap: 16px;
@@ -340,21 +342,18 @@
   background: var(--tf-surface-subtle, var(--color-surface-alt));
   overflow: hidden;
 }
-/* A long description is a genuine tail (§1.8 names one). `auto` means no
- * scrollbar exists unless the text actually exceeds the space — the
- * anti-pattern is a scrollbar where the width to avoid one was available, not
- * a bounded region for prose that genuinely runs long. */
-/* Raised again as the custody panel joined the column. The region holds the
-   description, custody, subtasks, blockers and activity now — five sections
-   where it was budgeted for one — and the alternative to more height is a
-   scroll inside a surface whose whole job is to be read at a glance. */
+/* The one scrolling region on the surface, and now actually the only one.
+ *
+ * It used to be capped at 52vh with the comments pinned in a second scroller
+ * beneath it, which produced the worst thing a page can do: a section cut off
+ * mid-control, with no scrollbar to say so and a different scroller below it
+ * that looked like the same column. A reader met "Verify on qa" with nothing
+ * under it and concluded the product was broken — a fair conclusion.
+ *
+ * So the cap is gone. The title stays pinned, everything under it — including
+ * the conversation — scrolls together, in one place, in reading order. */
 .detail__scrollable {
-  /* Raised from 34vh when subtasks, blockers and activity moved in beside the
-     description: the cap was sized for prose alone, and leaving it would have
-     put four sections into the space one was budgeted. The mechanism is
-     unchanged — `auto`, so no scrollbar exists unless the content genuinely
-     exceeds it. */
-  max-height: 52vh;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -529,20 +528,18 @@
 .detail__comments {
   display: flex;
   flex-direction: column;
-  min-height: 0;
   border-top: 1px solid var(--tf-border, var(--color-border));
+  margin-top: 16px;
   padding-top: 12px;
   gap: 8px;
 }
 .detail__comments .thread-panel {
   display: flex;
+  /* The composer sits above the thread in the reading order after the reverse,
+   * so a reader never scrolls to find the box they came to type in. */
   flex-direction: column-reverse;
-  min-height: 0;
-  overflow: auto;
   gap: 8px;
 }
-/* The composer sits above the thread in the reading order after the reverse,
- * so a reader never scrolls to find the box they came to type in. */
 .detail__comments .thread {
   margin: 0;
 }

@@ -15,6 +15,7 @@
  * Only top-level comments therefore offer a Reply control; offering it on a
  * reply would be offering a refusal.
  */
+import { Button } from '@schnsrw/design-system'
 import { useState, type FormEvent, type ReactElement } from 'react'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -101,13 +102,13 @@ export function CommentThread({
           <li key={comment.id} className="thread__item">
             <CommentBody comment={comment} nameOf={nameOf} />
             {mayComment ? (
-              <button
-                type="button"
-                className="button button--quiet thread__reply"
+              <Button
+                variant="subtle"
+                className="thread__reply"
                 onClick={() => setReplyTo(comment.id)}
               >
                 Reply
-              </button>
+              </Button>
             ) : null}
             {repliesTo(comment.id).length === 0 ? null : (
               <ol className="thread thread--replies">
@@ -123,47 +124,44 @@ export function CommentThread({
       </ol>
 
       {thread.hasNextPage ? (
-        <button
-          type="button"
-          className="button button--quiet"
+        <Button
+          variant="subtle"
           onClick={() => void thread.fetchNextPage()}
           disabled={thread.isFetchingNextPage}
         >
           Load earlier comments
-        </button>
+        </Button>
       ) : null}
 
       {mayComment ? (
-      <form className="thread__composer" onSubmit={submit}>
-        <label className="field__label" htmlFor="comment-draft">
-          {replyTo === undefined ? 'Add a comment' : 'Reply'}
-        </label>
-        <textarea
-          id="comment-draft"
-          className="textarea"
-          rows={3}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        {tooLong ? (
-          <span className="field__hint">A comment is limited to 64 KiB.</span>
-        ) : null}
-        <div className="field__actions">
-          <button
-            type="submit"
-            className="button button--primary"
-            disabled={draft.trim() === '' || tooLong || post.isPending}
-          >
-            {post.isPending ? 'Posting…' : 'Comment'}
-          </button>
-          {replyTo === undefined ? null : (
-            <button type="button" className="button button--quiet" onClick={() => setReplyTo(undefined)}>
-              Cancel reply
-            </button>
-          )}
-        </div>
-        {post.isError ? <ErrorNotice error={post.error} /> : null}
-      </form>
+        <form className="thread__composer" onSubmit={submit}>
+          <label className="field__label" htmlFor="comment-draft">
+            {replyTo === undefined ? 'Add a comment' : 'Reply'}
+          </label>
+          <textarea
+            id="comment-draft"
+            className="textarea"
+            rows={3}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          {tooLong ? <span className="field__hint">A comment is limited to 64 KiB.</span> : null}
+          <div className="field__actions">
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={draft.trim() === '' || tooLong || post.isPending}
+            >
+              {post.isPending ? 'Posting…' : 'Comment'}
+            </Button>
+            {replyTo === undefined ? null : (
+              <Button variant="subtle" onClick={() => setReplyTo(undefined)}>
+                Cancel reply
+              </Button>
+            )}
+          </div>
+          {post.isError ? <ErrorNotice error={post.error} /> : null}
+        </form>
       ) : (
         <p className="field__hint">You do not have permission to comment on this task.</p>
       )}
