@@ -17,7 +17,7 @@
 //! gone away — and an unbounded queue per such client is a memory-exhaustion
 //! primitive that any browser can trigger by being slow. `docs/24` §D-040:
 //! every bound names its overflow policy. This one's is
-//! [`Subscription::Lagged`]: the subscriber is **disconnected**, not queued, and
+//! [`Received::Lagged`]: the subscriber is **disconnected**, not queued, and
 //! the client recovers by reconnecting with `Last-Event-ID`.
 //!
 //! # Why it is a trait with a local implementation

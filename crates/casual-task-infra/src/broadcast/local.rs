@@ -75,7 +75,7 @@ pub struct Subscription {
 pub enum Received {
     /// An event to send to the client.
     Event(Box<LiveEvent>),
-    /// The subscriber fell [`SUBSCRIBER_QUEUE`] events behind and was dropped.
+    /// The subscriber fell `SUBSCRIBER_QUEUE` events behind and was dropped.
     /// The client should reconnect with `Last-Event-ID`.
     Lagged,
     /// The hub closed — the process is shutting down (`docs/24` §D-041).
@@ -105,7 +105,7 @@ impl Subscription {
     /// The same, for a caller driving this from a `Stream`.
     ///
     /// Exposed as a poll rather than handing out the receiver, so the
-    /// subscription and its [`CountGuard`] cannot be separated — a caller
+    /// subscription and its `CountGuard` cannot be separated — a caller
     /// holding a bare receiver would keep receiving events while
     /// `sse_connections_active` had already forgotten it.
     ///

@@ -663,6 +663,15 @@ async fn inviting_with_a_role_the_inviter_does_not_hold_is_refused() -> Result<(
     let owner = sign_up(&app, &db.pool, "owner@example.com").await?;
     let workspace = create_workspace(&app, &owner, "acme").await?;
 
+    // The INVITER must not be the owner. D-054 grants a workspace creator the
+    // Owner role, which is asserted against `permission::ALL` — so the creator
+    // legitimately holds every permission and control 1 has nothing to refuse.
+    // This test needs someone who may invite and may not delete.
+    let inviter = sign_up(&app, &db.pool, "inviter@example.com").await?;
+    test_support::add_workspace_member(&db.pool, workspace, inviter.user_id).await?;
+    test_support::grant_at_workspace(&db.pool, workspace, inviter.user_id, &["role.assign"])
+        .await?;
+
     // A powerful role exists and somebody else holds it; the inviter does not.
     // Granted to a REAL account: `role_assignment.granted_by` is a foreign key,
     // so a made-up uuid fails the insert rather than the assertion.
@@ -673,7 +682,7 @@ async fn inviting_with_a_role_the_inviter_does_not_hold_is_refused() -> Result<(
 
     let response = invite(
         &app,
-        &owner,
+        &inviter,
         workspace,
         "escalate@example.com",
         Some(powerful),
