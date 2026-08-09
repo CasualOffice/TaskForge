@@ -16,16 +16,18 @@
 //! ([`super::revalidate`]) and the client is told to re-authenticate rather than
 //! left to reconnect with a credential that will only be refused again.
 
+use std::collections::VecDeque;
 use std::convert::Infallible;
+use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context as TaskContext, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use casual_task_infra::broadcast::{Broadcast, Received, Subscription, Topic};
+use casual_task_infra::broadcast::{Broadcast, LiveEvent, Received, Resume, Subscription, Topic};
 use casual_task_observability::labels::LabelSet;
 use casual_task_observability::metrics::SSE_CONNECTIONS_ACTIVE;
 use casual_task_observability::recorder::Recorder;
@@ -36,6 +38,7 @@ use crate::context::Context;
 use crate::error::ApiError;
 use crate::middleware::WorkspaceMember;
 use crate::server::{AppState, RequestId};
+use crate::sse::coalesce::Coalescer;
 use crate::sse::{authorize, revalidate};
 use crate::unit;
 
@@ -99,7 +102,15 @@ pub async fn stream(
     }
 
     let topic = Topic::project(ctx.workspace, query.project_id);
-    let subscription = state.broadcast.subscribe(topic);
+    // `Last-Event-ID` is the client's own claim about where it got to. It is not
+    // a credential and is not trusted as one: it can only select a position
+    // inside a history this server already decided this subscriber may read, so
+    // the worst a forged value can do is produce a gap notice.
+    let resume_from = headers
+        .get("last-event-id")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<Uuid>().ok());
+    let (subscription, resume) = state.broadcast.subscribe_resuming(topic, resume_from);
     record_connections(&state.metrics, state.broadcast.subscriber_count());
 
     // The other half of docs/40's revocation gate. Authorization at connect
@@ -127,10 +138,41 @@ pub async fn stream(
         "live stream opened"
     );
 
+    let mut backlog: VecDeque<Event> = VecDeque::new();
+    match resume {
+        Resume::Live => {}
+        Resume::Replayed(missed) => {
+            tracing::info!(
+                project_id = %query.project_id,
+                replayed = missed.len(),
+                "resuming a stream from Last-Event-ID"
+            );
+            backlog.extend(missed.into_iter().map(frame));
+        }
+        // docs/05: "the client is told to refetch rather than being handed a
+        // partial history it would silently treat as complete." Sent BEFORE any
+        // live frame, so a client cannot apply an update and only afterwards
+        // learn that the baseline it applied it to was stale.
+        Resume::Gap => {
+            tracing::info!(
+                project_id = %query.project_id,
+                "a reconnecting stream is past the replay window"
+            );
+            backlog.push_back(
+                Event::default()
+                    .event("stream.gap")
+                    .data(r#"{"reason":"outside_replay_window","action":"refetch"}"#),
+            );
+        }
+    }
+
     let events = EventStream {
         subscription,
         metrics: state.metrics.clone(),
         broadcast: state.broadcast.clone(),
+        backlog,
+        window: Coalescer::new(),
+        timer: None,
     };
 
     Ok(Sse::new(events)
@@ -154,6 +196,13 @@ struct EventStream {
     subscription: Subscription,
     metrics: std::sync::Arc<Recorder>,
     broadcast: std::sync::Arc<dyn Broadcast>,
+    /// Frames ready to go out: the replay backlog first, then whatever the
+    /// coalescing window has released.
+    backlog: VecDeque<Event>,
+    window: Coalescer,
+    /// Armed while the window holds something. Boxed because a `Sleep` is not
+    /// `Unpin` and this struct is moved into axum.
+    timer: Option<Pin<Box<tokio::time::Sleep>>>,
 }
 
 impl Drop for EventStream {
@@ -172,36 +221,96 @@ impl futures_core::Stream for EventStream {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        match this.subscription.poll_recv(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Received::Event(event)) => Poll::Ready(Some(Ok(Event::default()
-                // `id:` is what comes back as `Last-Event-ID`, so it is the
-                // event's own id and not a counter — a counter would restart at
-                // zero on every deploy and silently mean a different position.
-                .id(event.id.to_string())
-                .event(event.event_type)
-                .data(event.data)))),
-            // The overflow policy, told to the client rather than performed
-            // silently. `docs/05` gives it `Last-Event-ID` to resume from; a
-            // stream that just stopped would leave it believing it was current.
-            Poll::Ready(Received::Lagged) => Poll::Ready(Some(Ok(Event::default()
-                .event("stream.lagged")
-                .data(r#"{"reason":"too_slow","action":"reconnect_with_last_event_id"}"#)))),
-            // The stream was revoked out from under the client (`revalidate`).
-            // Named rather than silent: a plain end-of-stream would have the
-            // client reconnect with the same dead credential, get a 401, and
-            // have no idea the two were related.
-            Poll::Ready(Received::Cancelled) => {
-                Poll::Ready(Some(Ok(Event::default().event("stream.revoked").data(
-                    r#"{"reason":"credential_or_authority_revoked","action":"reauthenticate"}"#,
-                ))))
+        loop {
+            // Anything already due goes out first, in order. The replay backlog
+            // is seeded here, so a resumed client receives what it missed before
+            // any live frame — interleaved, it could not tell which of two
+            // updates to the same task was newer.
+            if let Some(frame) = this.backlog.pop_front() {
+                return Poll::Ready(Some(Ok(frame)));
             }
-            // D-041: shutdown closes the stream. The client sees an ordinary
-            // end-of-stream and reconnects, instead of a socket vanishing
-            // mid-frame and looking like a parse error.
-            Poll::Ready(Received::Closed) => Poll::Ready(None),
+
+            match this.subscription.poll_recv(cx) {
+                Poll::Ready(Received::Event(event)) => {
+                    let now = Instant::now();
+                    let flush_now = this.window.push(*event, now);
+                    if flush_now {
+                        // The buffer bound was reached: emit early rather than
+                        // grow (`coalesce` §Every bound names its overflow
+                        // policy).
+                        this.timer = None;
+                        this.backlog
+                            .extend(this.window.drain().into_iter().map(frame));
+                    } else if this.timer.is_none()
+                        && let Some(due) = this.window.due_at()
+                    {
+                        this.timer = Some(Box::pin(tokio::time::sleep_until(due.into())));
+                    }
+                    continue;
+                }
+                // Every ending flushes what the window is holding before it
+                // reports itself. Dropping those would mean the 100 ms
+                // optimisation silently lost the last frame of every stream.
+                Poll::Ready(terminal) => {
+                    this.timer = None;
+                    this.backlog
+                        .extend(this.window.drain().into_iter().map(frame));
+                    match terminal {
+                        // The overflow policy, told to the client rather than
+                        // performed silently. `docs/05` gives it `Last-Event-ID`
+                        // to resume from, and now something stands behind that.
+                        Received::Lagged => this.backlog.push_back(
+                            Event::default().event("stream.lagged").data(
+                                r#"{"reason":"too_slow","action":"reconnect_with_last_event_id"}"#,
+                            ),
+                        ),
+                        // Revoked out from under the client. Named rather than
+                        // silent: a plain end-of-stream would have it reconnect
+                        // with the same dead credential.
+                        Received::Cancelled => this.backlog.push_back(
+                            Event::default().event("stream.revoked").data(
+                                r#"{"reason":"credential_or_authority_revoked","action":"reauthenticate"}"#,
+                            ),
+                        ),
+                        // D-041: shutdown closes the stream. Nothing more to
+                        // say — the client sees end-of-stream and reconnects.
+                        Received::Closed | Received::Event(_) => {}
+                    }
+                    if this.backlog.is_empty() {
+                        return Poll::Ready(None);
+                    }
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            // Nothing new. If the window is due, release it; otherwise wait on
+            // whichever of the two wakes first.
+            match this.timer.as_mut() {
+                Some(timer) => match timer.as_mut().poll(cx) {
+                    Poll::Ready(()) => {
+                        this.timer = None;
+                        this.backlog
+                            .extend(this.window.drain().into_iter().map(frame));
+                        continue;
+                    }
+                    Poll::Pending => return Poll::Pending,
+                },
+                None => return Poll::Pending,
+            }
         }
     }
+}
+
+/// One live event as an SSE frame (`docs/05` §Live updates).
+fn frame(event: LiveEvent) -> Event {
+    Event::default()
+        // `id:` is what comes back as `Last-Event-ID`, so it is the event's own
+        // id and not a counter — a counter would restart at zero on every deploy
+        // and silently mean a different position.
+        .id(event.id.to_string())
+        .event(event.event_type)
+        .data(event.data)
 }
 
 /// Publish `sse_connections_active` (`docs/46`).

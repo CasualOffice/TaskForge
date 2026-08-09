@@ -17,20 +17,23 @@
 //! thing as the mail adapter: in-process on the single-node profile, Redis above
 //! it, behind one trait so no caller learns which.
 //!
-//! # What is not built yet
+//! # State of C-015, honestly
 //!
-//! Said here rather than discovered later.
+//! Everything `docs/05` §Live updates specifies is now built: the endpoint, the
+//! event shape, `Last-Event-ID` replay bounded to 5 minutes / 1,000 events with
+//! a gap notice past it, the 100 ms coalescing window, the 30 s heartbeat, and
+//! revalidation on `authz_epoch` change.
 //!
-//! - **`Last-Event-ID` replay.** `docs/05` bounds it to 5 minutes / 1,000
-//!   events. The header is accepted and ignored: a reconnecting client resumes
-//!   live and may have a gap it cannot see. Needs a replay buffer with its own
-//!   bound and eviction policy.
-//! - **Coalescing.** `docs/05` asks for one update per aggregate per 100 ms; the
-//!   hub forwards each event.
-//!
-//! Revocation is no longer on this list — see [`revalidate`].
+//! **What is not proven end to end:** no test drives `GET /api/v1/stream` over
+//! HTTP and reads frames off the body. Each mechanism is asserted where it lives
+//! — authorization in [`authorize`], replay and fan-out in
+//! `casual_task_infra::broadcast`, coalescing in [`coalesce`], revocation in
+//! [`revalidate`] against a real database — but their *assembly* in [`endpoint`]
+//! is covered by construction rather than by assertion. That is why `docs/14`
+//! records C-015 as `Built` and not `Gated`, in the same words.
 
 pub mod authorize;
+pub mod coalesce;
 pub mod endpoint;
 pub mod revalidate;
 

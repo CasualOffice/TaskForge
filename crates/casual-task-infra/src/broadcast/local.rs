@@ -15,9 +15,13 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use uuid::Uuid;
 
 use tokio::sync::mpsc;
 
+use super::replay::{ReplayBuffer, Resume};
 use super::subscription::{CountRelease, Delivery};
 use super::{Broadcast, LiveEvent, Subscription, Topic};
 
@@ -55,8 +59,20 @@ const RESERVED: usize = 1;
 /// Fan-out inside one process.
 #[derive(Debug, Default)]
 pub struct LocalBroadcast {
-    topics: Mutex<HashMap<Topic, Vec<mpsc::Sender<Delivery>>>>,
+    /// Subscribers and history under **one** lock, not two.
+    ///
+    /// Separate locks would let a publish land between a resume snapshot and the
+    /// subscription that follows it — the gap `subscribe_resuming` exists to
+    /// close. One lock makes "what you missed" and "what you will receive"
+    /// halves of a single decision.
+    state: Mutex<Fanout>,
     live: Arc<AtomicUsize>,
+}
+
+#[derive(Debug, Default)]
+struct Fanout {
+    topics: HashMap<Topic, Vec<mpsc::Sender<Delivery>>>,
+    replay: ReplayBuffer,
 }
 
 impl LocalBroadcast {
@@ -89,8 +105,16 @@ impl LocalBroadcast {
 
 impl Broadcast for LocalBroadcast {
     fn publish(&self, topic: Topic, event: LiveEvent) -> usize {
-        let mut topics = self.topics.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(subscribers) = topics.get_mut(&topic) else {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+
+        // Recorded BEFORE the fan-out, and recorded even when nobody is
+        // listening. A client that reconnects three seconds after its socket
+        // dropped is asking for events published while it had no subscriber at
+        // all — a buffer fed only by successful deliveries would replay exactly
+        // the events it already had and none of the ones it missed.
+        state.replay.record(topic, &event, Instant::now());
+
+        let Some(subscribers) = state.topics.get_mut(&topic) else {
             return 0;
         };
 
@@ -130,37 +154,46 @@ impl Broadcast for LocalBroadcast {
         if subscribers.is_empty() {
             // A project nobody watches must not leave an entry behind, or the
             // map grows with every project ever opened until the process ends.
-            topics.remove(&topic);
+            // The replay history deliberately stays: it is what a client
+            // reconnecting in the next few minutes will ask for, and it has its
+            // own bounds.
+            state.topics.remove(&topic);
         }
         sent
     }
 
-    fn subscribe(&self, topic: Topic) -> Subscription {
+    fn subscribe_resuming(&self, topic: Topic, after: Option<Uuid>) -> (Subscription, Resume) {
         // Counted before the capacity check, and the check reads the count it
         // just produced: two threads subscribing at the cap must not both
         // conclude there was room.
         let live = self.live.fetch_add(1, Ordering::Relaxed) + 1;
         if live > MAX_SUBSCRIBERS {
             self.live.fetch_sub(1, Ordering::Relaxed);
-            return self.refused();
+            // A refused subscription replays nothing: the client is about to be
+            // told the stream is closed, and handing it history first would be
+            // work nobody reads.
+            return (self.refused(), Resume::Live);
         }
 
         let (events_tx, events) = mpsc::channel(SUBSCRIBER_QUEUE + RESERVED);
         // Capacity one: a second cancellation of an already-cancelled
         // subscription is redundant, not something to queue.
         let (cancel_tx, cancel_rx) = mpsc::channel(1);
-        self.topics
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .entry(topic)
-            .or_default()
-            .push(events_tx);
-        Subscription {
-            events,
-            cancel_rx,
-            cancel_tx,
-            release: CountRelease::new(Arc::clone(&self.live)),
-        }
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        // Snapshot and subscribe under the same lock — see the trait's docs.
+        let resume = state.replay.since(topic, after);
+        state.topics.entry(topic).or_default().push(events_tx);
+        drop(state);
+
+        (
+            Subscription {
+                events,
+                cancel_rx,
+                cancel_tx,
+                release: CountRelease::new(Arc::clone(&self.live)),
+            },
+            resume,
+        )
     }
 
     fn subscriber_count(&self) -> usize {
@@ -171,9 +204,10 @@ impl Broadcast for LocalBroadcast {
         // Dropping every sender closes every receiver, which each stream sees as
         // `Received::Closed` and turns into an orderly end-of-stream. D-041: a
         // stream is closed, not dropped mid-frame.
-        self.topics
+        self.state
             .lock()
             .unwrap_or_else(|p| p.into_inner())
+            .topics
             .clear();
     }
 }
@@ -188,6 +222,7 @@ mod tests {
     fn an_event(n: u8) -> LiveEvent {
         LiveEvent {
             id: Uuid::now_v7(),
+            aggregate_id: Uuid::now_v7(),
             event_type: "task.updated".to_owned(),
             data: format!("{{\"n\":{n}}}"),
         }
@@ -356,12 +391,101 @@ mod tests {
         // The publish is what notices the receiver is gone.
         assert_eq!(hub.publish(topic, an_event(1)), 0);
         assert!(
-            hub.topics
+            !hub.state
                 .lock()
                 .expect("not poisoned")
-                .get(&topic)
-                .is_none(),
+                .topics
+                .contains_key(&topic),
             "an abandoned topic stayed in the map"
         );
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+    use crate::broadcast::{Received, Resume};
+    use casual_task_model::WorkspaceId;
+
+    fn an_event() -> LiveEvent {
+        LiveEvent {
+            id: Uuid::now_v7(),
+            aggregate_id: Uuid::now_v7(),
+            event_type: "task.updated".to_owned(),
+            data: "{}".to_owned(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_client_that_reconnects_gets_what_it_missed_while_away() {
+        // The property that makes every "reconnect with Last-Event-ID" message
+        // in this crate true. The events arrive while there is NO subscriber at
+        // all — the actual shape of a dropped connection, and the case a buffer
+        // fed only by successful deliveries would miss entirely.
+        let hub = LocalBroadcast::new();
+        let topic = Topic::project(WorkspaceId::new(), Uuid::now_v7());
+
+        let (subscription, _) = hub.subscribe_resuming(topic, None);
+        let seen = an_event();
+        hub.publish(topic, seen.clone());
+        drop(subscription); // the socket dies
+
+        let missed_one = an_event();
+        let missed_two = an_event();
+        hub.publish(topic, missed_one.clone());
+        hub.publish(topic, missed_two.clone());
+
+        let (_subscription, resume) = hub.subscribe_resuming(topic, Some(seen.id));
+        let Resume::Replayed(missed) = resume else {
+            panic!("a reconnecting client was not offered the events it missed");
+        };
+        assert_eq!(
+            missed.iter().map(|e| e.id).collect::<Vec<_>>(),
+            vec![missed_one.id, missed_two.id]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reconnection_past_the_window_is_told_it_lost_events() {
+        // docs/05: told to refetch, not handed a partial history it would treat
+        // as complete.
+        let hub = LocalBroadcast::new();
+        let topic = Topic::project(WorkspaceId::new(), Uuid::now_v7());
+        let (_sub, resume) = hub.subscribe_resuming(topic, Some(Uuid::now_v7()));
+        assert_eq!(resume, Resume::Gap);
+    }
+
+    #[tokio::test]
+    async fn resuming_does_not_lose_an_event_published_during_the_handshake() {
+        // The snapshot and the subscription are taken under one lock precisely
+        // so nothing can land between them.
+        let hub = LocalBroadcast::new();
+        let topic = Topic::project(WorkspaceId::new(), Uuid::now_v7());
+        let first = an_event();
+        hub.publish(topic, first.clone());
+
+        let (mut subscription, resume) = hub.subscribe_resuming(topic, Some(first.id));
+        assert_eq!(resume, Resume::Live, "nothing was missed at this point");
+
+        let live = an_event();
+        assert_eq!(hub.publish(topic, live.clone()), 1);
+        match subscription.recv().await {
+            Received::Event(event) => assert_eq!(event.id, live.id),
+            other => panic!("the live event did not arrive: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_fresh_client_is_not_replayed_the_whole_history() {
+        // A client with no Last-Event-ID is starting from the state it just
+        // fetched over HTTP. Replaying five minutes to it would re-apply
+        // changes it already has.
+        let hub = LocalBroadcast::new();
+        let topic = Topic::project(WorkspaceId::new(), Uuid::now_v7());
+        for _ in 0..5 {
+            hub.publish(topic, an_event());
+        }
+        let (_sub, resume) = hub.subscribe_resuming(topic, None);
+        assert_eq!(resume, Resume::Live);
     }
 }

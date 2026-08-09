@@ -74,6 +74,9 @@ impl Consumer for SseFanout {
                 // a durable row and not a position in a stream that restarts
                 // with the process.
                 id: event.event_id,
+                // What the 100 ms coalescing window collapses on: two changes to
+                // the same task inside one window are one update to a client.
+                aggregate_id: event.aggregate_id,
                 event_type: event.event_type.clone(),
                 // The payload as the producing transaction wrote it. Not
                 // re-serialized from a view type here: a second shape of the

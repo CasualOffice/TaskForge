@@ -353,7 +353,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | `Built` |
 | C-014 | Cursor pagination | `Building` |
-| C-015 | SSE + fan-out | `Building` |
+| C-015 | SSE + fan-out | `Built` |
 | C-016 | Notifications (in-app + email) | `Building` |
 | C-017 | Extension point registry (core panels only) | `Built` |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
@@ -1337,8 +1337,45 @@ not yet dropped — the release is idempotent and runs at cancellation, so the
 gauge does not read high during precisely the incident an operator is watching it
 for.
 
-Still unbuilt: `Last-Event-ID` replay and the 100 ms coalescing window. C-015 is
-`Building`, not `Built`.
+**`Last-Event-ID` replay and the 100 ms window are now built**, which was the
+last of what [05](05-API-SPEC.md) §Live updates specifies.
+
+Replay matters more than it looks. Every "reconnect with `Last-Event-ID`"
+message this feature emits — the lag policy, the revocation notice, a dropped
+socket — was advice that did not work, because nothing stood behind the header.
+A recovery instruction that does not recover is worse than none, because the
+client stops looking. It is bounded to 5 minutes / 1,000 events per
+[05](05-API-SPEC.md), **and to 1,024 topics**, which that document does not
+mention: a per-project history is a map a user can grow by opening projects, and
+1,000 events each is only bounded memory if the number of histories is bounded
+too. All three overflow into the same answer — "you lost events, refetch" —
+because a client past the window must never be handed the tail of a history and
+left to assume it was the whole of it.
+
+Coalescing collapses per **(aggregate, event type)** rather than per aggregate.
+Narrower than [05](05-API-SPEC.md)'s wording, deliberately: collapsing
+`task.created` into the `task.updated` 20 ms behind it hands a subscriber an
+update for a task it has never heard of, which is
+[25](25-EVENTS-OUTBOX-AND-AUDIT.md)'s ordering guarantee undone at the last hop.
+A drag emits one event type repeatedly, so the case that document is about is
+fully covered. Flagged rather than settled silently — if the intent was to
+collapse across types, one line changes it.
+
+**C-015 is `Built`, not `Gated`, and here is exactly what stops it.** No test
+drives `GET /api/v1/stream` over HTTP and reads frames off the response body.
+Every mechanism is asserted where it lives — the permission filter in
+`sse::authorize`, fan-out and replay in `casual-task-infra`, the window in
+`sse::coalesce`, revocation against a real database in `tests/sse_revocation.rs`
+— and CI runs all of it, including the Docker-backed suites. What is unproven is
+their *assembly*: that the handler emits the gap notice before any live frame,
+that a replayed backlog precedes live events, and that a second workspace's
+subscriber receives nothing through the endpoint rather than merely through the
+hub.
+
+Closing it needs a fixture that creates a workspace, a role granting `task.read`,
+a project and a workflow, then reads an SSE body incrementally. That is test
+scaffolding, not a design question, and it is the single item between `Built` and
+`Gated` for this row.
 
 **C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
 `Accepted` requires — "design final **and** its ADRs Accepted". It carries two

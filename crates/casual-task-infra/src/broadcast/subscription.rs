@@ -213,6 +213,7 @@ mod tests {
     fn an_event() -> LiveEvent {
         LiveEvent {
             id: Uuid::now_v7(),
+            aggregate_id: Uuid::now_v7(),
             event_type: "task.updated".to_owned(),
             data: "{}".to_owned(),
         }

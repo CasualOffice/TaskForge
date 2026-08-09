@@ -35,9 +35,11 @@
 //! enforces it.
 
 mod local;
+mod replay;
 mod subscription;
 
 pub use local::{LocalBroadcast, MAX_SUBSCRIBERS, SUBSCRIBER_QUEUE};
+pub use replay::{MAX_REPLAY_TOPICS, REPLAY_EVENTS, REPLAY_WINDOW, ReplayBuffer, Resume};
 pub use subscription::{Canceller, Received, Subscription};
 
 use casual_task_model::WorkspaceId;
@@ -91,6 +93,12 @@ impl Topic {
 pub struct LiveEvent {
     /// The SSE `id:` field, and what a client sends back as `Last-Event-ID`.
     pub id: Uuid,
+    /// The task (or other aggregate) this is about.
+    ///
+    /// Carried so the 100 ms coalescing window in `docs/05` can collapse a rapid
+    /// drag into one frame. Without it the only way to know two events concern
+    /// the same task is to parse `data`, which is opaque JSON here by design.
+    pub aggregate_id: Uuid,
     /// The SSE `event:` field: `task.status.changed` and friends.
     pub event_type: String,
     /// The SSE `data:` field, already serialized.
@@ -114,8 +122,21 @@ pub trait Broadcast: Send + Sync + 'static {
     /// not for control flow.
     fn publish(&self, topic: Topic, event: LiveEvent) -> usize;
 
-    /// Start listening to `topic`.
-    fn subscribe(&self, topic: Topic) -> Subscription;
+    /// Start listening to `topic`, from whatever is live now.
+    fn subscribe(&self, topic: Topic) -> Subscription {
+        self.subscribe_resuming(topic, None).0
+    }
+
+    /// Start listening to `topic`, resuming after the event `after`.
+    ///
+    /// The [`Resume`] and the [`Subscription`] are produced together, under one
+    /// lock, and that is load-bearing: taking a history snapshot and then
+    /// subscribing would lose anything published between the two, and
+    /// subscribing then snapshotting would leave a hole in the other direction.
+    /// Together they overlap — a client may see one event twice, which
+    /// `docs/25`'s at-least-once contract already promises — and they never
+    /// leave a gap.
+    fn subscribe_resuming(&self, topic: Topic, after: Option<Uuid>) -> (Subscription, Resume);
 
     /// How many subscriptions are currently open, across every topic.
     ///
