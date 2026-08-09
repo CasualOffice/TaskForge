@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import { keys } from '../api/keys'
 import { readProject } from '../api/projects'
 import { readWorkflow, statusForState, type Workflow } from '../api/workflow'
+import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 
 export interface WorkflowState {
@@ -31,6 +32,25 @@ export interface WorkflowState {
   readonly unavailable: string | undefined
   /** The status a card dropped on a column should move into. */
   readonly statusFor: (state: string) => string | undefined
+  /**
+   * The move from one status into a column, if the workflow has one.
+   *
+   * Returns the edge's own verdict as well as its target, because `docs/23`
+   * step 5 gives a transition a `required_permission` on top of
+   * `task.transition`: an actor who may move tasks in general may still not make
+   * one particular move. A board that only checked the general permission would
+   * accept the drop, send it, and roll the card back on a `TF-WFL-0003`.
+   */
+  readonly moveInto: (fromStatusId: string, toState: string) => Move | undefined
+}
+
+/** A legal edge into a column, and whether this actor may take it. */
+export interface Move {
+  readonly toStatusId: string
+  readonly toState: string
+  readonly permitted: boolean
+  /** The permission the edge demands, when it demands one. */
+  readonly needed: string | null
 }
 
 const NOT_SERVED =
@@ -41,6 +61,7 @@ const NO_PROJECT = 'Choose a project — a workflow belongs to one, not to the w
 
 export function useProjectWorkflow(projectId: string | undefined): WorkflowState {
   const workspaceId = useWorkspaceId()
+  const authority = useAuthority(projectId)
 
   const project = useQuery({
     queryKey: [...keys.projects(workspaceId), projectId ?? ''],
@@ -73,5 +94,29 @@ export function useProjectWorkflow(projectId: string | undefined): WorkflowState
     loading,
     unavailable,
     statusFor: (state) => (loaded === undefined ? undefined : statusForState(loaded, state)?.id),
+    moveInto: (fromStatusId, toState) => {
+      if (loaded === undefined) return undefined
+      // Every status in the target column, not just the first: the workflow may
+      // have an edge into the second one and none into the first, and refusing
+      // the drop because of the order statuses happen to be in would refuse a
+      // move the workflow permits.
+      const candidates = loaded.statuses
+        .filter((status) => status.state === toState)
+        .sort((a, b) => a.position - b.position)
+      for (const candidate of candidates) {
+        const edge = loaded.transitions.find(
+          (transition) => transition.from === fromStatusId && transition.to === candidate.id,
+        )
+        if (edge === undefined) continue
+        const needed = edge.required_permission
+        return {
+          toStatusId: candidate.id,
+          toState: candidate.state,
+          permitted: needed === null || authority.can(needed),
+          needed,
+        }
+      }
+      return undefined
+    },
   }
 }

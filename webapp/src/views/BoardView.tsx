@@ -58,7 +58,7 @@ export function BoardView(): ReactElement {
   const announce = useAnnounce()
   const client = useQueryClient()
 
-  const { unavailable: missingWorkflow, statusFor } = useProjectWorkflow(search.project)
+  const { unavailable: missingWorkflow, moveInto } = useProjectWorkflow(search.project)
   const authority = useAuthority(search.project)
   const move = useTaskTransition(workspaceId)
 
@@ -104,23 +104,32 @@ export function BoardView(): ReactElement {
       const fromState = (active.data.current as { state?: string } | undefined)?.state
       if (fromState === toState) return
 
-      const toStatusId = statusFor(toState)
-      if (toStatusId === undefined) {
-        announce('That column has no status to move into.')
-        return
-      }
-
       // The card being dragged is the one already in a list cache; reading it
       // from there rather than refetching keeps the optimistic update instant.
       const task = findCachedTask(client, workspaceId, String(active.id))
       if (task === undefined) return
 
+      // The workflow decides, not the column. `docs/23`: a transition exists or
+      // it does not, and a board that inferred one from two states being
+      // adjacent would send moves the state machine refuses.
+      const edge = moveInto(task.status_id, toState)
+      if (edge === undefined) {
+        announce(`This workflow has no move from here into ${stateLabel(toState)}.`)
+        return
+      }
+      if (!edge.permitted) {
+        // Refused here rather than by the server, so the card never appears to
+        // move and then springs back — which reads as a bug, not as a refusal.
+        announce(`That move needs ${edge.needed ?? 'a permission you do not have'}.`)
+        return
+      }
+
       move.mutate(
-        { task, toStatusId, toState },
+        { task, toStatusId: edge.toStatusId, toState: edge.toState },
         { onSuccess: () => announce(`${task.key} moved to ${stateLabel(toState)}`) },
       )
     },
-    [statusFor, announce, client, workspaceId, move],
+    [moveInto, announce, client, workspaceId, move],
   )
 
   return (

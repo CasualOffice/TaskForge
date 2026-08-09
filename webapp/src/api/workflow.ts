@@ -41,18 +41,32 @@ export interface WorkflowStatus {
   readonly position: number
 }
 
-/** A legal move. `from` is null for the initial-status edge. */
+/**
+ * A legal move.
+ *
+ * `from` is `null` for the initial edge: `docs/23` models "into the workflow" as
+ * a transition with no source, so a client must handle the absence rather than
+ * treat it as a data error.
+ *
+ * `required_permission` is returned as stored so the client can grey out the
+ * arrows the actor cannot take, against `GET /permissions/effective`. That is a
+ * better refusal than a 403 after the drop.
+ */
 export interface WorkflowTransition {
   readonly id: string
   readonly from: string | null
   readonly to: string
   readonly required_permission: string | null
   readonly required_fields: readonly string[]
+  readonly ignore_dependencies: boolean
 }
 
 export interface Workflow {
   readonly id: string
   readonly name: string
+  readonly is_default: boolean
+  readonly version: number
+  /** In `position` order — the order a board draws its columns in. */
   readonly statuses: readonly WorkflowStatus[]
   readonly transitions: readonly WorkflowTransition[]
 }

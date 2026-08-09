@@ -47,6 +47,15 @@ export function TransitionControl({
 
   const current = workflow?.statuses.find((status) => status.id === task.status_id)
 
+  // Each edge out of the current status, with the status it leads to and
+  // whether this actor may take it.
+  //
+  // A transition carries its OWN `required_permission` on top of
+  // `task.transition` — `docs/23` step 5 — so an actor who may move a task in
+  // general may still not make one particular move. Rendering the arrow disabled
+  // with the permission named is a better refusal than a `TF-WFL-0003` after the
+  // click, and it is why the server returns the field rather than filtering the
+  // edge out itself.
   const targets =
     workflow === undefined
       ? []
@@ -54,7 +63,10 @@ export function TransitionControl({
           .filter((edge) => edge.from === task.status_id)
           .flatMap((edge) => {
             const to = workflow.statuses.find((status) => status.id === edge.to)
-            return to === undefined ? [] : [to]
+            if (to === undefined) return []
+            const needed = edge.required_permission
+            const permitted = needed === null || authority.can(needed)
+            return [{ status: to, permitted, needed }]
           })
 
   return (
@@ -88,12 +100,13 @@ export function TransitionControl({
             {targets.length === 0 ? (
               <p className="field__hint">This workflow has no move out of the current status.</p>
             ) : (
-              targets.map((target) => (
+              targets.map(({ status: target, permitted, needed }) => (
                 <button
                   key={target.id}
                   type="button"
                   className="button"
-                  disabled={move.isPending}
+                  disabled={move.isPending || !permitted}
+                  title={permitted ? undefined : `This move needs ${needed}.`}
                   onClick={() =>
                     move.mutate(
                       {
