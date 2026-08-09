@@ -9,4 +9,16 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Phase 0 scaffold — no implementation yet. See `docs/14-EXECUTION-TRACKER.md`.
+//! The pipeline's two decisions that need no I/O live here, and they are the
+//! two that must not be made anywhere else:
+//!
+//! - [`sniff`] — what a file **is**, from its bytes. It takes no declared type,
+//!   so it cannot be called with the client's.
+//! - [`policy`] — whether an upload is allowed at all, and the object key,
+//!   which is built from UUIDs so a filename cannot reach it.
+
+pub mod policy;
+pub mod sniff;
+
+pub use policy::{Refusal, check, object_key, size_limit, workspace_prefix};
+pub use sniff::{OPAQUE, PREFIX, Sniffed, agrees, sniff, stored_type};

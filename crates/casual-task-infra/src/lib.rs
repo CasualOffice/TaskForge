@@ -20,6 +20,8 @@
 
 pub mod broadcast;
 pub mod mail;
+pub mod storage;
 
 pub use broadcast::{Broadcast, LiveEvent, LocalBroadcast, Subscription, Topic};
 pub use mail::{Mailer, Message, SmtpConfig};
+pub use storage::{FilesystemStore, ObjectHead, ObjectStore, StorageError};

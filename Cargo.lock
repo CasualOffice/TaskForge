@@ -370,6 +370,7 @@ name = "casual-task-attachment"
 version = "0.0.0"
 dependencies = [
  "casual-task-model",
+ "uuid",
 ]
 
 [[package]]
@@ -403,6 +404,8 @@ version = "0.0.0"
 dependencies = [
  "casual-task-model",
  "lettre",
+ "sha2",
+ "subtle",
  "thiserror",
  "time",
  "tokio",
