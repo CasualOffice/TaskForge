@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TaskForge — bundle floor harness</title>
+    <title>TaskForge</title>
+    <!-- Both, so the browser paints form controls and scrollbars in the right
+         theme before any script runs. `shell/theme.ts` narrows it to one by
+         stamping `data-theme` on the root element. -->
+    <meta name="color-scheme" content="light dark" />
   </head>
   <body>
     <div id="root"></div>

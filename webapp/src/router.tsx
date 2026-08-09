@@ -80,7 +80,14 @@ const reportsRoute = createRoute({
   },
 })
 
-const routeTree = rootRoute.addChildren([listRoute, boardRoute, myWorkRoute, reportsRoute])
+/**
+ * Exported so a test can build its own router over the same tree.
+ *
+ * `createRouter` produces a singleton the module augmentation below types the
+ * whole app against; a test that reused it would share history between cases and
+ * see the previous test's route.
+ */
+export const routeTree = rootRoute.addChildren([listRoute, boardRoute, myWorkRoute, reportsRoute])
 
 export const router = createRouter({ routeTree })
 
