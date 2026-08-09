@@ -37,6 +37,30 @@ impl TaskState {
         TaskState::Canceled,
     ];
 
+    /// The wire and storage spelling — `BACKLOG`, `PLANNED`, …
+    ///
+    /// The same five strings the `task_state` enum uses in the database and
+    /// that `#[serde(rename_all = "UPPERCASE")]` produces. Written out rather
+    /// than derived from `Debug`, because `Debug` output is not API and a
+    /// rename would silently change what the database is told.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Backlog => "BACKLOG",
+            Self::Planned => "PLANNED",
+            Self::Active => "ACTIVE",
+            Self::Completed => "COMPLETED",
+            Self::Canceled => "CANCELED",
+        }
+    }
+
+    /// Parse the wire spelling. Unknown input is `None`, never a default —
+    /// a state this build does not know is a row it cannot reason about.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|s| s.as_str() == value)
+    }
+
     /// Terminal states. Leaving one requires `task.reopen`.
     pub fn is_terminal(&self) -> bool {
         matches!(self, TaskState::Completed | TaskState::Canceled)
@@ -82,6 +106,26 @@ pub enum Visibility {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parse_round_trips_every_state_and_refuses_anything_else() {
+        for state in super::TaskState::ALL {
+            assert_eq!(super::TaskState::parse(state.as_str()), Some(state));
+        }
+        assert_eq!(super::TaskState::parse("BLOCKED"), None);
+        assert_eq!(super::TaskState::parse("backlog"), None);
+    }
+
+    #[test]
+    fn the_wire_spelling_matches_what_serde_emits() {
+        // Three places spell these: as_str, serde, and the database enum. A
+        // rename that moved one and not the others would be found by a 500 in
+        // production rather than here.
+        for state in super::TaskState::ALL {
+            let json = serde_json::to_string(&state).expect("serialises");
+            assert_eq!(format!("\"{}\"", state.as_str()), json);
+        }
+    }
+
     use super::*;
 
     /// Golden wire format. If this fails, the permanent state contract changed —

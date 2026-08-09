@@ -230,6 +230,46 @@ pub fn router(state: AppState) -> Router {
         // the caller's own user id — a notification is the one tenant row whose
         // owner is not implied by the workspace.
         .route("/api/v1/workflows/{id}", get(crate::workflows::read))
+        // Workflow authoring (`docs/23` §Editing a workflow). A status delete
+        // carries `?migrate_to=` because a status holding tasks cannot simply
+        // vanish — every task on it moves in the same transaction, attributed
+        // to the admin who asked.
+        .route(
+            "/api/v1/workflows/{id}/statuses",
+            get(crate::workflows::list_statuses).post(crate::workflows::create_status),
+        )
+        .route(
+            "/api/v1/workflows/{id}/statuses/order",
+            axum::routing::post(crate::workflows::reorder_statuses),
+        )
+        .route(
+            "/api/v1/workflows/{id}/statuses/{sid}",
+            axum::routing::patch(crate::workflows::update_status)
+                .delete(crate::workflows::delete_status),
+        )
+        .route(
+            "/api/v1/workflows/{id}/transitions",
+            axum::routing::post(crate::workflows::create_transition),
+        )
+        .route(
+            "/api/v1/workflows/{id}/transitions/{tid}",
+            axum::routing::patch(crate::workflows::update_transition)
+                .delete(crate::workflows::delete_transition),
+        )
+        // Environments. Also an authorization scope (`Scope::Environment`), so
+        // these are part of the permission model and not merely a task field.
+        .route(
+            "/api/v1/projects/{id}/environments",
+            get(crate::environments::list).post(crate::environments::create),
+        )
+        .route(
+            "/api/v1/environments/{id}",
+            axum::routing::patch(crate::environments::rename).delete(crate::environments::delete),
+        )
+        .route(
+            "/api/v1/tasks/{id}/environment",
+            axum::routing::put(crate::environments::set_on_task),
+        )
         .route(
             "/api/v1/permissions/effective",
             get(crate::permissions::effective),
@@ -610,6 +650,14 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/tasks",
     "/api/v1/tasks",
     "/api/v1/workflows/{id}",
+    "/api/v1/workflows/{id}/statuses",
+    "/api/v1/workflows/{id}/statuses/order",
+    "/api/v1/workflows/{id}/statuses/{sid}",
+    "/api/v1/workflows/{id}/transitions",
+    "/api/v1/workflows/{id}/transitions/{tid}",
+    "/api/v1/projects/{id}/environments",
+    "/api/v1/environments/{id}",
+    "/api/v1/tasks/{id}/environment",
     "/api/v1/permissions/effective",
     "/api/v1/permissions/explain",
     "/api/v1/notifications",
