@@ -21,15 +21,24 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { keys } from '../api/keys'
 import { MAX_COMMENT_BYTES, createComment, listComments, type Comment } from '../api/comments'
 import { nextCursor } from '../api/page'
+import { PERMISSIONS } from '../api/permissions'
 import { directory, listMembers } from '../api/workspaces'
 import { useAnnounce } from '../shell/announce'
 import { ErrorNotice } from '../shell/notice'
+import type { Authority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { formatRelative } from '../tasks/present'
 import { useQuery } from '@tanstack/react-query'
 
-export function CommentThread({ taskId }: { taskId: string }): ReactElement {
+export function CommentThread({
+  taskId,
+  authority,
+}: {
+  taskId: string
+  authority: Authority
+}): ReactElement {
   const workspaceId = useWorkspaceId()
+  const mayComment = authority.can(PERMISSIONS.taskComment)
   const announce = useAnnounce()
   const client = useQueryClient()
   const [draft, setDraft] = useState('')
@@ -80,11 +89,7 @@ export function CommentThread({ taskId }: { taskId: string }): ReactElement {
   }
 
   return (
-    <section className="drawer__section" aria-labelledby="comments-heading">
-      <h3 id="comments-heading" className="drawer__section-title">
-        Comments
-      </h3>
-
+    <div className="thread-panel">
       {thread.isPending ? <p className="field__hint">Loading thread…</p> : null}
       {thread.error != null ? <ErrorNotice error={thread.error} /> : null}
       {!thread.isPending && roots.length === 0 ? (
@@ -95,13 +100,15 @@ export function CommentThread({ taskId }: { taskId: string }): ReactElement {
         {roots.map((comment) => (
           <li key={comment.id} className="thread__item">
             <CommentBody comment={comment} nameOf={nameOf} />
-            <button
-              type="button"
-              className="button button--quiet thread__reply"
-              onClick={() => setReplyTo(comment.id)}
-            >
-              Reply
-            </button>
+            {mayComment ? (
+              <button
+                type="button"
+                className="button button--quiet thread__reply"
+                onClick={() => setReplyTo(comment.id)}
+              >
+                Reply
+              </button>
+            ) : null}
             {repliesTo(comment.id).length === 0 ? null : (
               <ol className="thread thread--replies">
                 {repliesTo(comment.id).map((reply) => (
@@ -126,6 +133,7 @@ export function CommentThread({ taskId }: { taskId: string }): ReactElement {
         </button>
       ) : null}
 
+      {mayComment ? (
       <form className="thread__composer" onSubmit={submit}>
         <label className="field__label" htmlFor="comment-draft">
           {replyTo === undefined ? 'Add a comment' : 'Reply'}
@@ -156,7 +164,10 @@ export function CommentThread({ taskId }: { taskId: string }): ReactElement {
         </div>
         {post.isError ? <ErrorNotice error={post.error} /> : null}
       </form>
-    </section>
+      ) : (
+        <p className="field__hint">You do not have permission to comment on this task.</p>
+      )}
+    </div>
   )
 }
 

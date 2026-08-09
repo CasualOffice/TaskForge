@@ -15,18 +15,33 @@
  */
 import { useState, type ReactElement } from 'react'
 
+import { PERMISSIONS } from '../api/permissions'
 import type { Task } from '../api/tasks'
 import { useAnnounce } from '../shell/announce'
 import { ErrorNotice, GapNotice } from '../shell/notice'
+import type { Authority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { useTaskTransition } from '../tasks/mutations'
 import { stateLabel } from '../tasks/present'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
 
-export function TransitionControl({ task }: { task: Task }): ReactElement {
+export function TransitionControl({
+  task,
+  authority,
+}: {
+  task: Task
+  authority: Authority
+}): ReactElement {
   const workspaceId = useWorkspaceId()
   const announce = useAnnounce()
-  const { workflow, unavailable } = useProjectWorkflow(task.project_id)
+  const { workflow, unavailable: missingWorkflow } = useProjectWorkflow(task.project_id)
+  // Two different reasons the control cannot be used, kept apart: one is an
+  // unbuilt endpoint and one is an authority decision. Collapsing them into a
+  // disabled button would tell a user without `task.transition` that the server
+  // is incomplete, and an admin that they lack a grant.
+  const unavailable = authority.can(PERMISSIONS.taskTransition)
+    ? missingWorkflow
+    : 'You do not have permission to change this task’s status.'
   const move = useTaskTransition(workspaceId)
   const [note, setNote] = useState('')
 

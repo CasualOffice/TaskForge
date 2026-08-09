@@ -25,6 +25,14 @@ export interface Command {
   readonly keywords?: string
   /** Shown right-aligned, e.g. a shortcut. Never load-bearing. */
   readonly hint?: string
+  /**
+   * Why this command cannot be run right now.
+   *
+   * Present means the entry renders disabled with the reason. A registered
+   * contribution that is simply omitted makes the registry decorative; one that
+   * runs and fails makes it a lie. This is the third option.
+   */
+  readonly unavailable?: string
   readonly run: () => void
 }
 

@@ -14,6 +14,7 @@
 //! the state machine ([`workflow`]). See `docs/14-EXECUTION-TRACKER.md`.
 
 pub mod authority;
+pub mod explain;
 pub mod workflow;
 
 pub use authority::{Authority, StoredGrant};

@@ -892,3 +892,23 @@ kbd {
   align-items: center;
   gap: var(--space-1);
 }
+
+.palette__option--off {
+  opacity: 0.55;
+  cursor: default;
+}
+.palette__why {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  max-width: 45%;
+  text-align: right;
+}
+.drawer__heading {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.assignees-panel {
+  margin-top: var(--space-4);
+}

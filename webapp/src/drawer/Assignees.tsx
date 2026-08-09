@@ -21,15 +21,24 @@ import { useState, type ReactElement } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
+import { PERMISSIONS } from '../api/permissions'
 import type { Task } from '../api/tasks'
 import { assignTask, unassignTask } from '../api/tasks'
 import { directory, listMembers } from '../api/workspaces'
 import { useAnnounce } from '../shell/announce'
 import { ErrorNotice, GapNotice } from '../shell/notice'
+import type { Authority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 
-export function Assignees({ task }: { task: Task }): ReactElement {
+export function Assignees({
+  task,
+  authority,
+}: {
+  task: Task
+  authority: Authority
+}): ReactElement {
   const workspaceId = useWorkspaceId()
+  const mayAssign = authority.can(PERMISSIONS.taskAssign)
   const announce = useAnnounce()
   const [known, setKnown] = useState<readonly string[] | undefined>(undefined)
   const [chosen, setChosen] = useState('')
@@ -60,10 +69,8 @@ export function Assignees({ task }: { task: Task }): ReactElement {
   })
 
   return (
-    <section className="drawer__section" aria-labelledby="assignees-heading">
-      <h3 id="assignees-heading" className="drawer__section-title">
-        Assignees
-      </h3>
+    <div className="assignees-panel">
+      <h4 className="drawer__section-title">Assignees</h4>
 
       {known === undefined ? (
         <GapNotice what="The assignee list is not readable yet." tracker="C-008">
@@ -79,19 +86,22 @@ export function Assignees({ task }: { task: Task }): ReactElement {
           {known.map((id) => (
             <li key={id} className="assignees__row">
               <span>{nameOf(id)}</span>
-              <button
-                type="button"
-                className="button button--quiet"
-                disabled={unassign.isPending}
-                onClick={() => unassign.mutate(id)}
-              >
-                Remove
-              </button>
+              {mayAssign ? (
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  disabled={unassign.isPending}
+                  onClick={() => unassign.mutate(id)}
+                >
+                  Remove
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
 
+      {mayAssign ? (
       <div className="field">
         <label className="field__label" htmlFor="assignee-picker">
           Assign someone
@@ -120,9 +130,10 @@ export function Assignees({ task }: { task: Task }): ReactElement {
           </button>
         </div>
       </div>
+      ) : null}
 
       {assign.isError ? <ErrorNotice error={assign.error} /> : null}
       {unassign.isError ? <ErrorNotice error={unassign.error} /> : null}
-    </section>
+    </div>
   )
 }

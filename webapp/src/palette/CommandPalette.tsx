@@ -23,24 +23,31 @@
  * input, which is what lets arrow keys move the selection while typing keeps
  * working — the pattern WCAG 2.2 expects, and the one a `div` with `onKeyDown`
  * only approximates.
+ *
+ * The command *contents* are not here: they come from the extension point
+ * registry through `palette/registry.ts`. See that file for why.
  */
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
-import { listTasks } from '../api/tasks'
+import { PERMISSIONS } from '../api/permissions'
+import { listProjects } from '../api/projects'
+import { createTask, listTasks } from '../api/tasks'
+import { useAnnounce } from '../shell/announce'
 import { useFocusTrap } from '../shell/focusTrap'
-import { useOpenTask, useUpdateSearch } from '../shell/navigation'
+import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
+import { useAuthority } from '../shell/permissions'
 import { useSession, useWorkspaceId } from '../shell/session'
-import { rank, type Command } from './commands'
+import { rank } from './commands'
+import { buildCommands } from './registry'
 
 /** Long enough not to query per keystroke; the command half stays instant regardless. */
 const DEBOUNCE_MS = 200
 
 export function CommandPalette(): ReactElement | null {
   const [open, setOpen] = useState(false)
-  const [term, setTerm] = useState('')
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -56,31 +63,25 @@ export function CommandPalette(): ReactElement | null {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  useEffect(() => {
-    if (!open) setTerm('')
-  }, [open])
-
   if (!open) return null
-  return <PaletteOverlay term={term} setTerm={setTerm} close={() => setOpen(false)} />
+  return <PaletteOverlay close={() => setOpen(false)} />
 }
 
-function PaletteOverlay({
-  term,
-  setTerm,
-  close,
-}: {
-  term: string
-  setTerm: (next: string) => void
-  close: () => void
-}): ReactElement {
+function PaletteOverlay({ close }: { close: () => void }): ReactElement {
   const panel = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
+  const client = useQueryClient()
+  const announce = useAnnounce()
   const openTask = useOpenTask()
   const update = useUpdateSearch()
+  const search = useAppSearch()
   const workspaceId = useWorkspaceId()
   const { workspaces, chooseWorkspace } = useSession()
+  const authority = useAuthority(search.project)
+
+  const [term, setTerm] = useState('')
   const [highlighted, setHighlighted] = useState(0)
-  const [debounced, setDebounced] = useState(term)
+  const [debounced, setDebounced] = useState('')
 
   useFocusTrap(panel, close)
 
@@ -89,48 +90,63 @@ function PaletteOverlay({
     return () => clearTimeout(timer)
   }, [term])
 
-  const commands = useMemo<Command[]>(() => {
-    const go = (to: string) => () => {
-      void navigate({ to, search: (current: Record<string, unknown>) => current })
+  const projects = useQuery({
+    queryKey: keys.projects(workspaceId),
+    queryFn: ({ signal }) => listProjects(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+
+  const create = useMutation({
+    mutationFn: ({ projectId, title }: { projectId: string; title: string }) =>
+      createTask(workspaceId, projectId, { title }),
+    onSuccess: (task) => {
+      announce(`Created ${task.key}`)
+      void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
+      openTask(task.id)
       close()
-    }
-    const built: Command[] = [
-      { id: 'go-my-work', title: 'Go to My Work', group: 'Go', keywords: 'mine assigned', run: go('/my-work') },
-      { id: 'go-list', title: 'Go to Tasks', group: 'Go', keywords: 'list table', run: go('/') },
-      { id: 'go-board', title: 'Go to Board', group: 'Go', keywords: 'kanban columns', run: go('/board') },
-      { id: 'go-reports', title: 'Go to Reports', group: 'Go', keywords: 'charts metrics', run: go('/reports') },
-      {
-        id: 'view-clear',
-        title: 'Clear filters',
-        group: 'View',
-        keywords: 'reset all projects',
-        run: () => {
+    },
+  })
+
+  const go = useCallback(
+    (to: string) => {
+      void navigate({ to, search: ((current: unknown) => current) as never })
+      close()
+    },
+    [navigate, close],
+  )
+
+  const commands = useMemo(
+    () =>
+      buildCommands({
+        term,
+        projects: (projects.data?.data ?? []).map((p) => ({ id: p.id, key: p.key, name: p.name })),
+        scopedProject: search.project,
+        workspaces: workspaces.map((w) => ({ id: w.id, name: w.name, slug: w.slug })),
+        mayCreateTask: authority.can(PERMISSIONS.taskCreate),
+        go,
+        setProject: (id) => {
+          update({ project: id })
+          close()
+        },
+        chooseWorkspace: (id) => {
+          chooseWorkspace(id)
+          close()
+        },
+        createTask: (projectId, title) => create.mutate({ projectId, title }),
+        clearFilters: () => {
           update({ project: undefined, q: undefined })
           close()
         },
-      },
-    ]
-    for (const workspace of workspaces) {
-      built.push({
-        id: `ws-${workspace.id}`,
-        title: `Switch to ${workspace.name}`,
-        group: 'Go',
-        keywords: `workspace ${workspace.slug}`,
-        run: () => {
-          chooseWorkspace(workspace.id)
-          close()
-        },
-      })
-    }
-    return built
-  }, [navigate, close, update, workspaces, chooseWorkspace])
+      }),
+    [term, projects.data, search.project, workspaces, authority, go, update, close, chooseWorkspace, create],
+  )
 
   const matches = useMemo(() => rank(commands, term).slice(0, 8), [commands, term])
 
   const tasks = useQuery({
     queryKey: [...keys.taskLists(workspaceId), 'palette', debounced],
-    queryFn: ({ signal }) =>
-      listTasks(workspaceId, { filter: { q: debounced }, limit: 8 }, signal),
+    queryFn: ({ signal }) => listTasks(workspaceId, { filter: { q: debounced }, limit: 8 }, signal),
     enabled: workspaceId !== '' && debounced.trim().length >= 2,
     staleTime: 30_000,
   })
@@ -143,6 +159,7 @@ function PaletteOverlay({
   function activate(index: number): void {
     const command = matches[index]
     if (command !== undefined) {
+      if (command.unavailable !== undefined) return
       command.run()
       return
     }
@@ -193,13 +210,22 @@ function PaletteOverlay({
               id={optionId(index)}
               role="option"
               aria-selected={highlighted === index}
-              className={`palette__option${highlighted === index ? ' palette__option--on' : ''}`}
+              aria-disabled={command.unavailable !== undefined}
+              className={`palette__option${highlighted === index ? ' palette__option--on' : ''}${
+                command.unavailable === undefined ? '' : ' palette__option--off'
+              }`}
               onMouseEnter={() => setHighlighted(index)}
               onClick={() => activate(index)}
             >
               <span className="palette__group">{command.group}</span>
               <span className="palette__title">{command.title}</span>
-              {command.hint === undefined ? null : <kbd>{command.hint}</kbd>}
+              {command.unavailable === undefined ? (
+                command.hint === undefined ? null : (
+                  <kbd>{command.hint}</kbd>
+                )
+              ) : (
+                <span className="palette__why">{command.unavailable}</span>
+              )}
             </li>
           ))}
 

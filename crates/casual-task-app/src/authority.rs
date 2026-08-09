@@ -20,10 +20,14 @@
 //! could not read — turns a narrowed grant into a full one, which is the
 //! failure direction that hands out authority nobody granted.
 
+use std::collections::BTreeMap;
+
 use casual_task_authz::{Actor, Constraint, Decision, Grant, Principal, ResourceFacts, Scope};
 use casual_task_model::{
     EnvironmentId, Permission, ProjectId, TeamId, UserId, WorkspaceId, permission,
 };
+
+use crate::explain::{ContributingGrant, Effective, Explanation, Reach, constraint_name};
 
 /// One `(assignment, permission)` pair as the persistence layer reads it.
 ///
@@ -214,6 +218,139 @@ impl Authority {
         }
         casual_task_authz::allows(&self.actor, permission, &scopes, facts, &self.grants)
     }
+
+    /// Every permission the actor holds in `resource`, with how far it reaches.
+    ///
+    /// `docs/04` calls this "what the client uses to render affordances", and
+    /// the two ways to get it wrong are in `crate::explain`'s module docs: a
+    /// raw union produces buttons the API then refuses, and evaluating
+    /// constrained grants against empty facts hides features the actor has.
+    /// So this reports [`Reach`] rather than a yes.
+    ///
+    /// Sorted and deduplicated: the same permission can arrive from several
+    /// grants, and a client rendering a menu should not see it twice.
+    fn effective_in(&self, resource: &casual_task_authz::ResourceScopes) -> Vec<Effective> {
+        let mut reach: BTreeMap<Permission, Reach> = BTreeMap::new();
+        for (permission, constraints) in
+            casual_task_authz::effective(&self.actor, resource, &self.grants)
+        {
+            let this = if constraints.is_empty() {
+                Reach::Unconditional
+            } else {
+                Reach::Conditional
+            };
+            // Unconditional wins: an unconstrained grant beats a constrained
+            // one, which is the resolver's own combining rule (`docs/04`).
+            // Recording Conditional over it would understate the actor's
+            // authority and hide a control they can always use.
+            reach
+                .entry(permission)
+                .and_modify(|held| {
+                    if this == Reach::Unconditional {
+                        *held = Reach::Unconditional;
+                    }
+                })
+                .or_insert(this);
+        }
+        reach
+            .into_iter()
+            .map(|(permission, reach)| Effective { permission, reach })
+            .collect()
+    }
+
+    /// The actor's effective permission set at workspace scope.
+    #[must_use]
+    pub fn effective_in_workspace(&self) -> Vec<Effective> {
+        self.effective_in(&casual_task_authz::ResourceScopes::workspace(self.workspace))
+    }
+
+    /// The actor's effective permission set in `project`.
+    #[must_use]
+    pub fn effective_in_project(&self, project: ProjectId, team: Option<TeamId>) -> Vec<Effective> {
+        let mut scopes = casual_task_authz::ResourceScopes::project(self.workspace, project);
+        if let Some(team) = team {
+            scopes = scopes.in_team(team);
+        }
+        self.effective_in(&scopes)
+    }
+
+    /// The decision and the grants behind it, owned.
+    ///
+    /// Owned rather than borrowed so a handler can serialise the answer
+    /// without holding a borrow of `self.grants` across an `await`; see
+    /// `crate::explain`.
+    fn explained(
+        &self,
+        permission: Permission,
+        scopes: &casual_task_authz::ResourceScopes,
+        facts: &ResourceFacts,
+    ) -> Explanation {
+        let decision =
+            casual_task_authz::allows(&self.actor, permission, scopes, facts, &self.grants);
+        let contributing = casual_task_authz::explain(
+            &self.actor,
+            permission,
+            scopes,
+            facts,
+            &self.grants,
+        )
+        .into_iter()
+        .map(|c| ContributingGrant {
+            scope_type: scope_type_name(c.grant.scope),
+            scope_id: scope_id(c.grant.scope),
+            permission,
+            constraints: c.grant.constraints.iter().map(constraint_name).collect(),
+            constraints_satisfied: c.constraints_satisfied,
+        })
+        .collect();
+        Explanation::new(&decision, contributing)
+    }
+
+    /// Explain a permission at workspace scope.
+    #[must_use]
+    pub fn explain_in_workspace(&self, permission: Permission) -> Explanation {
+        self.explained(
+            permission,
+            &casual_task_authz::ResourceScopes::workspace(self.workspace),
+            &ResourceFacts::default(),
+        )
+    }
+
+    /// Explain a permission on a resource in `project`.
+    #[must_use]
+    pub fn explain_in_project(
+        &self,
+        permission: Permission,
+        project: ProjectId,
+        team: Option<TeamId>,
+        facts: &ResourceFacts,
+    ) -> Explanation {
+        let mut scopes = casual_task_authz::ResourceScopes::project(self.workspace, project);
+        if let Some(team) = team {
+            scopes = scopes.in_team(team);
+        }
+        self.explained(permission, &scopes, facts)
+    }
+}
+
+/// The stored spelling of a scope type, so an explanation names the row an
+/// admin would go and look at.
+fn scope_type_name(scope: Scope) -> &'static str {
+    match scope {
+        Scope::Workspace(_) => "WORKSPACE",
+        Scope::Team(_) => "TEAM",
+        Scope::Project(_) => "PROJECT",
+        Scope::Environment(_) => "ENVIRONMENT",
+    }
+}
+
+fn scope_id(scope: Scope) -> uuid::Uuid {
+    match scope {
+        Scope::Workspace(id) => id.as_uuid(),
+        Scope::Team(id) => id.as_uuid(),
+        Scope::Project(id) => id.as_uuid(),
+        Scope::Environment(id) => id.as_uuid(),
+    }
 }
 
 #[cfg(test)]
@@ -228,6 +365,201 @@ mod tests {
             constraints: serde_json::json!({}),
             permission: permission.to_owned(),
         }
+    }
+
+    fn constrained(
+        scope_type: &str,
+        id: uuid::Uuid,
+        permission: &str,
+        constraints: serde_json::Value,
+    ) -> StoredGrant {
+        StoredGrant {
+            scope_type: scope_type.to_owned(),
+            scope_id: id,
+            constraints,
+            permission: permission.to_owned(),
+        }
+    }
+
+    #[test]
+    fn an_unconstrained_grant_reaches_unconditionally() {
+        let (actor, workspace) = (UserId::new(), WorkspaceId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[stored("WORKSPACE", workspace.as_uuid(), "task.close")],
+        );
+        assert_eq!(
+            authority.effective_in_workspace(),
+            vec![Effective {
+                permission: permission::TASK_CLOSE,
+                reach: Reach::Unconditional
+            }]
+        );
+    }
+
+    #[test]
+    fn a_constrained_grant_is_reported_as_conditional_not_dropped() {
+        // The failure this prevents: evaluating "you may close tasks you are
+        // assigned to" against empty facts and reporting "you may not close
+        // tasks" — a feature the actor holds and never sees.
+        let (actor, workspace) = (UserId::new(), WorkspaceId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[constrained(
+                "WORKSPACE",
+                workspace.as_uuid(),
+                "task.close",
+                serde_json::json!({ "assignee_is_actor": true }),
+            )],
+        );
+        assert_eq!(
+            authority.effective_in_workspace(),
+            vec![Effective {
+                permission: permission::TASK_CLOSE,
+                reach: Reach::Conditional
+            }]
+        );
+    }
+
+    #[test]
+    fn an_unconstrained_grant_beats_a_constrained_one_for_the_same_permission() {
+        // The resolver's own combining rule: an unconstrained grant wins
+        // outright. Reporting Conditional here would understate authority and
+        // hide a control the actor can always use.
+        let (actor, workspace) = (UserId::new(), WorkspaceId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[
+                constrained(
+                    "WORKSPACE",
+                    workspace.as_uuid(),
+                    "task.close",
+                    serde_json::json!({ "assignee_is_actor": true }),
+                ),
+                stored("WORKSPACE", workspace.as_uuid(), "task.close"),
+            ],
+        );
+        assert_eq!(
+            authority.effective_in_workspace(),
+            vec![Effective {
+                permission: permission::TASK_CLOSE,
+                reach: Reach::Unconditional
+            }],
+            "reported once, and unconditionally"
+        );
+    }
+
+    #[test]
+    fn the_effective_set_never_repeats_a_permission() {
+        let (actor, workspace) = (UserId::new(), WorkspaceId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[
+                stored("WORKSPACE", workspace.as_uuid(), "task.read"),
+                stored("WORKSPACE", workspace.as_uuid(), "task.read"),
+            ],
+        );
+        assert_eq!(authority.effective_in_workspace().len(), 1);
+    }
+
+    #[test]
+    fn explaining_a_permission_nobody_granted_says_no_grant_and_lists_nothing() {
+        let (actor, workspace) = (UserId::new(), WorkspaceId::new());
+        let authority = Authority::resolved(actor, workspace, Vec::new(), false, &[]);
+        let explanation = authority.explain_in_workspace(permission::TASK_CLOSE);
+        assert!(!explanation.allowed);
+        assert_eq!(explanation.deny_reason, Some("no_grant"));
+        assert!(explanation.contributing.is_empty());
+    }
+
+    #[test]
+    fn a_grant_can_contribute_and_still_not_allow() {
+        // This is the whole point of `/explain`. "You have task.close through a
+        // workspace grant, but it requires you to be the assignee and you are
+        // not" is a useful answer; "no" is not.
+        let (actor, workspace, project) = (UserId::new(), WorkspaceId::new(), ProjectId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[constrained(
+                "WORKSPACE",
+                workspace.as_uuid(),
+                "task.close",
+                serde_json::json!({ "assignee_is_actor": true }),
+            )],
+        );
+        let explanation = authority.explain_in_project(
+            permission::TASK_CLOSE,
+            project,
+            None,
+            &ResourceFacts::default(),
+        );
+        assert!(!explanation.allowed);
+        assert_eq!(explanation.deny_reason, Some("constraint_unsatisfied"));
+        assert_eq!(explanation.contributing.len(), 1, "the grant is named");
+        let grant = &explanation.contributing[0];
+        assert_eq!(grant.scope_type, "WORKSPACE");
+        assert_eq!(grant.scope_id, workspace.as_uuid());
+        assert_eq!(grant.constraints, vec!["assignee_is_actor"]);
+        assert!(!grant.constraints_satisfied);
+    }
+
+    #[test]
+    fn the_same_grant_satisfies_once_the_facts_hold() {
+        let (actor, workspace, project) = (UserId::new(), WorkspaceId::new(), ProjectId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[constrained(
+                "WORKSPACE",
+                workspace.as_uuid(),
+                "task.close",
+                serde_json::json!({ "assignee_is_actor": true }),
+            )],
+        );
+        let facts = ResourceFacts {
+            assignees: vec![actor],
+            ..ResourceFacts::default()
+        };
+        let explanation =
+            authority.explain_in_project(permission::TASK_CLOSE, project, None, &facts);
+        assert!(explanation.allowed);
+        assert_eq!(explanation.deny_reason, None);
+        assert!(explanation.contributing[0].constraints_satisfied);
+    }
+
+    #[test]
+    fn an_explanation_never_names_a_grant_from_another_workspace() {
+        // `applicable` filters on workspace before anything else, and this
+        // asserts the explanation inherits that rather than re-deriving it.
+        let (actor, workspace, elsewhere) =
+            (UserId::new(), WorkspaceId::new(), WorkspaceId::new());
+        let authority = Authority::resolved(
+            actor,
+            workspace,
+            Vec::new(),
+            false,
+            &[stored("WORKSPACE", elsewhere.as_uuid(), "task.close")],
+        );
+        let explanation = authority.explain_in_workspace(permission::TASK_CLOSE);
+        assert!(explanation.contributing.is_empty());
+        assert_eq!(explanation.deny_reason, Some("no_grant"));
     }
 
     #[test]

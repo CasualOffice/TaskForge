@@ -30,6 +30,7 @@ pub mod json;
 pub mod middleware;
 pub mod notifications;
 pub mod password_reset;
+pub mod permissions;
 pub mod projects;
 pub mod rate_limit;
 pub mod server;

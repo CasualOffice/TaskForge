@@ -564,6 +564,57 @@ pub async fn grant_at_workspace(
     Ok(role)
 }
 
+/// Grant a user a role carrying `permissions`, narrowed by `constraints`.
+///
+/// The constrained form exists because a constrained grant and an unconstrained
+/// one take different paths through the resolver's combining rule, and
+/// `/permissions/effective` reports them differently — one is exercisable
+/// everywhere in the scope and one only where its constraints hold. A suite
+/// that could only build unconstrained grants could not tell those apart.
+///
+/// `constraints` is the same JSON shape the `role_assignment.constraints`
+/// column stores, in `docs/04` §Constraint set's snake_case.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn grant_at_workspace_constrained(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    permissions: &[&str],
+    constraints: serde_json::Value,
+) -> Result<Uuid, sqlx::Error> {
+    let role = Uuid::now_v7();
+    sqlx::query("INSERT INTO role (id, workspace_id, name) VALUES ($1,$2,$3)")
+        .bind(role)
+        .bind(workspace_id)
+        .bind(format!("test-{role}"))
+        .execute(pool)
+        .await?;
+    for permission in permissions {
+        sqlx::query("INSERT INTO role_permission (role_id, permission) VALUES ($1,$2)")
+            .bind(role)
+            .bind(*permission)
+            .execute(pool)
+            .await?;
+    }
+    sqlx::query(
+        "INSERT INTO role_assignment
+             (id, workspace_id, principal_type, principal_id, role_id,
+              scope_type, scope_id, granted_by, constraints)
+         VALUES ($1,$2,'USER'::principal_type,$3,$4,'WORKSPACE'::scope_type,$2,$3,$5)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind(role)
+    .bind(constraints)
+    .execute(pool)
+    .await?;
+    Ok(role)
+}
+
 /// How many history rows one aggregate has: activity, audit, outbox, delivery.
 ///
 /// ADR-006 makes all four a property of a single transaction, so a test that

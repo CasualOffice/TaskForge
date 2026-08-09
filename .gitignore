@@ -5,6 +5,9 @@ Cargo.lock.bak
 .env.*
 !.env.example
 /data
+
+# scripts/dev-up.sh's runtime state: pids, logs, a cookie jar.
+/.dev
 node_modules
 webapp/dist
 webapp/.vite

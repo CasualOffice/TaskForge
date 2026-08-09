@@ -25,15 +25,27 @@
  */
 import { useEffect, useState, type ReactElement } from 'react'
 
+import { PERMISSIONS } from '../api/permissions'
 import { PRIORITIES, TASK_TYPES, type Priority, type Task, type TaskType } from '../api/tasks'
 import { useAnnounce } from '../shell/announce'
+import type { Authority } from '../shell/permissions'
 import { ErrorNotice } from '../shell/notice'
 import { useWorkspaceId } from '../shell/session'
 import { fromDateInput, priorityLabel, toDateInput, typeLabel } from '../tasks/present'
 import { useTaskPatch } from '../tasks/mutations'
 
-export function TaskFields({ task }: { task: Task }): ReactElement {
+export function TaskFields({
+  task,
+  authority,
+}: {
+  task: Task
+  authority: Authority
+}): ReactElement {
   const workspaceId = useWorkspaceId()
+  // `docs/04` resolves this; the client only asks. A `conditional` grant counts
+  // as permission — only the server can evaluate the constraint for this task,
+  // and hiding it would hide the reporter's own edit on the task they reported.
+  const mayEdit = authority.can(PERMISSIONS.taskUpdate)
   const announce = useAnnounce()
   const patch = useTaskPatch(workspaceId)
 
@@ -60,10 +72,10 @@ export function TaskFields({ task }: { task: Task }): ReactElement {
   }
 
   return (
-    <section className="drawer__section" aria-labelledby="fields-heading">
-      <h3 id="fields-heading" className="visually-hidden">
-        Task fields
-      </h3>
+    <div className="fields">
+      {mayEdit ? null : (
+        <p className="field__hint">You can read this task but not change it.</p>
+      )}
 
       <div className="field">
         <label className="field__label" htmlFor="task-title">
@@ -73,6 +85,7 @@ export function TaskFields({ task }: { task: Task }): ReactElement {
           id="task-title"
           className="input drawer__title-input"
           value={title}
+          readOnly={!mayEdit}
           onChange={(event) => setTitle(event.target.value)}
           onBlur={() => {
             if (titleDirty && title.trim() !== '') save({ title: title.trim() }, 'Title saved')
@@ -89,9 +102,10 @@ export function TaskFields({ task }: { task: Task }): ReactElement {
           className="textarea"
           rows={5}
           value={description}
+          readOnly={!mayEdit}
           onChange={(event) => setDescription(event.target.value)}
         />
-        {descriptionDirty ? (
+        {descriptionDirty && mayEdit ? (
           <div className="field__actions">
             <button
               type="button"
@@ -131,6 +145,7 @@ export function TaskFields({ task }: { task: Task }): ReactElement {
             value={task.type}
             options={TASK_TYPES}
             render={typeLabel}
+            disabled={!mayEdit}
             onChange={(next) => save({ type: next as TaskType }, `Type set to ${typeLabel(next)}`)}
           />
           <Choice
@@ -139,6 +154,7 @@ export function TaskFields({ task }: { task: Task }): ReactElement {
             value={task.priority}
             options={PRIORITIES}
             render={priorityLabel}
+            disabled={!mayEdit}
             onChange={(next) =>
               save({ priority: next as Priority }, `Priority set to ${priorityLabel(next)}`)
             }
@@ -147,19 +163,21 @@ export function TaskFields({ task }: { task: Task }): ReactElement {
             id="task-start"
             label="Start"
             value={task.start_at}
+            disabled={!mayEdit}
             onChange={(next) => save({ start_at: next }, 'Start date saved')}
           />
           <DateField
             id="task-due"
             label="Due"
             value={task.due_at}
+            disabled={!mayEdit}
             onChange={(next) => save({ due_at: next }, 'Due date saved')}
           />
         </div>
       ) : null}
 
       {patch.isError ? <ErrorNotice error={patch.error} /> : null}
-    </section>
+    </div>
   )
 }
 
@@ -169,6 +187,7 @@ function Choice({
   value,
   options,
   render,
+  disabled,
   onChange,
 }: {
   id: string
@@ -176,6 +195,7 @@ function Choice({
   value: string
   options: readonly string[]
   render: (value: string) => string
+  disabled: boolean
   onChange: (next: string) => void
 }): ReactElement {
   return (
@@ -187,6 +207,7 @@ function Choice({
         id={id}
         className="select"
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       >
         {options.map((option) => (
@@ -203,11 +224,13 @@ function DateField({
   id,
   label,
   value,
+  disabled,
   onChange,
 }: {
   id: string
   label: string
   value: string | null
+  disabled: boolean
   onChange: (next: string | null) => void
 }): ReactElement {
   return (
@@ -219,6 +242,7 @@ function DateField({
         id={id}
         className="input"
         type="date"
+        disabled={disabled}
         value={toDateInput(value)}
         onChange={(event) => onChange(fromDateInput(event.target.value))}
       />

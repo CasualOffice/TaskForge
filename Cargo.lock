@@ -510,6 +510,7 @@ name = "casual-task-seed"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "casual-task-identity",
  "casual-task-model",
  "clap",
  "rand 0.9.5",
