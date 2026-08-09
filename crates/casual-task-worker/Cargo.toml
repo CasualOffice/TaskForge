@@ -32,6 +32,7 @@ serde_json = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 anyhow = { workspace = true }
+casual-task-infra = { workspace = true }
 
 [lints]
 workspace = true
