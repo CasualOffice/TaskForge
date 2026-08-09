@@ -41,7 +41,7 @@ export function ActiveFilters({
   if (filters.length === 0) return null
 
   return (
-    <div className="active" role="group" aria-label="Active filters">
+    <div className="activefilters" role="group" aria-label="Active filters">
       {filters.map((filter) => (
         <button
           key={String(filter.key)}

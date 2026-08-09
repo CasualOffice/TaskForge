@@ -89,12 +89,46 @@ body {
   background: var(--tf-surface);
 }
 
+/* The brand: mark and wordmark together, in the header. It moved off the rail
+   because a product's identity belongs on the bar that spans the window, and
+   the rail is for destinations. */
+.shell__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  color: inherit;
+  text-decoration: none;
+}
 .shell__wordmark {
   font: var(--tf-card-title);
   letter-spacing: -0.01em;
   color: var(--tf-text);
   /* VISUAL-IDENTITY §5: clear space of at least 25% of the mark's width. */
   padding-right: var(--tf-space-2);
+}
+
+/* Nothing in the header wraps. It is a single row of controls, and a "Sign
+   out" broken across two lines makes the bar taller than the layout budgets
+   for it — every view below is sized against `--tf-global-bar-h`. */
+.shell__top > * {
+  flex: none;
+  white-space: nowrap;
+}
+.shell__top .shell__spacer {
+  flex: 1;
+}
+
+/* Search, as a labelled control rather than the decorative shortcut chip it
+   replaced. The kbd is a hint inside the button, not the button itself. */
+.shell__search {
+  gap: var(--tf-space-2);
+}
+.shell__search-icon {
+  display: inline-flex;
+}
+.shell__search kbd {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 /* ── Product rail (LAYOUT §2, §3) ────────────────────────────────────────── */
@@ -112,15 +146,6 @@ body {
    * ever needs to scroll, the destination list has outgrown §3 and the fix is
    * fewer destinations, not an overflow. */
   overflow: visible;
-}
-
-.rail__mark {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  margin-bottom: var(--tf-space-1);
-  border-radius: var(--tf-radius-control);
 }
 
 /* Pushed to the foot of the rail, away from the work destinations. `margin-top`
@@ -214,9 +239,6 @@ body {
     padding: 0;
     border-right: 0;
     border-top: 1px solid var(--tf-border);
-  }
-  .rail__mark {
-    display: none;
   }
   .rail__group {
     flex-direction: row;
@@ -550,11 +572,6 @@ kbd {
 .workspace__single {
   font-weight: 600;
 }
-.palette-hint {
-  display: inline-flex;
-  gap: 2px;
-}
-
 /* ── List ────────────────────────────────────────────────────────────────── */
 
 .view__bar--sub {
@@ -1471,9 +1488,16 @@ kbd {
   color: var(--tf-text-secondary, var(--color-text-secondary));
 }
 
-/* The second toolbar row. Full width so it wraps under the controls rather than
- * squeezing between them. */
-.active {
+/* The second toolbar row — the active filter chips. Full width so it wraps under
+ * the controls rather than squeezing between them.
+ *
+ * It was called `.active`, which is the class TanStack Router puts on every
+ * `<Link>` whose route is current. Any active link in the product therefore
+ * inherited `flex-basis: 100%` and a top border — invisible until a link landed
+ * in a flex row, at which point the header's brand became 1380 px wide and
+ * pushed every control off the screen. A bare state word is not a class name.
+ */
+.activefilters {
   flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;

@@ -50,10 +50,17 @@ export function AppFrame(): ReactElement {
       </a>
 
       <header className="shell__top">
-        <span className="shell__wordmark">TaskForge</span>
+        {/* The mark lives here, with the wordmark, rather than at the head of
+            the rail: a product's identity belongs on the bar that spans the
+            window, and the rail is for destinations. It is the same file the
+            favicon uses, so the two cannot drift into two different marks. */}
+        <Link to="/my-work" className="shell__brand" aria-label="TaskForge — My Work">
+          <img src="/brand/taskforge-mark.svg" alt="" width={22} height={22} />
+          <span className="shell__wordmark">TaskForge</span>
+        </Link>
         <WorkspaceSwitcher />
         <span className="shell__spacer" />
-        <PaletteHint />
+        <SearchButton />
         <ThemeToggle />
         <SignOutButton onSignedOut={forget} />
       </header>
@@ -93,30 +100,24 @@ export function AppFrame(): ReactElement {
  * choice is between a label everyone can read and one only a screen reader
  * gets. 56 px is enough for both at `--tf-meta`.
  *
- * # Search is a command, not a route
+ * # Search is in the header, not here
  *
  * §3 names Search a permanent destination *and* makes `Cmd/Ctrl+K` "a primary
  * interaction surface for create, jump, assign, transition, search". There is
- * one search in the product and it lives in the palette, so the rail opens the
- * palette rather than routing somewhere that would have to reimplement it. The
- * rail entry exists because the same section warns that "command palette
- * capability must not justify hiding essential discoverable actions".
+ * one search in the product and it lives in the palette. It sits in the header
+ * as a labelled button rather than in this rail: the rail is for *places*, and
+ * search is not one — it is the way you get to a place. The same section's
+ * warning that "command palette capability must not justify hiding essential
+ * discoverable actions" is answered by that button, which names the action and
+ * its shortcut, rather than by a rail entry that opened an overlay.
  */
 function ProductRail(): ReactElement {
   return (
     <nav className="rail" aria-label="Primary">
-      <Link to="/my-work" className="rail__mark" aria-label="TaskForge — My Work">
-        {/* The mark, per VISUAL-IDENTITY §3 ("app rail") and §6 (24–32 px).
-            An <img> rather than an inline SVG: it is the same file the favicon
-            uses, so the two cannot drift into two different marks. */}
-        <img src="/brand/taskforge-mark.svg" alt="" width={26} height={26} />
-      </Link>
-
       <ul className="rail__group">
         <RailLink to="/my-work" label="My Work" icon={<IconMyWork />} />
         <RailLink to="/" label="Tasks" icon={<IconTasks />} exact />
         <RailLink to="/board" label="Board" icon={<IconBoard />} />
-        <RailSearch />
         <RailLink to="/reports" label="Reports" icon={<IconReports />} />
       </ul>
 
@@ -165,30 +166,35 @@ function RailLink({
 }
 
 /**
- * Opens the command palette.
+ * Opens the command palette, from the header.
  *
- * Dispatches the shortcut rather than lifting the palette's open state: that
- * state belongs to `CommandPalette`, which owns the keyboard contract, and
- * routing it through a shared store would give the same behaviour two owners.
- * The synthetic event goes to the same `window` listener a real keypress does,
- * so there is exactly one code path into the palette.
+ * # Why it is a button and not the shortcut hint it replaced
+ *
+ * The rail used to carry a Search entry, because §3 warns that "command palette
+ * capability must not justify hiding essential discoverable actions" — and the
+ * thing beside it was a `⌘K` chip marked `aria-hidden`, which is decoration: a
+ * pointer user could not press it and a screen-reader user never heard it. Now
+ * that search has left the rail, this is the affordance that keeps it
+ * discoverable, and it names the shortcut instead of only drawing it.
+ *
+ * It dispatches the shortcut rather than lifting the palette's open state: that
+ * state belongs to `CommandPalette`, which owns the keyboard contract. The
+ * synthetic event reaches the same `window` listener a real keypress does, so
+ * there is exactly one code path into the palette.
  */
-function RailSearch(): ReactElement {
+function SearchButton(): ReactElement {
   return (
-    <li>
-      <button
-        type="button"
-        className="rail__link"
-        onClick={() =>
-          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
-        }
-      >
-        <span className="rail__icon" aria-hidden="true">
-          <IconSearch />
-        </span>
-        <span className="rail__label">Search</span>
-      </button>
-    </li>
+    <button
+      type="button"
+      className="button button--quiet shell__search"
+      onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+    >
+      <span className="shell__search-icon" aria-hidden="true">
+        <IconSearch />
+      </span>
+      Search
+      <kbd aria-hidden="true">⌘K</kbd>
+    </button>
   )
 }
 
@@ -266,15 +272,6 @@ function IconSettings(): ReactElement {
       <circle cx="10" cy="10" r="2.6" />
       <path d="M10 3v1.8M10 15.2V17M17 10h-1.8M4.8 10H3M14.9 5.1l-1.3 1.3M6.4 13.6l-1.3 1.3M14.9 14.9l-1.3-1.3M6.4 6.4 5.1 5.1" />
     </svg>
-  )
-}
-
-function PaletteHint(): ReactElement {
-  return (
-    <span className="palette-hint" aria-hidden="true">
-      <kbd>⌘</kbd>
-      <kbd>K</kbd>
-    </span>
   )
 }
 
