@@ -57,6 +57,7 @@ import { stateLabel } from '../tasks/present'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
 import { BoardColumn, type Column } from './board/BoardColumn'
 import { CreateTask } from './CreateTask'
+import { PageHeader } from '../shell/PageHeader'
 import { WorkToolbar } from './filters/WorkToolbar'
 
 export function BoardView(): ReactElement {
@@ -173,16 +174,12 @@ export function BoardView(): ReactElement {
   )
 
   return (
-    <section className="view" aria-labelledby="board-heading">
-      <h1 id="board-heading" className="visually-hidden">
-        Board
-      </h1>
+    <section className="view" aria-labelledby="page-title">
+      <PageHeader title="Board" actions={<CreateTask projectId={search.project} />} />
       {/* No sort control: a board is ordered by board rank (ADR-013) and by
           nothing else — offering "sort by due date" would silently disable the
           drag that writes that rank. */}
-      <WorkToolbar>
-        <CreateTask projectId={search.project} />
-      </WorkToolbar>
+      <WorkToolbar />
 
       {move.isError ? (
         <div className="board__notice">

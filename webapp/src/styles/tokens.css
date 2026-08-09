@@ -47,22 +47,42 @@
    * or an accompanying glyph as well as hue (§7: never colour alone). */
   --tf-bg: #ffffff;
   --tf-surface: #ffffff;
-  --tf-surface-subtle: #f7f7f8;
+  --tf-surface-subtle: #f7f8f9;
+  /* A third ground, for the sidebar and table headers. The product had two and
+     every structural division had to be carried by a border alone, which is
+     what made it read as a wireframe rather than an application. */
+  --tf-surface-sunken: #f1f2f4;
 
-  --tf-text: #18181b;
-  --tf-text-secondary: #52525b;
-  --tf-text-muted: #71717a;
+  --tf-text: #172b4d;
+  --tf-text-secondary: #44546f;
+  --tf-text-muted: #626f86;
 
-  --tf-border: #e4e4e7;
-  --tf-border-strong: #d4d4d8;
+  --tf-border: #dfe1e6;
+  /* Raised from #d4d4d8, which was 1.48:1 on white and could not identify a
+     control boundary under WCAG 1.4.11 — a conflict `tokens.contrast.test.ts`
+     had recorded as unresolvable without a foundation change. This is that
+     change: 3.89:1, so the two pairs move out of KNOWN_CONFLICTS and into the
+     assertions. */
+  --tf-border-strong: #758195;
 
-  --tf-focus: #2563eb;
+  --tf-focus: #0c66e4;
 
-  --tf-info: #2563eb;
-  --tf-success: #15803d;
-  --tf-warning: #a16207;
-  --tf-danger: #b91c1c;
-  --tf-extension: #7e22ce;
+  --tf-info: #0055cc;
+  --tf-success: #216e4e;
+  --tf-warning: #a54800;
+  --tf-danger: #ae2e24;
+  --tf-extension: #5e4db2;
+
+  /* The interactive accent, and the product's mark, are two different things.
+     Every primary control, link and selected state is `--tf-accent` blue; the
+     mark stays forge orange, which is what `design/favicon.svg` draws and what
+     VISUAL-IDENTITY §4 fixes. Blue also takes white ink at 5.07:1, where the
+     orange took it at 3.2:1 and had to be darkened for every filled control. */
+  --tf-accent: #0c66e4;
+  --tf-accent-hover: #0055cc;
+  --tf-accent-pressed: #09326c;
+  --tf-accent-fg: #ffffff;
+  --tf-accent-subtle: #e9f2ff;
 
   --tf-brand: #d8610b;
   --tf-brand-strong: #a94400;
@@ -71,18 +91,18 @@
    * alternative is a per-component `rgba()` literal, which §11 forbids. Each
    * is its own ink at low alpha over white, so the pair keeps its hue
    * relationship in one place. */
-  --tf-info-subtle: #eff4fe;
-  --tf-success-subtle: #eef7f0;
-  --tf-warning-subtle: #fbf5e8;
-  --tf-danger-subtle: #fdf0ef;
-  --tf-extension-subtle: #f6eefc;
+  --tf-info-subtle: #e9f2ff;
+  --tf-success-subtle: #dcfff1;
+  --tf-warning-subtle: #fff4e5;
+  --tf-danger-subtle: #ffecea;
+  --tf-extension-subtle: #f3f0ff;
   --tf-brand-subtle: #fdf1e7;
 
   /* Interaction. §8 keeps motion short; these are the states it moves between. */
-  --tf-hover: rgba(24, 24, 27, 0.045);
-  --tf-pressed: rgba(24, 24, 27, 0.085);
-  --tf-selected: rgba(37, 99, 235, 0.08);
-  --tf-scrim: rgba(24, 24, 27, 0.4);
+  --tf-hover: rgba(9, 30, 66, 0.06);
+  --tf-pressed: rgba(9, 30, 66, 0.12);
+  --tf-selected: rgba(12, 102, 228, 0.1);
+  --tf-scrim: rgba(9, 30, 66, 0.54);
 
   /* ── §2 Density and sizing — the 4 px grid ─────────────────────────────
    * The table is sparse on purpose: it names 1,2,3,4,5,6,8,10,12 and nothing
@@ -113,10 +133,17 @@
 
   /* ── §1 Layout geometry (LAYOUT-AND-INTERACTION-GUIDELINES §2) ─────────── */
   --tf-global-bar-h: 48px;
-  /* LAYOUT §2 allows 52–60 px. 60: the top of the range, because it is the
-   * width at which a rail label fits on the §4 type scale (Metadata, 12/16)
-   * instead of needing an off-scale 10 px that §11 would call arbitrary. */
-  --tf-rail-w: 60px;
+  /* A labelled sidebar, not an icon rail.
+   *
+   * 60 px fitted a glyph and a two-word label stacked under it, and the result
+   * read as a strip of tiny icons — the thing every product this one is
+   * measured against replaced years ago. 240 px is the width at which a
+   * destination is a row with an icon beside its label, section headings are
+   * possible, and a project's own navigation can live under the workspace's.
+   * The board and the list get the width back from the content padding, which
+   * this change tightens. */
+  --tf-rail-w: 240px;
+  --tf-rail-collapsed-w: 56px;
   --tf-context-w: 224px;
   --tf-drawer-w: 480px;
   --tf-content-pad: 20px;
@@ -174,39 +201,48 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --tf-bg: #18181b;
-  --tf-surface: #1f1f23;
-  --tf-surface-subtle: #27272a;
+  --tf-bg: #1d2125;
+  --tf-surface: #22272b;
+  --tf-surface-subtle: #282e33;
+  --tf-surface-sunken: #161a1d;
 
-  --tf-text: #fafafa;
-  --tf-text-secondary: #d4d4d8;
-  --tf-text-muted: #a1a1aa;
+  --tf-text: #e5eaf0;
+  --tf-text-secondary: #c2ccd6;
+  --tf-text-muted: #a4b1bf;
 
-  --tf-border: #34343a;
-  --tf-border-strong: #4b4b52;
+  --tf-border: #38414a;
+  --tf-border-strong: #7b8794;
 
-  --tf-focus: #7ea6f6;
+  --tf-focus: #85b8ff;
 
-  --tf-info: #7ea6f6;
-  --tf-success: #6ece8f;
-  --tf-warning: #e0b44e;
-  --tf-danger: #f58b84;
-  --tf-extension: #c99cf0;
+  --tf-info: #85b8ff;
+  --tf-success: #7ee2b8;
+  --tf-warning: #f5cd47;
+  --tf-danger: #ff9c8f;
+  --tf-extension: #b8acf6;
+
+  --tf-accent: #579dff;
+  --tf-accent-hover: #85b8ff;
+  --tf-accent-pressed: #cce0ff;
+  /* Dark inverts the filled control: light blue ground, dark ink. White on
+     #579dff is 2.6:1 and would fail the same way the orange did on light. */
+  --tf-accent-fg: #1d2125;
+  --tf-accent-subtle: #092957;
 
   --tf-brand: #f08a2e;
   --tf-brand-strong: #f5a55e;
 
-  --tf-info-subtle: #1b2437;
-  --tf-success-subtle: #16281c;
-  --tf-warning-subtle: #2c2412;
-  --tf-danger-subtle: #331b19;
-  --tf-extension-subtle: #281f33;
+  --tf-info-subtle: #092957;
+  --tf-success-subtle: #164b35;
+  --tf-warning-subtle: #4a2f00;
+  --tf-danger-subtle: #5d1f1a;
+  --tf-extension-subtle: #2b273f;
   --tf-brand-subtle: #33220f;
 
-  --tf-hover: rgba(250, 250, 250, 0.06);
-  --tf-pressed: rgba(250, 250, 250, 0.11);
-  --tf-selected: rgba(126, 166, 246, 0.14);
-  --tf-scrim: rgba(0, 0, 0, 0.6);
+  --tf-hover: rgba(166, 197, 226, 0.08);
+  --tf-pressed: rgba(166, 197, 226, 0.16);
+  --tf-selected: rgba(87, 157, 255, 0.16);
+  --tf-scrim: rgba(0, 0, 0, 0.64);
 
   --tf-shadow-popover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
   --tf-shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.5);
