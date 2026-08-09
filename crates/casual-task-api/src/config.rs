@@ -71,6 +71,27 @@ pub struct Config {
     pub smtp: casual_task_infra::SmtpConfig,
     /// `TF_STORAGE_*`. Where attachment bytes live (`docs/48`, `docs/28`).
     pub storage: StorageConfig,
+    /// `DISPATCHER_DATABASE_URL` — the outbox dispatcher's connection (D-060).
+    ///
+    /// A **second DSN**, and it has to be: `dispatch::claim` polls across every
+    /// tenant, so it runs as a role that bypasses row-level security
+    /// (migration 0014), and `DispatcherRole::verify` refuses anything else.
+    /// The role serving requests is deliberately not that role — that is the
+    /// whole point of migration 0012.
+    ///
+    /// `None` disables the embedded worker, and the process says so at startup
+    /// rather than polling an empty table forever. `deploy/docker-compose.yml`
+    /// has set this variable since it was written; nothing read it until now,
+    /// which is why the dispatch loop had never run outside a test.
+    pub dispatcher_database_url: Option<String>,
+    /// `TF_WORKER_EMBEDDED` (`docs/48`, default **true**).
+    ///
+    /// Profile 1 is one binary: the API process runs the dispatch loop itself.
+    /// Setting it false is how Profile 2 moves the loop into its own container
+    /// without the API also running one — two dispatchers are not wrong (the
+    /// claim is `FOR UPDATE SKIP LOCKED`), but they are twice the polling for
+    /// no gain.
+    pub worker_embedded: bool,
 }
 
 /// Object storage selection (`docs/48` §Configuration).
@@ -233,6 +254,16 @@ impl Config {
             pool,
             smtp,
             storage,
+            // Absent is a supported deployment, not a misconfiguration: an
+            // operator who has not created the dispatcher role yet gets an API
+            // that serves requests and says the loop is off, rather than one
+            // that refuses to start.
+            dispatcher_database_url: get("DISPATCHER_DATABASE_URL")
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty()),
+            // docs/48 §Configuration: "true | false (default true)".
+            worker_embedded: get("TF_WORKER_EMBEDDED")
+                .is_none_or(|v| !v.trim().eq_ignore_ascii_case("false")),
         })
     }
 }

@@ -106,6 +106,14 @@ TF_S3_*                      endpoint, bucket, region, credentials
 TF_ATTACHMENT_ORIGIN         required in prod — the separate user-content origin
 TF_REDIS_URL                 optional; required with >1 api instance
 TF_WORKER_EMBEDDED           true | false       (default true)
+DISPATCHER_DATABASE_URL      required to run the outbox dispatcher — a SECOND DSN,
+                             connecting as taskforge_dispatcher (migration 0014).
+                             The dispatcher polls across every tenant, so it must
+                             bypass row-level security; the request-serving role
+                             deliberately cannot, and neither can do the other's
+                             job. Unset means the loop does not run, and the
+                             process says so: notifications and live updates are
+                             not delivered (D-060)
 TF_SMTP_HOST/PORT/USER/PASS/FROM   empty host disables email (D-046). STARTTLS is
                              required and the relay certificate and hostname are verified;
                              FROM is a bare address, and a set host with no FROM refuses to start

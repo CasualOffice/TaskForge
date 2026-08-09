@@ -76,6 +76,7 @@ casual-task-search           = { path = "crates/casual-task-search" }
 casual-task-infra            = { path = "crates/casual-task-infra" }
 casual-task-observability    = { path = "crates/casual-task-observability" }
 casual-task-plugin-contract  = { path = "crates/casual-task-plugin-contract" }
+casual-task-worker           = { path = "crates/casual-task-worker" }
 
 # Third-party — one version per concern, declared once (docs/42 applies the same
 # rule to the client: no duplicate libraries for the same job).

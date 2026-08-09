@@ -14,6 +14,10 @@ casual-task-persistence = { workspace = true }
 casual-task-search = { workspace = true }
 casual-task-infra = { workspace = true }
 casual-task-observability = { workspace = true }
+# Profile 1 runs the dispatch loop inside this process (`docs/48`,
+# TF_WORKER_EMBEDDED). The worker's lib docs already anticipated this: "the API
+# process calls dispatcher::run directly rather than shelling out to a binary."
+casual-task-worker = { workspace = true }
 tracing = { workspace = true }
 casual-task-plugin-contract = { workspace = true }
 casual-task-identity = { workspace = true }

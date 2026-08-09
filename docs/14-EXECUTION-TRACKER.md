@@ -92,7 +92,7 @@ The documentation phase. All complete unless noted.
 | D-056 | The template permission sets `docs/04`'s prose does not decide | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by D-054. Accept with C-004's golden matrix |
 | D-057 | Which permission governs workspace membership, team management **and invitations** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002, widened by C-001's invitations; Accept before C-002 is `Gated` |
 | D-059 | Notification preferences, subscriptions, quiet hours and digests — the tables `docs/29` assumes and the schema does not have | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Open** — surfaced by C-016. Accept before C-016 is `Gated` |
-| D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Open** — surfaced by C-016; blocks starting the dispatch loop in any documented deployment |
+| D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Consumed** — `DISPATCHER_DATABASE_URL`, a second DSN as `taskforge_dispatcher`. It was already in `deploy/docker-compose.yml` and read by nothing; now documented in [48](48-DEPLOYMENT-PROFILES.md) and wired into both binaries |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -1766,6 +1766,39 @@ the process wiring, not the fan-out.
 `ASSIGNED` is. It affects only the planning corpus, and changing seed data
 changes the plans the `explain-no-seq-scan` gate compares against, so it belongs
 in a change that can re-baseline that gate.
+
+**D-060 is consumed, and the dispatch loop runs for the first time outside a
+test.** The answer was already in the repository: `deploy/docker-compose.yml` has
+set `DISPATCHER_DATABASE_URL` since it was written, and **nothing read it** — the
+same failure mode `StorageConfig` was added for, which
+[48](48-DEPLOYMENT-PROFILES.md) calls out as "configuration that is documented
+and unread is worse than undocumented: it reports success". So no variable was
+invented; the existing one is now declared in [48](48-DEPLOYMENT-PROFILES.md)
+§Configuration and read by `Config`.
+
+Two DSNs, because the two roles are deliberately different and neither can do the
+other's job: `dispatch::claim` polls across every tenant and must bypass
+row-level security (migration 0014, and `DispatcherRole::verify` refuses anything
+else), while the consumers read tenant data and must **not**. A notification
+fan-out reading assignees as the dispatcher would be reading them with RLS
+switched off.
+
+Both binaries now start it:
+
+- **The API process** (Profile 1, `TF_WORKER_EMBEDDED` default true) spawns one
+  loop per consumer on a small pool of its own, after verifying the role. Every
+  refusal to start the loop is logged with what is off and what it costs —
+  "notifications and live updates will not be delivered" — rather than leaving an
+  operator to infer it from silence.
+- **The worker binary** (Profile 2) requires both DSNs and **refuses to start**
+  without them, per [48](48-DEPLOYMENT-PROFILES.md): "a misconfigured deployment
+  must not start". It previously started successfully and did nothing.
+
+**One thing that profile still cannot do, said plainly:** run SSE fan-out
+usefully. A separate worker publishes into its own in-process hub, and the
+browsers are connected to the API process. [48](48-DEPLOYMENT-PROFILES.md)
+already requires Redis at more than one process for exactly this reason; the
+worker now warns at startup rather than appearing to work.
 
 ## Phases 2–4
 

@@ -189,6 +189,13 @@ async fn run() -> ExitCode {
         mailer,
         broadcast,
     };
+    // The outbox dispatcher, in this process (D-060, `docs/48` Profile 1).
+    //
+    // Held for its `Drop`: dropping the handle cancels the loops, so a panic in
+    // `serve` below cannot leave orphaned dispatchers polling a database whose
+    // API is gone.
+    let _worker = start_embedded_worker(&config, &state).await;
+
     match casual_task_api::serve(listener, state).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -196,6 +203,144 @@ async fn run() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Start the dispatch loop inside the API process, if this deployment wants it.
+///
+/// Returns the cancellation handle. `None` when the loop is not running, for
+/// one of two reasons, and **both are said out loud**: a silent no-op here is
+/// how a deployment ends up with notifications and SSE that work in tests and
+/// nowhere else, which is exactly the state D-060 described.
+async fn start_embedded_worker(
+    config: &casual_task_api::Config,
+    state: &AppState,
+) -> Option<casual_task_worker::dispatcher::CancelOnDrop> {
+    use casual_task_worker::consumers::{NotificationFanout, SseFanout};
+    use casual_task_worker::dispatcher::{self, CancelOnDrop};
+
+    if !config.worker_embedded {
+        tracing::info!(
+            "TF_WORKER_EMBEDDED=false: this process serves requests only; \
+             a separate worker must run the dispatch loop"
+        );
+        return None;
+    }
+    let Some(dsn) = config.dispatcher_database_url.as_deref() else {
+        // Not fatal. An API that serves requests is more useful than one that
+        // refuses to start, and the operator is told precisely what is off and
+        // what it costs them.
+        tracing::warn!(
+            "DISPATCHER_DATABASE_URL is not set: the outbox dispatcher is NOT \
+             running, so notifications and live updates will not be delivered. \
+             It needs the taskforge_dispatcher role (migration 0014), not the \
+             application role."
+        );
+        return None;
+    };
+
+    // A small pool of its own. The loop is a handful of connections and must
+    // not compete with request serving for the API's.
+    let pool = match sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(config.pool.acquire_timeout)
+        .connect(dsn)
+        .await
+    {
+        Ok(pool) => pool,
+        Err(error) => {
+            tracing::error!(%error, "the dispatcher cannot connect; the loop is not running");
+            return None;
+        }
+    };
+
+    // Verified once, here, so a misconfigured DSN is a startup message rather
+    // than a loop that claims nothing forever: `claim` polls across tenants and
+    // needs a role that bypasses row-level security.
+    if let Err(error) = casual_task_persistence::dispatch::DispatcherRole::verify(&mut *match pool
+        .acquire()
+        .await
+    {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::error!(%error, "the dispatcher cannot acquire a connection");
+            return None;
+        }
+    })
+    .await
+    {
+        tracing::error!(
+            %error,
+            "DISPATCHER_DATABASE_URL does not connect as a role that bypasses \
+             row-level security; the loop is not running"
+        );
+        return None;
+    }
+
+    let (handle, cancel) = CancelOnDrop::new();
+    let worker_id = format!("api-{}", std::process::id());
+
+    // One loop per consumer: each claims its own delivery rows, and a consumer
+    // that is slow or failing must not hold up the others (`docs/25`).
+    let notification = std::sync::Arc::new(NotificationFanout::new(
+        state.pool.clone(),
+        std::sync::Arc::clone(&state.mailer),
+        config.public_url.clone(),
+    ));
+    let sse = std::sync::Arc::new(SseFanout::new(std::sync::Arc::clone(&state.broadcast)));
+
+    for (name, spawn) in [
+        (
+            casual_task_worker::consumers::notification::NAME,
+            Loop::Notification(notification),
+        ),
+        ("sse_fanout", Loop::Sse(sse)),
+    ] {
+        let pool = pool.clone();
+        let cancel = cancel.clone();
+        let metrics = std::sync::Arc::clone(&state.metrics);
+        let worker_id = worker_id.clone();
+        tokio::spawn(async move {
+            let outcome = match spawn {
+                Loop::Notification(consumer) => {
+                    dispatcher::run(
+                        &pool,
+                        consumer,
+                        &worker_id,
+                        dispatcher::Config::default(),
+                        cancel,
+                        metrics,
+                    )
+                    .await
+                }
+                Loop::Sse(consumer) => {
+                    dispatcher::run(
+                        &pool,
+                        consumer,
+                        &worker_id,
+                        dispatcher::Config::default(),
+                        cancel,
+                        metrics,
+                    )
+                    .await
+                }
+            };
+            match outcome {
+                Ok(stopped) => tracing::info!(consumer = name, ?stopped, "dispatch loop stopped"),
+                Err(error) => tracing::error!(%error, consumer = name, "dispatch loop failed"),
+            }
+        });
+    }
+
+    tracing::info!(worker_id, "the embedded outbox dispatcher is running");
+    Some(handle)
+}
+
+/// The consumers the embedded worker runs. An enum rather than a boxed trait
+/// object because `Consumer` takes `self` by reference in an `async fn` and is
+/// therefore not dyn-compatible on the pinned toolchain.
+enum Loop {
+    Notification(std::sync::Arc<casual_task_worker::consumers::NotificationFanout>),
+    Sse(std::sync::Arc<casual_task_worker::consumers::SseFanout>),
 }
 
 /// Refuse to serve as a superuser (`docs/48`, migration 0012).
