@@ -1,6 +1,6 @@
 # TaskForge Design Foundation
 
-**Status:** Proposed baseline  
+**Status:** v2 — accepted. Supersedes the v1 values below where they differ.  
 **Scope:** Product UI, shared design primitives, accessibility, density, interaction and layout behavior.  
 **Principle:** TaskForge should be dense, fast, calm, technical and predictable. Branding must never be required to understand the interface.
 
@@ -14,7 +14,10 @@
 6. **Accessible by construction.** WCAG 2.2 AA is a component acceptance criterion, not a release cleanup task.
 7. **Stable geometry.** Loading, optimistic updates and live events should not cause avoidable layout shifts.
 8. **Scrolling is a cost, not a layout tool.** A surface that scrolls to reveal a field has hidden that field. Use the width available and put what a user needs to *decide* something in one view; reserve scrolling for genuine tails — a long thread, a long list, a long description. Nested scroll regions inside a scrolling page are the worst case and are not permitted.
-9. **Asymmetric where useful.** Do not force all views into equal columns, equal cards or a universal dashboard grid.
+9. **One accent.** Orange means brand and current position — never warning. At most twice on a screen.
+10. **Values look like values.** Identifiers, codes, counts, dates and durations are mono and tabular, always.
+11. **Every state carries a glyph or a word.** Colour is never alone.
+12. **Asymmetric where useful.** Do not force all views into equal columns, equal cards or a universal dashboard grid.
 
 ## 2. Density and sizing
 
@@ -60,65 +63,109 @@ Icons require an accessible name when they are the only visible content of a con
 
 ## 4. Typography
 
-Prefer the Casual Office shared font stack. Do not add a webfont to the authenticated shell solely for branding.
+**Instrument Sans** for text, **JetBrains Mono** for values.
 
-| Role | Size / line | Weight |
-|---|---|---:|
-| Page title | 24 / 30 px | 600 |
-| Section title | 18 / 24 px | 600 |
-| Task/card title | 14 / 20 px | 550–600 |
-| Body | 14 / 21 px | 400 |
-| Control | 13–14 / 18 px | 500 |
-| Metadata | 12 / 16 px | 400 |
-| IDs/code | 12–13 / 18 px | 500 mono |
+v1 said "prefer the Casual Office shared font stack; do not add a webfont to the
+authenticated shell **solely for branding**". Two faces are loaded here and the
+reason is not branding: Instrument Sans is narrow enough for a dense list and has
+a real 500 and 600, and mono carries every identifier, code, count, duration and
+date. The product's whole argument is that values are checkable, and mono with
+tabular figures is how a value looks checkable. A tracker is read in columns;
+identifiers that jitter between rows cost a scan on every read.
+
+The cost is accepted knowingly and is a real one: a third-party runtime
+dependency, bundle weight, and an offline failure mode. Both faces must have a
+system fallback in the stack so a failed font load degrades rather than breaks.
+
+| Role | Size / line | Weight | Face |
+|---|---|---:|---|
+| Page title | 30 / 36 px | 600 | Sans |
+| Surface title — a task, a project, a role | 22 / 28 px | 600 | Sans |
+| Section title | 16 / 22 px | 600 | Sans |
+| Row and card title | 14 / 20 px | 600 | Sans |
+| Body | 14 / 21 px | 400 | Sans |
+| Control label | 13 / 18 px | 500 | Sans |
+| Metadata | 12 / 16 px | 500 | Sans |
+| Eyebrow / column head | 11 / 14 px | 600 | Mono, `.1em` tracking, uppercase |
+| Identifiers, codes, counts, dates, durations | 12 / 16 px | 500 | Mono, **tabular** |
 
 Avoid marketing-scale headings inside the application.
 
 ## 5. Color foundation
 
+Warm graphite, one accent, calm semantics. The canvas is still white; it is
+white that belongs to this product. v1 used a cool ramp under an orange mark,
+which is why the product read as a template with a logo dropped into it.
+
 The UI must work in grayscale before brand color is applied.
 
 ```css
 :root {
-  --tf-bg: #ffffff;
-  --tf-surface: #ffffff;
-  --tf-surface-subtle: #f7f7f8;
+  --tf-bg: #ffffff;          /* canvas  */
+  --tf-surface: #fbfaf8;     /* paper   */
+  --tf-surface-subtle: #f4f2ee; /* sunken */
 
-  --tf-text: #18181b;
-  --tf-text-secondary: #52525b;
-  --tf-text-muted: #71717a;
+  --tf-text: #18181b;        /* graphite */
+  --tf-text-secondary: #57534e;
+  --tf-text-muted: #6e6862;
 
-  --tf-border: #e4e4e7;
-  --tf-border-strong: #d4d4d8;
+  --tf-border: #e2ded6;
 
-  --tf-focus: #2563eb;
+  --tf-focus: #2c5ee8;
 
-  --tf-info: #2563eb;
-  --tf-success: #15803d;
-  --tf-warning: #a16207;
-  --tf-danger: #b91c1c;
-  --tf-extension: #7e22ce;
+  /* Semantic — an ink over its own wash. Every pair passes AA as text. */
+  --tf-info: #1f5fd0;        --tf-info-wash: #edf3fe;
+  --tf-success: #146a3c;     --tf-success-wash: #ebf5ee;
+  --tf-warning: #8a5a08;     --tf-warning-wash: #fbf3e4;
+  --tf-danger: #a81f1b;      --tf-danger-wash: #fcefee;
+  --tf-extension: #6b21a8;   --tf-extension-wash: #f4edfc;
 
-  --tf-brand: #d8610b;
-  --tf-brand-strong: #a94400;
+  --tf-brand: #d8610b;       /* a fill, not an ink */
+  --tf-brand-strong: #a94400;/* text on brand, and brand as text */
+  --tf-brand-wash: #fdf3ea;
+  --tf-brand-edge: #f3d9bf;
 }
 ```
 
-Brand color and semantic status colors are separate systems. Never use brand orange to mean warning.
+**Orange appears at most twice on a screen:** the current rail destination, and
+the one primary action. `--tf-brand` is a fill; white text needs
+`--tf-brand-strong` or darker behind it.
+
+Brand color and semantic status colors are separate systems. Never use brand
+orange to mean warning.
+
+### The open item this version does not close
+
+`--tf-border` is **1.34:1** on the canvas, and §7 requires 3:1 for control
+boundaries. That is fine for a decorative hairline and not fine for the edge of
+a control. The intent is that a control's boundary is carried by the E1 ring in
+§6 rather than by this token — but until a control-boundary token exists that
+measures 3:1, the contract in §7 is not satisfiable as written. **Open.**
 
 ## 6. Borders, radius and elevation
 
-Default hierarchy uses borders, not shadows.
+Default hierarchy uses borders. **Elevation states a plane; radius states a
+size.**
 
 | Element | Radius |
 |---|---:|
-| Badge | 5 px |
-| Input/button | 6 px |
-| Card/row container | 8 px |
-| Popover/menu | 10 px |
-| Drawer/dialog | 12 px |
+| Badge | 4 px |
+| Input / button | 6 px |
+| Card / row container | 8 px |
+| Popover / menu / dialog | 12 px |
+| Panel | 16 px |
 
-Use shadows only for surfaces that physically overlay another interaction plane: menus, popovers, command palette, dragged objects, drawers and dialogs.
+Three elevation levels exist, and **a card gets none**:
+
+| Level | Shadow | For |
+|---|---|---|
+| Flat | hairline only | cards, rows, panels on the canvas |
+| E1 · lifted | `0 1px 2px rgba(24,20,15,.06), 0 0 0 1px rgba(24,20,15,.06)` | a row under the pointer, a sticky toolbar |
+| E2 · overlay | `0 4px 12px rgba(24,20,15,.08), 0 1px 2px rgba(24,20,15,.06), 0 0 0 1px rgba(24,20,15,.05)` | menus, popovers, the dragged card |
+| E3 · blocking | `0 16px 40px rgba(24,20,15,.16), 0 2px 6px rgba(24,20,15,.08), 0 0 0 1px rgba(24,20,15,.05)` | dialog, drawer, command palette |
+
+A shadow is a claim that one surface sits above another interaction plane. It is
+never decoration.
 
 ## 7. Accessibility contract
 
@@ -169,6 +216,32 @@ says why the drawer stopped being the default. The last four exist because relat
 a blocking edge changes what a user is permitted to do, and
 [`LAYOUT-AND-INTERACTION-GUIDELINES.md` §12](LAYOUT-AND-INTERACTION-GUIDELINES.md)
 specifies how they behave.
+
+## 9a. The refusal — the component this product lives or dies on
+
+An authorization model that can only say no forces every "why can't I?" through
+a human reading the grant table by hand. `docs/04` calls that the most common
+support question in any tracker. So a refusal is a designed component with its
+own hierarchy, and **never a toast**.
+
+**Four parts, always:**
+
+1. **What was refused**, as a sentence, in the reader's language.
+2. **Why**, naming the specific thing — the blocking task, the missing
+   permission, the unresolved dependency — not a category.
+3. **The registry code** from `docs/20`.
+4. **The request id**, so a user who can quote it gets help in one round trip.
+
+Where an action exists that would resolve it, offer it: *Open API-2*,
+*Why can't I do this?* (which calls `POST /permissions/explain`).
+
+Never: "Forbidden.", "Something went wrong.", a raw server message, or a
+disappearing notification. A refusal the reader cannot act on is the failure
+this component exists to prevent.
+
+The same shape carries **Restricted**: a row the viewer may not see keeps its
+place and loses its identifier. It is never rendered as absent — absence claims
+that nothing is there, which is a different and false statement.
 
 ## 10. Loading and failure behavior
 

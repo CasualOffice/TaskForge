@@ -1,6 +1,6 @@
 # TaskForge Visual Identity & Asset Guidelines
 
-**Status:** Initial identity direction  
+**Status:** v2 — accepted alongside `DESIGN-FOUNDATION.md` v2.  
 **Relationship:** Visual identity sits on top of `DESIGN-FOUNDATION.md`; it must not override accessibility or semantic-color rules.
 
 ## 1. Brand idea
@@ -100,6 +100,20 @@ Avoid:
 - vague enterprise language;
 - jargon where a concrete action is available.
 
-## 10. Relationship to Casual Office
+## 10. The design bet
+
+Linear's *feel* with configurable authority underneath — achievable only if the
+configuration is progressively disclosed and the surface never advertises it.
+
+From `docs/12`, read for what the survey implies about surface design rather
+than architecture:
+
+| Ceiling | We take | We refuse |
+|---|---|---|
+| **Jira · Azure DevOps · ServiceNow** | status/state shown as two channels — an authored name, and a fixed state dot | a screen whose primary content is settings |
+| **Linear · Height · Trello** | the discipline, not the palette — our neutrals are warm because the mark is orange | hiding configurable authority to buy calm |
+| **Slack · GitHub Apps** | the refusal as a designed component with its own hierarchy | "Forbidden." as a sentence |
+
+## 11. Relationship to Casual Office
 
 TaskForge should share foundational interaction quality and reusable primitives with Casual Office while retaining a distinct product identity. Brand-specific assets and product patterns belong in TaskForge; generic controls belong in the shared design system.
