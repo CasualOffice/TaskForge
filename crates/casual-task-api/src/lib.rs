@@ -18,6 +18,7 @@
 //! `main`.
 
 pub mod auth;
+pub mod comments;
 pub mod config;
 pub mod context;
 pub mod csrf;

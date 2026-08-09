@@ -197,6 +197,16 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/tasks/{id}/assignees/{user_id}",
             axum::routing::delete(crate::tasks::unassign),
         )
+        // C-009 — comments. Visibility is decided by the task, never by the
+        // comment: a comment carries no permission of its own.
+        .route(
+            "/api/v1/tasks/{id}/comments",
+            get(crate::comments::thread).post(crate::comments::create),
+        )
+        .route(
+            "/api/v1/comments/{id}",
+            axum::routing::patch(crate::comments::edit),
+        )
         .route(
             "/api/v1/tasks/{id}/tags",
             axum::routing::post(crate::tasks::tag),
@@ -437,6 +447,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/tasks",
     "/api/v1/tasks",
     "/api/v1/tasks/{id}",
+    "/api/v1/tasks/{id}/comments",
+    "/api/v1/comments/{id}",
     "/api/v1/tasks/{id}/transitions",
     "/api/v1/tasks/{id}/assignees",
     "/api/v1/tasks/{id}/assignees/{user_id}",
@@ -566,6 +578,37 @@ mod tests {
             );
         }
         assert!(seen >= 8, "only found {seen} routes; the scan is broken");
+    }
+
+    #[test]
+    fn every_interned_route_is_actually_registered() {
+        // The guard for the failure that produced it: a merge dropped the
+        // comment routes from `router()` while leaving the module, the handlers
+        // and the tests in place. Every comment request 404'd, and the only
+        // symptom was six integration tests failing with an unhelpful `null`
+        // body — nothing pointed at the router.
+        //
+        // ROUTES exists for metric labels, so it and the router are two lists
+        // that must agree. Comparing them here means a route lost from either
+        // side fails a unit test that NAMES the route, instead of an
+        // integration suite that reports a status code.
+        let source = include_str!("server.rs");
+        let router_block = source
+            .split("pub fn router(")
+            .nth(1)
+            .expect("router() exists");
+        let router_block = &router_block[..router_block.find("\n}").unwrap_or(router_block.len())];
+
+        for route in ROUTES {
+            if *route == "unmatched" {
+                continue;
+            }
+            assert!(
+                router_block.contains(&format!("\"{route}\"")),
+                "{route} is interned in ROUTES but not registered in router(); \
+                 requests to it 404 and record no metrics"
+            );
+        }
     }
 
     #[test]

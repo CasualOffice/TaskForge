@@ -14,6 +14,7 @@
 
 pub mod auth;
 pub mod authz;
+pub mod comment;
 pub mod compile;
 pub mod dispatch;
 pub mod health;
