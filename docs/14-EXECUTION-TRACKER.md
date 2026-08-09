@@ -85,8 +85,7 @@ The documentation phase. All complete unless noted.
 | D-053 | A closed event-type registry, as the permission set has | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Open** — surfaced by F-009 |
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
-| D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-006. Accept before C-002 closes |
-| D-055 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI |
+| D-058 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI. (Was numbered D-055 by one branch while another used that number for the error-code drift; renumbered on integration.) |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
 | D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Accepted** — `docs/04`'s five templates are materialized per workspace and its creator is granted `Owner` at `WORKSPACE` scope, in the creating transaction |
 | D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Consumed** — retired in favour of registry codes; the gate is now total |
