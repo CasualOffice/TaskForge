@@ -1237,3 +1237,120 @@ kbd {
 :focus-visible {
   outline-color: var(--tf-focus, var(--color-focus-ring));
 }
+
+/* ── Views, active filters, more-filters ─────────────────────────────────── */
+
+.views__popover,
+.more__popover {
+  min-width: 260px;
+  /* Taller than the shared 320 px: a views list plus its note, or the whole
+   * secondary field set, is the content — clipping either would hide the note
+   * that explains why a view is unavailable. */
+  max-height: min(560px, 70vh);
+}
+.views__group {
+  margin: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.views__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.views__item:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+.views__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.views__item--on {
+  color: var(--tf-focus, var(--color-accent));
+  font-weight: 600;
+}
+.views__blocked {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.views__note {
+  margin: 8px 8px 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+
+.more__field {
+  display: block;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+.more__legend {
+  display: block;
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tf-text-secondary, var(--color-text-secondary));
+}
+
+/* The second toolbar row. Full width so it wraps under the controls rather than
+ * squeezing between them. */
+.active {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tf-border, var(--color-border));
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 5px;
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+  color: var(--tf-text, var(--color-text));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--tf-danger, var(--color-danger));
+}
+.chip__field {
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.chip__value {
+  font-weight: 600;
+}
+.chip__x {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.chip__clear {
+  height: 24px;
+  font-size: 12px;
+}

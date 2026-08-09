@@ -67,6 +67,21 @@ export interface AppSearch {
   readonly reporter?: string
   /** A date clause: `<@today`, `<+7d`, `@today..+7d`. */
   readonly due?: string
+  /** Permanent states, `BACKLOG,PLANNED` or `!COMPLETED,CANCELED` (`docs/23`). */
+  readonly state?: string
+  /** `created_at` / `updated_at` clauses, same spellings as `due`. */
+  readonly created?: string
+  readonly updated?: string
+  /** Substring of the title — the grammar's `contains`. */
+  readonly title?: string
+  /** Tag ids, comma-separated, or empty for untagged. */
+  readonly tag?: string
+  /** `` (has no parent — top level) or `!` … see `tasks/query.ts`. */
+  readonly parent?: string
+  /** `true` to include archived tasks. The server defaults it to `false`. */
+  readonly archived?: string
+  /** `true` / `false`. Derived server-side from the dependency graph. */
+  readonly blocked?: string
 }
 
 /** Every parameter above, so validation and clearing cannot drift from the type. */
@@ -80,6 +95,14 @@ export const SEARCH_KEYS = [
   'assignee',
   'reporter',
   'due',
+  'state',
+  'created',
+  'updated',
+  'title',
+  'tag',
+  'parent',
+  'archived',
+  'blocked',
 ] as const
 
 /**
@@ -98,7 +121,18 @@ export const FILTER_KEYS = [
   'assignee',
   'reporter',
   'due',
+  'state',
+  'created',
+  'updated',
+  'title',
+  'tag',
+  'parent',
+  'archived',
+  'blocked',
 ] as const
+
+/** Parameters whose empty value means `is_empty` rather than "no constraint". */
+const EMPTY_IS_MEANINGFUL: ReadonlySet<string> = new Set(['assignee', 'tag', 'parent'])
 
 /**
  * Validate rather than cast.
@@ -117,7 +151,11 @@ function validateSearch(raw: Record<string, unknown>): AppSearch {
   for (const key of SEARCH_KEYS) {
     const value = raw[key]
     if (typeof value !== 'string') continue
-    if (value === '' && key !== 'assignee') continue
+    // `assignee`, `tag` and `parent` all spell "unset" as a present-and-empty
+    // value (`docs/27` §URL form: "`field=` — the empty value is how a URL says
+    // 'unset'"). Dropping those the way every other empty value is dropped would
+    // silently widen the filter instead of narrowing it.
+    if (value === '' && !EMPTY_IS_MEANINGFUL.has(key)) continue
     out[key] = value
   }
   return out as AppSearch

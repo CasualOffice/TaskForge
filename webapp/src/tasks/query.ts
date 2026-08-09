@@ -41,8 +41,16 @@ export function filterFromSearch(search: AppSearch): TaskFilter {
   if (search.type !== undefined && search.type !== '') filter['type'] = search.type
   if (search.due !== undefined && search.due !== '') filter['due_at'] = search.due
   if (search.reporter !== undefined && search.reporter !== '') filter['reporter'] = search.reporter
-  // Present-and-empty is meaningful — see the module docs.
+  if (search.state !== undefined && search.state !== '') filter['state'] = search.state
+  if (search.created !== undefined && search.created !== '') filter['created_at'] = search.created
+  if (search.updated !== undefined && search.updated !== '') filter['updated_at'] = search.updated
+  if (search.title !== undefined && search.title !== '') filter['title'] = search.title
+  if (search.archived !== undefined && search.archived !== '') filter['archived'] = search.archived
+  if (search.blocked !== undefined && search.blocked !== '') filter['is_blocked'] = search.blocked
+  // Present-and-empty is meaningful for these three — see the module docs.
   if (search.assignee !== undefined) filter['assignee'] = search.assignee
+  if (search.tag !== undefined) filter['tag'] = search.tag
+  if (search.parent !== undefined) filter['parent'] = search.parent
 
   return filter as TaskFilter
 }
@@ -56,8 +64,35 @@ export function hasFilters(search: AppSearch): boolean {
     (search.type !== undefined && search.type !== '') ||
     (search.due !== undefined && search.due !== '') ||
     (search.reporter !== undefined && search.reporter !== '') ||
-    search.assignee !== undefined
+    (search.state !== undefined && search.state !== '') ||
+    (search.created !== undefined && search.created !== '') ||
+    (search.updated !== undefined && search.updated !== '') ||
+    (search.title !== undefined && search.title !== '') ||
+    (search.archived !== undefined && search.archived !== '') ||
+    (search.blocked !== undefined && search.blocked !== '') ||
+    search.assignee !== undefined ||
+    search.tag !== undefined ||
+    search.parent !== undefined
   )
+}
+
+/** Every filter parameter cleared at once, for "Clear" and for applying a view. */
+export const NO_FILTERS: Readonly<Record<string, undefined>> = {
+  q: undefined,
+  status: undefined,
+  priority: undefined,
+  type: undefined,
+  assignee: undefined,
+  reporter: undefined,
+  due: undefined,
+  state: undefined,
+  created: undefined,
+  updated: undefined,
+  title: undefined,
+  tag: undefined,
+  parent: undefined,
+  archived: undefined,
+  blocked: undefined,
 }
 
 /**

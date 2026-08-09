@@ -44,13 +44,18 @@ import { useQuery } from '@tanstack/react-query'
 import { keys } from '../../api/keys'
 import { listProjects } from '../../api/projects'
 import { PRIORITIES, SORT_KEYS, TASK_TYPES, type Sort, type SortKey } from '../../api/tasks'
-import { listMembers } from '../../api/workspaces'
+import { directory, listMembers } from '../../api/workspaces'
 import { useAppSearch, useUpdateSearch } from '../../shell/navigation'
 import { useWorkspaceId } from '../../shell/session'
 import { priorityLabel, typeLabel } from '../../tasks/present'
-import { DUE_PRESETS, hasFilters } from '../../tasks/query'
+import { DUE_PRESETS, NO_FILTERS } from '../../tasks/query'
+import type { BuiltinView } from '../../tasks/builtinViews'
 import { useProjectWorkflow } from '../../tasks/useWorkflow'
+import { ActiveFilters } from './ActiveFilters'
+import { describeFilters } from './describe'
 import { FilterMenu, FilterSelect, type FilterOption } from './FilterMenu'
+import { MoreFilters } from './MoreFilters'
+import { ViewsMenu } from './ViewsMenu'
 
 /** Long enough that a typist does not fire a request per letter, short enough to feel live. */
 const DEBOUNCE_MS = 250
@@ -131,9 +136,21 @@ export function WorkToolbar({
   const assignee =
     search.assignee === undefined ? ANYONE : search.assignee === '' ? UNASSIGNED : search.assignee
 
+  const nameOf = directory(members.data?.data ?? [])
+  const statusName = (id: string): string =>
+    workflow?.statuses.find((status) => status.id === id)?.name ?? id
+
+  const applied = describeFilters(search, { status: statusName, person: nameOf })
+
+  /** Replace every filter at once — a view is a whole filter, not an addition. */
+  function applyView(view: BuiltinView): void {
+    update({ ...NO_FILTERS, ...view.search })
+  }
+
   return (
     <div className="toolbar">
       {/* ── View identity ──────────────────────────────────────────────── */}
+      <ViewsMenu search={search} onApply={applyView} />
       <label className="visually-hidden" htmlFor="scope-project">
         Project
       </label>
@@ -230,28 +247,7 @@ export function WorkToolbar({
           onChange={(next) => update({ due: next })}
         />
 
-        {hasFilters(search) ? (
-          <button
-            type="button"
-            className="button button--quiet"
-            onClick={() =>
-              // `project` survives deliberately: dropping it would empty the
-              // board and unset the workflow, which is not what anyone means by
-              // "clear".
-              update({
-                q: undefined,
-                status: undefined,
-                priority: undefined,
-                type: undefined,
-                assignee: undefined,
-                reporter: undefined,
-                due: undefined,
-              })
-            }
-          >
-            Clear
-          </button>
-        ) : null}
+        <MoreFilters search={search} onChange={update} />
       </div>
 
       {/* ── Sort ───────────────────────────────────────────────────────── */}
@@ -284,6 +280,17 @@ export function WorkToolbar({
 
       <span className="shell__spacer" />
       {children}
+
+      {/* Row two, and only when there is something to say. design/LAYOUT §5
+          caps a toolbar at two rows; the second is the one that answers "why is
+          this list empty?". */}
+      <ActiveFilters
+        filters={applied}
+        onRemove={(key) => update({ [key]: undefined })}
+        // `project` survives: dropping it would empty the board and unset the
+        // workflow, which is not what anyone means by "clear".
+        onClear={() => update(NO_FILTERS)}
+      />
     </div>
   )
 }
