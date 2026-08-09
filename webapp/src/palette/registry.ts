@@ -45,6 +45,22 @@ const TAB_ROUTES: Readonly<Record<string, string>> = {
   reports: '/reports',
 }
 
+/**
+ * The settings sections, as commands.
+ *
+ * The keywords are what people actually type — "password", "invite", "who can"
+ * — rather than the section's own name, which they would have to know first.
+ */
+const SETTINGS_SECTIONS: ReadonlyArray<{ slug: string; title: string; keywords: string }> = [
+  { slug: 'profile', title: 'Your profile', keywords: 'password time zone sessions account me' },
+  { slug: 'workspace', title: 'Workspace', keywords: 'rename slug admin' },
+  { slug: 'members', title: 'Members', keywords: 'people invite invitation remove who' },
+  { slug: 'teams', title: 'Teams', keywords: 'group squad' },
+  { slug: 'roles', title: 'Roles', keywords: 'permissions grant revoke who can access' },
+  { slug: 'workflow', title: 'Workflow', keywords: 'statuses transitions states columns' },
+  { slug: 'tags', title: 'Tags', keywords: 'labels vocabulary' },
+]
+
 export function buildCommands(context: PaletteContext): readonly Command[] {
   const commands: Command[] = []
 
@@ -67,6 +83,20 @@ export function buildCommands(context: PaletteContext): readonly Command[] {
       group: 'Go',
       keywords: `${tab.slug} view`,
       run: () => context.go(route),
+    })
+  }
+
+  // Settings, one command per section. Seven entries rather than one "Go to
+  // settings", because the thing a person is looking for is "roles" or "my
+  // password" — a command that lands them on a menu they then have to read is a
+  // second navigation, and the palette exists to remove the first one.
+  for (const section of SETTINGS_SECTIONS) {
+    commands.push({
+      id: `settings-${section.slug}`,
+      title: `Settings: ${section.title}`,
+      group: 'Go',
+      keywords: section.keywords,
+      run: () => context.go(`/settings/${section.slug}`),
     })
   }
 

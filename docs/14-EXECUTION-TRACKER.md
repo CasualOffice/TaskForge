@@ -1612,6 +1612,72 @@ on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
 
+**Administration is reachable** (`/settings`, C-018). Seven sections — profile,
+workspace, members, teams, roles, workflow, tags — each a route, wired to the
+endpoints that already existed and unbuilt in the client until now. Functional
+only: the visual design is Codex's, and `webapp/src/styles/settings.css` carries
+structure and no decoration for that reason.
+
+**Two reads had to exist first, and their absence was the finding.** The server
+could *write* authority and team membership and could not read either back:
+
+- `GET /api/v1/role-assignments` — the grant set was write-only. `POST` created a
+  grant and `DELETE` needed its id, and that id appeared exactly once, in the
+  response to the call that made it. An admin who closed the tab could never take
+  a permission back, and no screen could answer "who can do this here?". Keyset
+  on `id` (UUIDv7, so id order is time order), filterable by principal, role or
+  scope, and `role.assign`-or-`role.manage` to read — the same pair that may
+  assign, because choosing a role safely means seeing what someone already holds.
+- `GET /api/v1/teams/{team_id}/members` — a team is a *principal* a grant names
+  (`docs/04`), so "who does this grant reach?" was unanswerable through the API.
+  It joins `workspace_membership` rather than reading `team_membership` alone:
+  that table carries no `workspace_id` and therefore no policy of its own
+  (migration 0010), so the join is the tenant boundary rather than a nicety. It
+  returns no `joined_at` — `team_membership` is `(team_id, user_id)` and nothing
+  else, and the workspace's join date would have been a plausible-looking answer
+  to a different question.
+
+**The permission list is provably a copy.** The role editor needs all 29
+permission keys and no endpoint lists them, so they are typed out in the client —
+and a typed-out copy drifts. `webapp/src/api/roles.test.ts` parses
+`crates/casual-task-model/src/permission.rs` and asserts set equality. Both
+failure modes are silent in a browser: a key the server has and the client omits
+is an authority nobody can ever grant, and a key the client invents is offered,
+saved, and refused with `TF-VAL-0005` for a control the product itself drew.
+
+**Two client bugs were found by clicking, not by testing.** Both are now covered:
+
+- *An empty body is not only a 204.* `POST /teams/{id}/members` answers `201`
+  with no body, and adding someone already in the team answers `200` with no
+  body. `request()` special-cased `204` and handed everything else to
+  `response.json()`, which threw a `SyntaxError` — not an `ApiError` — so the
+  user was told "something went wrong on the server" about a request that had
+  just succeeded. Every write in the product goes through that function.
+- *A view must claim its own scroll region.* `.shell__main` is `overflow: hidden`
+  and the shell is a fixed-height grid, which is how the rail and header stay
+  still. The settings panel did not scroll itself, so the transition matrix
+  rendered below the fold and nothing reached it.
+
+**`requestWithVersion` now reads the `ETag`, which its own documentation already
+claimed.** It only ever read `version` from the body. `WorkspaceBody` carries no
+`version`, so the workspace rename could never have sent the `If-Match` it
+requires. A weak validator (`W/"7"`) is refused rather than used: weak means
+"equivalent, not identical", which is exactly the guarantee a precondition must
+not be given.
+
+**What the screens say rather than hide.** A section the caller cannot administer
+renders the sentence naming the permission instead of vanishing from the
+navigation — someone told "your admin can change that under Roles" needs Roles to
+exist for them to find. The five `docs/04` ceilings are not re-implemented in
+TypeScript: the control is offered and the refusal is rendered with the code that
+names the rule, because a greyed-out button hides *which* rule was hit.
+
+**Not built here, and said on the screens that would have offered them:** grants
+at team, project and environment scope (the API takes them; there is no picker
+for the scope id), renaming or deleting a tag (no endpoint), and editing the
+wildcard "from anywhere" transitions (they are listed below the matrix rather
+than drawn in it).
+
 **Bulk transitions are in** (`POST /api/v1/tasks/bulk`, [05](05-API-SPEC.md)
 §Bulk operations). Selection on a board is unbuildable without it: forty cards
 dragged to Done is forty conditional requests, and the client has no way to

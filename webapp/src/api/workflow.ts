@@ -1,35 +1,28 @@
 /**
- * `GET /api/v1/workflows/{id}` — the board's columns, and the ids a transition
- * needs.
+ * `/api/v1/workflows/{id}` — the board's columns, and the workflow editor.
  *
- * # This endpoint is specified and not yet built
+ * # Two consumers, one shape
  *
- * `docs/05` §Other resources lists `GET /api/v1/workflows/{id}`. The server does
- * not serve it: `crates/casual-task-api/src/server.rs` registers no
- * `/workflows` route, because C-007 (default workflow + transitions) is still
- * `Building` and shipped only the write half — the state machine and the
- * transition command.
+ * A board needs the status set to draw columns and the transition set to know
+ * which drags are legal before the drop. The workflow editor needs the same two
+ * lists, plus the writes. They are one module because a second read shape would
+ * be a second thing to keep in step with `docs/23`.
  *
- * That single gap is what stops a board from moving a card. `POST
- * /tasks/{id}/transitions` takes a `to_status_id`, and there is no other way for
- * a browser to learn one: `TaskView` carries the *current* `status_id` and the
- * derived `state`, never the workflow's status set.
+ * # `from: null` is the initial edge, not missing data
  *
- * # Why the client calls it anyway
+ * `docs/23` models "into the workflow" as a transition with no source. A client
+ * that treated the absence as an error would refuse the one edge every new task
+ * takes; an editor that let a user *author* two of them would break the rule
+ * that a workflow has one initial status.
  *
- * This module is written against the documented contract, so the day the route
- * is registered the board starts working with **no client change**. Until then
- * [`readWorkflow`] resolves to `null` on a 404, the board renders its columns
- * from the five permanent states (`docs/23`), and every cross-column drag is
- * refused *in the UI* with the reason named — rather than sent, rejected with a
- * code the user cannot act on, and rolled back.
+ * # Status deletion always carries a destination
  *
- * The missing endpoint is **C-007**'s remaining half in
- * `docs/14-EXECUTION-TRACKER.md`; what the board does in the meantime is
- * **D-061**. Nothing here invents a shape: the fields below are what
- * `casual_task_persistence::workflow::load` already returns.
+ * `DELETE …/statuses/{sid}?migrate_to={sid}` — a status holding tasks cannot
+ * simply vanish, so every task on it moves in the same transaction, attributed
+ * to the admin who asked. That is why [`deleteStatus`] has no one-argument form:
+ * the destination is not optional and the type says so.
  */
-import { request } from './http'
+import { request, requestWithVersion } from './http'
 import { ApiError } from './problem'
 
 /** A workflow status. `state` is the permanent state it maps onto (`docs/23`). */
@@ -111,4 +104,148 @@ export function statusForState(
 
 function isUnrouted(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404 && !error.hasEnvelope
+}
+
+/**
+ * The workflow with the version its writes need.
+ *
+ * Distinct from [`readWorkflow`] because the board does not need a version and
+ * paying for a second field it ignores is fine — but the *editor* cannot write
+ * without one, and a screen that read the body's `version` alone would break the
+ * day the shape changed.
+ */
+export function readWorkflowForEditing(
+  workspaceId: string,
+  workflowId: string,
+  signal?: AbortSignal,
+): Promise<{ data: Workflow; version: number | undefined }> {
+  return requestWithVersion<Workflow>(`/api/v1/workflows/${workflowId}`, { workspaceId, signal })
+}
+
+/** How many tasks sit on each status — what a delete needs to warn about. */
+export interface StatusUsage {
+  readonly id: string
+  readonly name: string
+  readonly state: string
+  readonly position: number
+  readonly is_initial: boolean
+  readonly task_count: number
+}
+
+export function listStatusUsage(
+  workspaceId: string,
+  workflowId: string,
+  signal?: AbortSignal,
+): Promise<{ data: readonly StatusUsage[] }> {
+  return request<{ data: readonly StatusUsage[] }>(`/api/v1/workflows/${workflowId}/statuses`, {
+    workspaceId,
+    signal,
+  })
+}
+
+/**
+ * The five permanent states (`docs/23`).
+ *
+ * A status maps onto exactly one of them, and the mapping is what every report,
+ * filter and "is this done?" question actually reads — the status *name* is a
+ * label a workspace chooses. Authoring a status without choosing its state would
+ * make the derived column meaningless, so `state` is required here.
+ */
+export const TASK_STATES = ['BACKLOG', 'PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELED'] as const
+export type TaskState = (typeof TASK_STATES)[number]
+
+export function createStatus(
+  workspaceId: string,
+  workflowId: string,
+  version: number,
+  status: { name: string; state: TaskState },
+): Promise<Workflow> {
+  return request<Workflow>(`/api/v1/workflows/${workflowId}/statuses`, {
+    method: 'POST',
+    workspaceId,
+    ifMatch: version,
+    body: status,
+  })
+}
+
+export function updateStatus(
+  workspaceId: string,
+  workflowId: string,
+  statusId: string,
+  version: number,
+  patch: { name?: string; state?: TaskState; is_initial?: boolean },
+): Promise<Workflow> {
+  return request<Workflow>(`/api/v1/workflows/${workflowId}/statuses/${statusId}`, {
+    method: 'PATCH',
+    workspaceId,
+    ifMatch: version,
+    body: patch,
+  })
+}
+
+/**
+ * Delete a status, moving everything on it to `migrateTo`.
+ *
+ * Refused with `TF-WFL-0011` when the move is larger than one transaction should
+ * carry, and `TF-WFL-0006` when the destination is the status being deleted.
+ */
+export function deleteStatus(
+  workspaceId: string,
+  workflowId: string,
+  statusId: string,
+  version: number,
+  migrateTo: string,
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/v1/workflows/${workflowId}/statuses/${statusId}?migrate_to=${migrateTo}`,
+    { method: 'DELETE', workspaceId, ifMatch: version },
+  )
+}
+
+/** The whole order, not a move: a partial list is a workflow with a hole in it. */
+export function reorderStatuses(
+  workspaceId: string,
+  workflowId: string,
+  version: number,
+  order: readonly string[],
+): Promise<Workflow> {
+  return request<Workflow>(`/api/v1/workflows/${workflowId}/statuses/order`, {
+    method: 'POST',
+    workspaceId,
+    ifMatch: version,
+    body: { order },
+  })
+}
+
+export function createTransition(
+  workspaceId: string,
+  workflowId: string,
+  version: number,
+  edge: {
+    from?: string | null
+    to: string
+    required_permission?: string | null
+    required_fields?: readonly string[]
+    ignore_dependencies?: boolean
+  },
+): Promise<Workflow> {
+  return request<Workflow>(`/api/v1/workflows/${workflowId}/transitions`, {
+    method: 'POST',
+    workspaceId,
+    ifMatch: version,
+    body: edge,
+  })
+}
+
+export function deleteTransition(
+  workspaceId: string,
+  workflowId: string,
+  transitionId: string,
+  version: number,
+): Promise<unknown> {
+  return request<unknown>(`/api/v1/workflows/${workflowId}/transitions/${transitionId}`, {
+    method: 'DELETE',
+    workspaceId,
+    ifMatch: version,
+  })
 }

@@ -1,0 +1,255 @@
+/**
+ * Settings — structure only.
+ *
+ * # What this file deliberately does not do
+ *
+ * Decorate. Codex owns the visual design, and every rule below exists because
+ * without it the markup is unusable rather than because it looks better with it:
+ * a two-column shell so the section list and the panel are both reachable, rows
+ * that lay out their three parts, a permission grid that does not become one
+ * column of thirty checkboxes, and a table that scrolls inside itself instead of
+ * making the page scroll sideways.
+ *
+ * Every value is a token. A hex code here would be a second palette to keep in
+ * step with `tokens.css`.
+ *
+ * # Why the matrix scrolls and the page does not
+ *
+ * A workflow with nine statuses is a nine-column table, which is wider than a
+ * phone. `overflow-x` on its own wrapper keeps the horizontal scroll inside the
+ * one element that needs it — a body that scrolls sideways loses the navigation
+ * off the left edge.
+ */
+
+/*
+ * `.shell__main` is `overflow: hidden` and the shell is a fixed-height grid —
+ * every view owns its own scrolling region, which is how the product keeps the
+ * rail and the header still while content moves. A settings page that did not
+ * claim one was simply clipped: the transition matrix rendered below the fold
+ * and no amount of scrolling reached it.
+ *
+ * So the grid fills the height it is given and the *panel* scrolls, not the
+ * page. The section list stays put, which is what a long-form configuration
+ * surface needs: you should not have to scroll back up to change section.
+ */
+.settings {
+  display: grid;
+  grid-template-columns: minmax(180px, 232px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings__nav {
+  padding: var(--space-4) 0 var(--space-4) var(--space-4);
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.settings__title {
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-3);
+}
+
+.settings__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings__link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  color: inherit;
+  text-decoration: none;
+}
+.settings__link:hover {
+  background: var(--color-hover);
+}
+/* The attribute, not a class: `activeProps` sets `aria-current`, so the styling
+   and the assistive-technology answer cannot disagree. */
+.settings__link[aria-current='page'] {
+  background: var(--color-hover);
+  font-weight: 600;
+}
+.settings__link-detail {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.settings__panel {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  /* Padding inside the scrolling element, so the scrollbar sits at the edge of
+     the pane rather than inset from it. */
+  padding: var(--space-4) var(--space-4) var(--space-6);
+  max-width: 62rem;
+}
+
+.settings__section {
+  padding: 0 0 var(--space-5);
+  margin: 0 0 var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.settings__section:last-child {
+  border-bottom: 0;
+}
+.settings__section-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+.settings__section-title {
+  font-size: var(--text-md);
+  margin: 0;
+}
+.settings__section-desc {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  max-width: 68ch;
+}
+
+.settings__form {
+  max-width: 44rem;
+}
+.settings__inline-form {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.settings__inline-form .field {
+  margin-bottom: 0;
+}
+
+.settings__rows {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.settings__row:last-child {
+  border-bottom: 0;
+}
+/* A row whose detail expands below it — a team's members, a role's editor. */
+.settings__row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+.settings__row-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* Takes the slack so the meta and the buttons sit at the end of the row. */
+.settings__row-main {
+  flex: 1 1 auto;
+  min-width: 12rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.settings__row-meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.settings__nested {
+  padding: var(--space-2) 0 0 var(--space-3);
+  border-left: 2px solid var(--color-border);
+  margin-top: var(--space-2);
+}
+
+.settings__permissions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.settings__permission-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.settings__permission {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 var(--space-2);
+  padding: var(--space-1) 0;
+  align-items: baseline;
+}
+.settings__permission-key {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+}
+/* Under the key, in the second column, so the checkboxes stay in one line. */
+.settings__permission-help {
+  grid-column: 2;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.settings__matrix-scroll {
+  overflow-x: auto;
+  margin-bottom: var(--space-3);
+}
+.settings__matrix {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.settings__matrix th,
+.settings__matrix td {
+  border: 1px solid var(--color-border);
+  padding: 2px var(--space-1);
+  text-align: center;
+  white-space: nowrap;
+}
+.settings__matrix th[scope='row'] {
+  text-align: left;
+}
+
+/* The one-column fallback. Below this the two panes do not both fit, and the
+   section list becomes a block above the panel rather than a squeezed column. */
+@media (max-width: 720px) {
+  /* One column, and the whole surface scrolls rather than the panel: with the
+     section list stacked above the panel, a panel-only scroll would strand the
+     list off-screen with no way back to it. */
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .settings__nav,
+  .settings__panel {
+    overflow: visible;
+    height: auto;
+    max-height: none;
+  }
+  .settings__nav {
+    padding: var(--space-4) var(--space-4) 0;
+  }
+}

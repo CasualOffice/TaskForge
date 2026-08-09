@@ -49,4 +49,31 @@ export const keys = {
 
   comments: (workspaceId: string, taskId: string) =>
     ['ws', workspaceId, 'tasks', 'one', taskId, 'comments'] as const,
+
+  /**
+   * The signed-in person. Outside every workspace, like `session()`, because
+   * `user_account` is the one table with no `workspace_id` (`docs/32`) — filing
+   * it under a tenant would mean a workspace switch invalidated a name that
+   * cannot have changed.
+   */
+  me: () => ['me'] as const,
+  mySessions: () => ['me', 'sessions'] as const,
+
+  /** Administration. All under the tenant prefix, so a switch clears them. */
+  workspaceSettings: (workspaceId: string) => ['ws', workspaceId, 'settings'] as const,
+  invitations: (workspaceId: string) => ['ws', workspaceId, 'invitations'] as const,
+  teams: (workspaceId: string) => ['ws', workspaceId, 'teams'] as const,
+  teamMembers: (workspaceId: string, teamId: string) =>
+    ['ws', workspaceId, 'teams', teamId, 'members'] as const,
+  roles: (workspaceId: string) => ['ws', workspaceId, 'roles'] as const,
+  /**
+   * Every grant listing. The prefix an assign or a revoke invalidates —
+   * narrowing it to the filter that was written would leave the unfiltered list
+   * on screen showing a grant that no longer exists.
+   */
+  assignments: (workspaceId: string) => ['ws', workspaceId, 'assignments'] as const,
+  assignmentsFor: (workspaceId: string, filter: Readonly<Record<string, string | undefined>>) =>
+    ['ws', workspaceId, 'assignments', filter] as const,
+  tags: (workspaceId: string, projectId?: string) =>
+    ['ws', workspaceId, 'tags', projectId ?? ''] as const,
 } as const

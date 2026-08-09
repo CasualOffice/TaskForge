@@ -48,15 +48,15 @@ export interface Authority {
  * lingers for five minutes in a menu is a UI fact, not a security one, because
  * the server re-authorizes every mutation.
  */
-export function useAuthority(projectId?: string, teamId?: string): Authority {
+export function useAuthority(projectId?: string): Authority {
   const workspaceId = useWorkspaceId()
 
   const result = useQuery({
-    queryKey: [...keys.workspace(workspaceId), 'permissions', projectId ?? '', teamId ?? ''],
+    queryKey: [...keys.workspace(workspaceId), 'permissions', projectId ?? ''],
     queryFn: ({ signal }) =>
       readEffective(
         workspaceId,
-        { ...(projectId === undefined ? {} : { projectId }), ...(teamId === undefined ? {} : { teamId }) },
+        projectId === undefined ? {} : { projectId },
         signal,
       ),
     enabled: workspaceId !== '',

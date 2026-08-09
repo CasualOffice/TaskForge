@@ -13,6 +13,9 @@
  * own file so the surfaces being built in parallel are not one merge
  * conflict. */
 @import './patterns.css';
+/* Administration. Structure only — see the file's own comment on why it carries
+ * no decoration. */
+@import './settings.css';
 
 *,
 *::before,
@@ -118,6 +121,13 @@ body {
   height: 40px;
   margin-bottom: var(--tf-space-1);
   border-radius: var(--tf-radius-control);
+}
+
+/* Pushed to the foot of the rail, away from the work destinations. `margin-top`
+   rather than a spacer element so the rule disappears with the column layout in
+   the narrow case below. */
+.rail__group--foot {
+  margin-top: auto;
 }
 
 .rail__group {

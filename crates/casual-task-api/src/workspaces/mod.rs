@@ -20,7 +20,7 @@ pub mod wire;
 
 pub use lifecycle::{create, list, read, rename};
 pub use members::{add_member, list_members, remove_member};
-pub use teams::{add_team_member, create_team, list_teams, remove_team_member};
+pub use teams::{add_team_member, create_team, list_team_members, list_teams, remove_team_member};
 
 pub(crate) use support::*;
 pub(crate) use wire::*;

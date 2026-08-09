@@ -19,8 +19,9 @@
  * target.
  */
 import { lazy, Suspense, type ReactElement } from 'react'
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, type AnyRoute } from '@tanstack/react-router'
 
+import { SettingsLayout } from './settings/SettingsLayout'
 import { AppFrame } from './shell/AppFrame'
 import { TaskDetail } from './task/TaskDetail'
 import { BoardView } from './views/BoardView'
@@ -28,6 +29,36 @@ import { MyWorkView } from './views/MyWorkView'
 import { TaskListView } from './views/TaskListView'
 
 const ReportsView = lazy(() => import('./views/ReportsView'))
+
+/**
+ * Settings is lazy, and every section under it with it.
+ *
+ * `docs/42` names the board, the list, the drawer and the palette as shell.
+ * Administration is none of those: most people open it once, and the role editor
+ * alone carries thirty permission rows. Splitting it keeps ADR-024's initial
+ * budget for the surface people actually land on.
+ */
+const ProfileSettings = lazy(() =>
+  import('./settings/ProfileSettings').then((m) => ({ default: m.ProfileSettings })),
+)
+const WorkspaceSettings = lazy(() =>
+  import('./settings/WorkspaceSettings').then((m) => ({ default: m.WorkspaceSettings })),
+)
+const MembersSettings = lazy(() =>
+  import('./settings/MembersSettings').then((m) => ({ default: m.MembersSettings })),
+)
+const TeamsSettings = lazy(() =>
+  import('./settings/TeamsSettings').then((m) => ({ default: m.TeamsSettings })),
+)
+const RolesSettings = lazy(() =>
+  import('./settings/RolesSettings').then((m) => ({ default: m.RolesSettings })),
+)
+const WorkflowSettings = lazy(() =>
+  import('./settings/WorkflowSettings').then((m) => ({ default: m.WorkflowSettings })),
+)
+const TagsSettings = lazy(() =>
+  import('./settings/TagsSettings').then((m) => ({ default: m.TagsSettings })),
+)
 
 /**
  * The search parameters every route understands.
@@ -213,7 +244,73 @@ const reportsRoute = createRoute({
  * whole app against; a test that reused it would share history between cases and
  * see the previous test's route.
  */
-export const routeTree = rootRoute.addChildren([listRoute, boardRoute, myWorkRoute, taskRoute, reportsRoute])
+/**
+ * Settings, as a route tree.
+ *
+ * A layout route with children rather than one component switching on a
+ * parameter: each section is a separate address someone can be sent to — "your
+ * admin can change that under Roles" is only useful if Roles has a URL — and the
+ * router, not the component, is what makes the back button work between them.
+ */
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings',
+  component: SettingsLayout,
+})
+
+/** Bare `/settings` lands on the one section every signed-in person can use. */
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: '/',
+  component: function SettingsIndex(): ReactElement {
+    return <Lazy label="profile settings">{<ProfileSettings />}</Lazy>
+  },
+})
+
+function settingsChild(path: string, label: string, element: ReactElement): AnyRoute {
+  return createRoute({
+    getParentRoute: () => settingsRoute,
+    path,
+    component: function SettingsSection(): ReactElement {
+      return <Lazy label={label}>{element}</Lazy>
+    },
+  })
+}
+
+/**
+ * One fallback wording for every lazy section.
+ *
+ * `role="status"` rather than a bare paragraph: the panel is being replaced
+ * under a navigation the user just made, and a screen-reader user otherwise
+ * hears nothing between the click and the content.
+ */
+function Lazy({ label, children }: { label: string; children: ReactElement }): ReactElement {
+  return (
+    <Suspense fallback={<p className="empty" role="status">{`Loading ${label}…`}</p>}>
+      {children}
+    </Suspense>
+  )
+}
+
+const settingsChildren = [
+  settingsIndexRoute,
+  settingsChild('/profile', 'profile settings', <ProfileSettings />),
+  settingsChild('/workspace', 'workspace settings', <WorkspaceSettings />),
+  settingsChild('/members', 'members', <MembersSettings />),
+  settingsChild('/teams', 'teams', <TeamsSettings />),
+  settingsChild('/roles', 'roles', <RolesSettings />),
+  settingsChild('/workflow', 'the workflow', <WorkflowSettings />),
+  settingsChild('/tags', 'tags', <TagsSettings />),
+]
+
+export const routeTree = rootRoute.addChildren([
+  listRoute,
+  boardRoute,
+  myWorkRoute,
+  taskRoute,
+  reportsRoute,
+  settingsRoute.addChildren(settingsChildren),
+])
 
 export const router = createRouter({ routeTree })
 

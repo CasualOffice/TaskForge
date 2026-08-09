@@ -33,4 +33,4 @@
 pub mod handlers;
 pub mod wire;
 
-pub use handlers::{assign, create, list, revoke, update};
+pub use handlers::{assign, create, list, list_assignments, revoke, update};

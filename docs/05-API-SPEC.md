@@ -105,7 +105,9 @@ DELETE /api/v1/workflows/{id}/statuses/{sid}?migrate_to={sid}    ← doc 23
 POST   /api/v1/workflows/{id}/transitions
 
 GET    /api/v1/roles                       POST   /api/v1/roles
-POST   /api/v1/role-assignments            DELETE /api/v1/role-assignments/{id}
+GET    /api/v1/role-assignments            POST   /api/v1/role-assignments
+DELETE /api/v1/role-assignments/{id}
+GET    /api/v1/teams/{id}/members          POST   /api/v1/teams/{id}/members
 GET    /api/v1/permissions/effective?project_id=
 POST   /api/v1/permissions/explain                                ← doc 04
 

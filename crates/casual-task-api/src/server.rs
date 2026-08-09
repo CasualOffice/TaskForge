@@ -318,7 +318,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/role-assignments",
-            axum::routing::post(crate::roles::assign),
+            get(crate::roles::list_assignments).post(crate::roles::assign),
         )
         .route(
             "/api/v1/role-assignments/{id}",
@@ -466,7 +466,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/teams/{team_id}/members",
-            axum::routing::post(crate::workspaces::add_team_member),
+            get(crate::workspaces::list_team_members).post(crate::workspaces::add_team_member),
         )
         .route(
             "/api/v1/teams/{team_id}/members/{user_id}",
