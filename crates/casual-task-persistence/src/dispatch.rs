@@ -189,7 +189,28 @@ pub struct Claimed {
     pub project_id: Option<Uuid>,
     pub payload: serde_json::Value,
     pub attempts: i32,
+    /// Who caused the event; `None` for system-generated (migration 0024).
+    ///
+    /// `docs/29` rule 1 — "you are never notified about your own action" — is
+    /// unimplementable without this, and it is not recoverable from anywhere
+    /// else on the row: the outbox carries no other trace of the actor.
+    pub actor_id: Option<Uuid>,
 }
+
+/// The tuple `claim` decodes. Named because it is nine wide and clippy is
+/// right that an anonymous nine-tuple in a signature is unreadable.
+type ClaimRow = (
+    Uuid,
+    Uuid,
+    String,
+    String,
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    serde_json::Value,
+    i32,
+    Option<Uuid>,
+);
 
 /// Take up to `limit` deliveries for `consumer`.
 ///
@@ -211,20 +232,7 @@ pub async fn claim(
     worker: &str,
     limit: i64,
 ) -> Result<Vec<Claimed>, sqlx::Error> {
-    let rows = sqlx::query_as::<
-        _,
-        (
-            Uuid,
-            Uuid,
-            String,
-            String,
-            Uuid,
-            Uuid,
-            Option<Uuid>,
-            serde_json::Value,
-            i32,
-        ),
-    >(
+    let rows = sqlx::query_as::<_, ClaimRow>(
         "UPDATE outbox_delivery d
             SET claimed_at = now(), claimed_by = $2, attempts = d.attempts + 1
           WHERE d.id IN (
@@ -256,7 +264,8 @@ pub async fn claim(
                 (SELECT workspace_id FROM outbox_event WHERE id = d.event_id),
                 (SELECT project_id   FROM outbox_event WHERE id = d.event_id),
                 (SELECT payload      FROM outbox_event WHERE id = d.event_id),
-                d.attempts",
+                d.attempts,
+                (SELECT actor_id     FROM outbox_event WHERE id = d.event_id)",
     )
     .bind(consumer)
     .bind(worker)
@@ -278,6 +287,7 @@ pub async fn claim(
                 project_id,
                 payload,
                 attempts,
+                actor_id,
             )| {
                 Claimed {
                     delivery_id,
@@ -289,6 +299,7 @@ pub async fn claim(
                     project_id,
                     payload,
                     attempts,
+                    actor_id,
                 }
             },
         )

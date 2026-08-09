@@ -143,17 +143,20 @@ impl Message {
 }
 
 impl fmt::Debug for Message {
-    /// Prints the envelope and `<redacted>` for the body.
+    /// Prints the recipient and `<redacted>` for everything else.
     ///
-    /// The subject is safe by construction for the mail this system sends
-    /// today — `docs/29` §Email content puts a task key and title in a
-    /// *notification* subject, and no such mail is composed here yet. When one
-    /// is, the subject becomes tenant content and this impl is where that is
-    /// noticed.
+    /// The subject used to be printed, with a note that it was "safe by
+    /// construction for the mail this system sends today" and that the day a
+    /// notification subject existed was the day to revisit it. That day is
+    /// C-016: `docs/29` §Email content makes the subject `[WR-125] Task
+    /// title`, and a task title is customer content that `docs/46` forbids
+    /// logging at any level. So the subject is redacted here, and `to` stays —
+    /// an address is who the mail went to, which is what an operator debugging
+    /// delivery needs and is already in the SMTP envelope.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Message")
             .field("to", &self.to)
-            .field("subject", &self.subject)
+            .field("subject", &"<redacted>")
             .field("body", &"<redacted>")
             .finish()
     }
@@ -223,10 +226,14 @@ impl SmtpConfig {
 ///
 /// # Errors
 ///
-/// [`MailError::Header`] if the subject is not a single line of ASCII. That is
-/// the header-injection guard: `\r\n` in a subject appends headers, and a
-/// non-ASCII byte needs an RFC 2047 encoder this module deliberately does not
-/// carry.
+/// [`MailError::Header`] if the subject carries a control character, or the
+/// message id is not a single ASCII line. That is the header-injection guard:
+/// `\r\n` in a header appends headers.
+///
+/// A non-ASCII subject is **encoded**, not refused — `crate::header` carries the
+/// RFC 2047 encoder, because `docs/29` puts a task title in a notification
+/// subject and titles are customer content in whatever language the customer
+/// writes.
 pub fn format_rfc5322(
     from: &Address,
     to: &Address,
@@ -235,7 +242,8 @@ pub fn format_rfc5322(
     date: OffsetDateTime,
     message_id: &str,
 ) -> Result<Vec<u8>, MailError> {
-    if !is_single_ascii_line(subject) || !is_single_ascii_line(message_id) {
+    let subject = crate::header::encode_subject(subject).ok_or(MailError::Header)?;
+    if !crate::header::is_safe_line(message_id) {
         return Err(MailError::Header);
     }
 
@@ -254,7 +262,7 @@ pub fn format_rfc5322(
         ("Date", date.as_str()),
         ("From", &format!("{FROM_DISPLAY_NAME} <{from}>")),
         ("To", to.as_ref()),
-        ("Subject", subject),
+        ("Subject", subject.as_str()),
         ("Message-ID", &format!("<{message_id}>")),
         ("MIME-Version", "1.0"),
         ("Content-Type", "text/plain; charset=utf-8"),
@@ -273,12 +281,6 @@ pub fn format_rfc5322(
     out.push_str(&crlf(body));
 
     Ok(out.into_bytes())
-}
-
-/// Whether a header value is safe to concatenate: one line, ASCII, no control
-/// characters.
-fn is_single_ascii_line(value: &str) -> bool {
-    value.is_ascii() && !value.chars().any(|c| c.is_ascii_control())
 }
 
 /// Normalise line endings to CRLF without doubling the ones already correct.
@@ -397,9 +399,11 @@ impl Mailer for LoggingMailer {
         message: &'a Message,
     ) -> Pin<Box<dyn Future<Output = Result<(), MailError>> + Send + 'a>> {
         Box::pin(async move {
+            // The subject is NOT logged: since C-016 it carries a task title,
+            // and docs/46 forbids customer content in a log line at any level.
+            // The recipient is enough to answer "did this person get mail".
             tracing::info!(
                 to = message.to(),
-                subject = message.subject(),
                 "email is disabled (TF_SMTP_HOST is empty); the message was not sent"
             );
             Ok(())
@@ -558,11 +562,32 @@ mod tests {
     }
 
     #[test]
-    fn a_non_ascii_subject_is_refused_rather_than_mangled() {
-        // Encoding it needs RFC 2047, and that encoder is the dependency this
-        // module exists without. Refusing is visible; sending `Ã©` is not.
+    fn a_non_ascii_subject_is_encoded_rather_than_refused() {
+        // This test used to assert the opposite, and the assertion was right
+        // for the mail that existed then: one password reset with a fixed
+        // English subject, where refusing was visible and sending `Ã©` was not.
+        //
+        // C-016 makes the subject `[WR-125] Task title` (docs/29 §Email
+        // content), and a title is whatever language the customer writes in. So
+        // refusing stopped meaning "a developer wrote a bad subject" and
+        // started meaning "this tenant does not get notification email",
+        // silently. `crate::header` carries the RFC 2047 encoder; the header is
+        // still pure ASCII on the wire, which is the property that mattered.
+        let message = rendered("Réinitialiser", "body").expect("encoded, not refused");
+        assert!(message.contains("Subject: =?UTF-8?B?"), "{message:?}");
+        assert!(
+            message.is_ascii(),
+            "the rendered headers must be ASCII on the wire"
+        );
+    }
+
+    #[test]
+    fn a_non_ascii_subject_carrying_a_newline_is_still_refused() {
+        // The encoder must not become a way around the injection guard: base64
+        // would carry a CRLF through intact and the decoded header would inject
+        // after all.
         assert_eq!(
-            rendered("Réinitialiser", "body").err(),
+            rendered("Réinitialiser\r\nBcc: attacker@example.com", "body").err(),
             Some(MailError::Header)
         );
     }
