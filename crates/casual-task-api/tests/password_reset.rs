@@ -392,7 +392,9 @@ async fn a_new_password_below_the_minimum_is_refused_without_spending_the_token(
     let (status, body) = status_and_body(response).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     let json: serde_json::Value = serde_json::from_str(&body)?;
-    assert_eq!(json["error"]["code"], "TF-REQ-0001");
+    // TF-VAL-0004, not the retired TF-REQ-0001 (D-055): a password under the
+    // minimum is a field value out of range.
+    assert_eq!(json["error"]["code"], "TF-VAL-0004");
     assert_eq!(json["error"]["details"]["min_length"], 12);
 
     assert!(
