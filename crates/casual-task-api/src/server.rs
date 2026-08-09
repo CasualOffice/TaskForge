@@ -231,6 +231,21 @@ pub fn router(state: AppState) -> Router {
             axum::routing::delete(crate::workspaces::remove_member),
         )
         .route(
+            "/api/v1/workspaces/{workspace_id}/invitations",
+            get(crate::invitations::list).post(crate::invitations::create),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/invitations/{id}",
+            axum::routing::delete(crate::invitations::revoke),
+        )
+        // Accepting is NOT under /workspaces: the acceptor may not be a member
+        // of one yet, and may have no account at all. It sits beside the other
+        // credential-bearing, unauthenticated endpoints instead.
+        .route(
+            "/api/v1/auth/invitations/accept",
+            axum::routing::post(crate::invitations::accept),
+        )
+        .route(
             "/api/v1/workspaces/{workspace_id}/teams",
             get(crate::workspaces::list_teams).post(crate::workspaces::create_team),
         )
@@ -457,6 +472,9 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/workspaces/{workspace_id}",
     "/api/v1/workspaces/{workspace_id}/members",
     "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+    "/api/v1/workspaces/{workspace_id}/invitations",
+    "/api/v1/workspaces/{workspace_id}/invitations/{id}",
+    "/api/v1/auth/invitations/accept",
     "/api/v1/workspaces/{workspace_id}/teams",
     "/api/v1/teams/{team_id}/members",
     "/api/v1/teams/{team_id}/members/{user_id}",
@@ -540,6 +558,9 @@ mod tests {
             "/api/v1/workspaces/{workspace_id}",
             "/api/v1/workspaces/{workspace_id}/members",
             "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+            "/api/v1/workspaces/{workspace_id}/invitations",
+            "/api/v1/workspaces/{workspace_id}/invitations/{id}",
+            "/api/v1/auth/invitations/accept",
             "/api/v1/workspaces/{workspace_id}/teams",
             "/api/v1/teams/{team_id}/members",
             "/api/v1/teams/{team_id}/members/{user_id}",
