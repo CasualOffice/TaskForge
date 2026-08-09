@@ -485,6 +485,8 @@ async fn an_empty_body_and_an_unknown_field_are_both_refused() -> Result<()> {
             None,
         )
         .await?;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // docs/05 §Errors: 400 for "malformed / unknown field / bad filter". 422 is
+    // for a request that parses and violates a domain rule.
+    assert_eq!(status, StatusCode::BAD_REQUEST);
     Ok(())
 }

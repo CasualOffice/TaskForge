@@ -1146,3 +1146,33 @@ pub async fn workspace_grants_for_user(
     .fetch_all(pool)
     .await
 }
+
+/// Give `taskforge_app` a password so a test can connect AS the role RLS
+/// applies to.
+///
+/// As the owner every tenant assertion passes with the predicates removed,
+/// which is why tests that mean to exercise isolation must not use it.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn enable_app_login(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("ALTER ROLE taskforge_app WITH LOGIN PASSWORD 'apppw'")
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Soft-delete a task, so a projection consumer can be tested against the
+/// removal path as well as the write path.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn soft_delete_task(pool: &sqlx::PgPool, task_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE task SET deleted_at = now() WHERE id = $1")
+        .bind(task_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
