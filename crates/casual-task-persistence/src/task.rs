@@ -38,6 +38,10 @@ pub struct TaskRow {
     /// One of the five permanent states, derived from `status_id`.
     pub state: String,
     pub reporter_id: Uuid,
+    /// Which team owns this task now. `None` is not missing data — it is the
+    /// **triage queue** (`docs/45`): intake happens before triage, so a task
+    /// that nobody has routed yet legitimately belongs to no team.
+    pub team_id: Option<Uuid>,
     pub environment_id: Option<Uuid>,
     pub milestone_id: Option<Uuid>,
     pub parent_id: Option<Uuid>,
@@ -80,7 +84,7 @@ pub(crate) const COLUMNS: &str =
     "t.id, t.workspace_id, t.project_id, t.number, t.title, t.description,
                        t.type::text AS \"type\", t.priority::text AS priority, t.status_id,
                        t.state::text AS state,
-                       t.reporter_id, t.environment_id, t.milestone_id, t.parent_id,
+                       t.reporter_id, t.team_id, t.environment_id, t.milestone_id, t.parent_id,
                        t.start_at, t.due_at, t.position, t.created_at, t.created_by,
                        t.updated_at, t.updated_by, t.version, t.archived_at,
                        EXISTS (SELECT 1 FROM task_dependency d
@@ -105,6 +109,7 @@ fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
         status_id: row.try_get("status_id")?,
         state: row.try_get("state")?,
         reporter_id: row.try_get("reporter_id")?,
+        team_id: row.try_get("team_id")?,
         environment_id: row.try_get("environment_id")?,
         milestone_id: row.try_get("milestone_id")?,
         parent_id: row.try_get("parent_id")?,

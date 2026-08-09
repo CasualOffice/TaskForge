@@ -1612,6 +1612,41 @@ on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
 
+**Custody is served** — transfer, promote, verify, and the chain they leave
+([45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md)). Migration 0031 gave the model
+the vocabulary; these are the four endpoints that write and read it.
+
+**Why they are commands and not fields.** A transfer *clears the assignees* as
+part of the move, because the task has to land in the receiving team's queue —
+a `PATCH {"team_id": …}` that silently emptied another field would be the worst
+kind of surprise. A promotion writes a log row *with* the column, because "when
+did this reach staging" is the question the column exists to serve and a plain
+field write answers it with nothing. A verification is not a field at all.
+
+**Not idempotent, on purpose, in two places.** Android → Backend → Android is two
+real events, so the transfer log keeps both and the bounce count survives; handing
+a task to the team that already owns it is a `409` so a retry cannot inflate it.
+A second promotion to the same environment is a redeploy, and a log that
+swallowed it would understate the work.
+
+**The invariant is "no silent move", not "one writer".** `PUT
+/tasks/{id}/environment` predates all of this, carries `If-Match`, and can refuse
+a stale write — a guarantee the promotion path does not offer. So it keeps its
+own `UPDATE` and calls `custody::record_promotion` for the log, and a test
+asserts the older door leaves a trail. Without that, the history would be complete
+or not depending on which endpoint a task went through.
+
+**A verdict is not a status change.** What happens next — back to the developer
+on a fail, forward on a pass — is a transition the caller makes afterwards.
+Keeping them separate is what lets "failed twice on qa, then passed" survive
+however many times the status has changed since; a status column only ever holds
+the latest value.
+
+**Ten integration tests**, each on a property a plausible implementation gets
+wrong rather than on a row being written: the assignees are cleared, a round trip
+is two events, a team not on the project is refused, the column and the log move
+together, the older endpoint logs too, and failures accumulate.
+
 **The product had no user research, and the surfaces show it**
 ([44](44-PRODUCT-RESEARCH-AND-SURFACE-BRIEFS.md)). Three findings, each
 checkable: [01](01-ORD.md) §Users lists buyer segments rather than people;

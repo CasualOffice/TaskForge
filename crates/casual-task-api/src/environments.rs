@@ -392,6 +392,22 @@ pub async fn set_on_task(
         .with_details(serde_json::json!({ "your_version": expected }))
     })?;
 
+    // The second clock never moves silently (`docs/45`). Setting an environment
+    // is a promotion however it was reached, so it leaves a row here as well —
+    // otherwise "when did WR-125 reach staging" would be answerable for tasks
+    // promoted through one endpoint and not the other. Clearing it is not a
+    // promotion: there is no environment to have reached.
+    if let Some(environment) = chosen.as_ref() {
+        casual_task_persistence::custody::record_promotion(
+            &mut scoped,
+            task.id,
+            environment.id,
+            ctx.actor.as_uuid(),
+        )
+        .await
+        .map_err(|error| internal(error, "recording the promotion", &request_id))?;
+    }
+
     UnitOfWork::record(
         &mut scoped,
         &Change {
