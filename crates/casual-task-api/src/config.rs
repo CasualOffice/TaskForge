@@ -62,6 +62,14 @@ pub const MIN_SECRET_LEN: usize = 32;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub bind_addr: SocketAddr,
+    /// `TF_OBJECT_BIND_ADDR` — where this process serves the attachment origin.
+    ///
+    /// `None` when nothing is served here, which is the S3 profile: the bucket
+    /// answers the presigned URL and this process never sees a byte of file
+    /// content. Set it for the single-node profile, and set it to a **different
+    /// port** from `TF_BIND_ADDR` — a different port is a different origin,
+    /// which is the whole control `docs/28` §Serving downloads rests on.
+    pub object_bind_addr: Option<SocketAddr>,
     pub database_url: String,
     pub public_url: String,
     pub attachment_origin: String,
@@ -188,6 +196,17 @@ impl Config {
             });
         }
 
+        // Where the attachment origin is served from, when this process serves
+        // it. Absent means it is served elsewhere — an S3 bucket, a CDN, a
+        // second deployment — and this process binds one listener as before.
+        let object_bind_addr = match get("TF_OBJECT_BIND_ADDR") {
+            None => None,
+            Some(raw) => Some(raw.parse().map_err(|e| ConfigError::Invalid {
+                name: "TF_OBJECT_BIND_ADDR",
+                reason: format!("{e} (expected host:port, e.g. 0.0.0.0:8081)"),
+            })?),
+        };
+
         let public_url = required("TF_PUBLIC_URL")?;
         let attachment_origin = required("TF_ATTACHMENT_ORIGIN")?;
         if origin_of(&attachment_origin) == origin_of(&public_url) {
@@ -247,6 +266,7 @@ impl Config {
 
         Ok(Self {
             bind_addr,
+            object_bind_addr,
             database_url: required("DATABASE_URL")?,
             public_url,
             attachment_origin,

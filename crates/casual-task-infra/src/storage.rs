@@ -224,6 +224,44 @@ impl FilesystemStore {
     pub fn resolve(&self, key: &str) -> Result<PathBuf, StorageError> {
         self.path_of(key)
     }
+
+    /// Write an object, replacing whatever was there.
+    ///
+    /// # Why this is not [`ObjectStore::append`]
+    ///
+    /// An upload is idempotent by nature: a client that retries a `PUT` whose
+    /// response it never saw is doing the right thing, and appending would
+    /// double the bytes. The only thing that would notice is `commit`'s size
+    /// check, so the symptom would be a refusal for a correct client. `append`
+    /// exists for exports, which genuinely accumulate.
+    ///
+    /// Not on the [`ObjectStore`] trait: S3 has no equivalent to serve, because
+    /// with S3 the *bucket* takes the `PUT` and this process never sees the
+    /// bytes at all. It is the filesystem backend standing in for one.
+    ///
+    /// # Errors
+    ///
+    /// [`StorageError::InvalidKey`] if the key escapes the root, or
+    /// [`StorageError::Backend`] for any I/O failure.
+    pub async fn replace(&self, key: &str, bytes: &[u8]) -> Result<(), StorageError> {
+        use tokio::io::AsyncWriteExt;
+        let path = self.path_of(key)?;
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|error| StorageError::Backend(error.to_string()))?;
+        }
+        let mut file = tokio::fs::File::create(&path)
+            .await
+            .map_err(|error| StorageError::Backend(error.to_string()))?;
+        file.write_all(bytes)
+            .await
+            .map_err(|error| StorageError::Backend(error.to_string()))?;
+        file.flush()
+            .await
+            .map_err(|error| StorageError::Backend(error.to_string()))?;
+        Ok(())
+    }
 }
 
 /// Seconds since the epoch.

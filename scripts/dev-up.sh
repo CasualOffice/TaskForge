@@ -27,6 +27,11 @@ CONTAINER=taskforge-dev
 PGPORT=${TF_DEV_PGPORT:-55433}
 API_PORT=${TF_DEV_API_PORT:-8080}
 WEB_PORT=${TF_DEV_WEB_PORT:-5173}
+# The attachment origin. A DIFFERENT PORT on purpose: a different port is a
+# different origin, which is the control docs/28 §Serving downloads rests on —
+# a stored HTML or SVG file must not be able to execute in the application's
+# origin. The API refuses to start if these two share one.
+OBJECT_PORT=${TF_DEV_OBJECT_PORT:-8081}
 
 # Development credentials, hard-coded on purpose. A script that generated them
 # would have to store them somewhere, and a developer who cannot predict the
@@ -179,7 +184,8 @@ env DATABASE_URL="$APP_DSN" \
     TF_BIND_ADDR="127.0.0.1:${API_PORT}" \
     TF_SECRET_KEY="dev-only-secret-key-not-for-any-real-deployment" \
     TF_PUBLIC_URL="http://127.0.0.1:${WEB_PORT}" \
-    TF_ATTACHMENT_ORIGIN="http://127.0.0.1:${API_PORT}" \
+    TF_ATTACHMENT_ORIGIN="http://127.0.0.1:${OBJECT_PORT}" \
+    TF_OBJECT_BIND_ADDR="127.0.0.1:${OBJECT_PORT}" \
     TF_STORAGE_BACKEND="fs" \
     TF_STORAGE_PATH="$(pwd)/.dev/objects" \
     TF_WORKER_EMBEDDED="true" \
@@ -288,6 +294,7 @@ $(green "TaskForge is running.")
 
   Web       http://127.0.0.1:${WEB_PORT}
   API       http://127.0.0.1:${API_PORT}
+  Files     http://127.0.0.1:${OBJECT_PORT}  (attachment origin — separate on purpose)
   Database  ${APP_DSN}
 
   Email     ${DEMO_EMAIL}
