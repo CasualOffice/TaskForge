@@ -234,6 +234,14 @@ pub mod codes {
     pub const SLUG_TAKEN: Code = Code::new("TF-PRJ-0007");
     /// The team name is taken inside this workspace.
     pub const TEAM_NAME_TAKEN: Code = Code::new("TF-PRJ-0008");
+    /// The milestone name is taken inside this project.
+    pub const MILESTONE_NAME_TAKEN: Code = Code::new("TF-PRJ-0010");
+    /// The tag name is taken at that scope — workspace, or that one project.
+    pub const TAG_NAME_TAKEN: Code = Code::new("TF-PRJ-0011");
+    /// A project already holds the maximum number of milestones.
+    pub const MILESTONE_LIMIT: Code = Code::new("TF-PRJ-0012");
+    /// A workspace already holds the maximum number of tags.
+    pub const TAG_LIMIT: Code = Code::new("TF-PRJ-0013");
 
     /// Every code this binary can emit.
     ///
@@ -296,6 +304,10 @@ pub mod codes {
         LAST_MEMBER,
         SLUG_TAKEN,
         TEAM_NAME_TAKEN,
+        MILESTONE_NAME_TAKEN,
+        TAG_NAME_TAKEN,
+        MILESTONE_LIMIT,
+        TAG_LIMIT,
     ];
 }
 

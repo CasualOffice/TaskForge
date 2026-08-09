@@ -285,7 +285,36 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/tasks/{id}/tags",
-            axum::routing::post(crate::tasks::tag),
+            get(crate::tasks::tags_of).post(crate::tasks::tag),
+        )
+        .route(
+            "/api/v1/tasks/{id}/tags/{tag_id}",
+            axum::routing::delete(crate::tasks::untag),
+        )
+        // The vocabulary, as distinct from its use above. `tag.manage` authors
+        // it; `task.update` applies it. Without a list nothing can render a
+        // picker, which is why the write endpoint beside it was unreachable
+        // from a browser for its whole life.
+        .route(
+            "/api/v1/tags",
+            get(crate::tags::list).post(crate::tags::create),
+        )
+        // ADR-018 caps depth at 1, so this is a list and never a tree. A read
+        // and only a read: `docs/03` says the rollup is displayed, never
+        // enforced, and there is no verb here that could enforce one.
+        .route(
+            "/api/v1/tasks/{id}/subtasks",
+            get(crate::tasks::subtasks_of),
+        )
+        // Milestones. Authored per project, read with the tasks they are about.
+        // Closing one moves no task — see `crate::milestones`.
+        .route(
+            "/api/v1/projects/{id}/milestones",
+            get(crate::milestones::list).post(crate::milestones::create),
+        )
+        .route(
+            "/api/v1/milestones/{id}",
+            axum::routing::patch(crate::milestones::update),
         )
         // C-015. Registered here with every other route — above the layers, so
         // it is wrapped by CSRF, the rate limiter and `observe` like anything
@@ -593,6 +622,11 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/tasks/{id}/dependencies",
     "/api/v1/tasks/{id}/comments",
     "/api/v1/comments/{id}",
+    "/api/v1/tasks/{id}/tags/{tag_id}",
+    "/api/v1/tags",
+    "/api/v1/tasks/{id}/subtasks",
+    "/api/v1/projects/{id}/milestones",
+    "/api/v1/milestones/{id}",
     "/api/v1/tasks/{id}/transitions",
     "/api/v1/tasks/{id}/assignees",
     "/api/v1/tasks/{id}/assignees/{user_id}",

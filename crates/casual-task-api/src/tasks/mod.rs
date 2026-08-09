@@ -23,11 +23,15 @@
 pub mod crud;
 pub mod guard;
 pub mod relations;
+pub mod subtasks;
+pub mod tags;
 pub mod validate;
 pub mod wire;
 
 pub use crud::{create, delete, list, read, update};
 pub use relations::{assign, tag, transition, unassign};
+pub use subtasks::list as subtasks_of;
+pub use tags::{list as tags_of, remove as untag};
 pub use wire::TaskView;
 
 pub(crate) use guard::*;
