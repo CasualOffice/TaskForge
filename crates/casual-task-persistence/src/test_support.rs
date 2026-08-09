@@ -1075,6 +1075,30 @@ pub async fn history(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<History,
     })
 }
 
+/// The event types audited against one aggregate.
+///
+/// `docs/04` control 7: every grant, revoke and role edit writes an
+/// `audit_event`. A test asserting the domain row alone would pass with the
+/// auditing deleted.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn audit_events_for(
+    pool: &sqlx::PgPool,
+    aggregate_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        // `audit_event` names it `target_id`, not `aggregate_id`: the audit
+        // stream is about who did what to what, and `activity_event` is the one
+        // keyed on an aggregate (`docs/25` §The three streams).
+        "SELECT event_type FROM audit_event WHERE target_id = $1 ORDER BY occurred_at",
+    )
+    .bind(aggregate_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// A workspace's current `authz_epoch` (`docs/04` §Caching, ADR-012).
 ///
 /// # Errors

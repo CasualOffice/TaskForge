@@ -32,6 +32,7 @@ pub mod milestone;
 pub mod notification;
 pub mod project;
 pub mod role;
+pub mod role_edit;
 pub mod scoped;
 pub mod search;
 pub mod tag;

@@ -26,7 +26,14 @@ pub use workflow::{CompositionError, StoredStatus, StoredTransition, compose, in
 /// rather than letting the API crate depend on the resolver directly keeps that
 /// true: there is one path from an HTTP handler to a permission decision, and
 /// it runs through here.
-pub use casual_task_authz::{Decision, DenyReason, ResourceFacts};
+// `docs/19` puts the boundary here: the API crate depends on this one and never
+// on `casual-task-authz`, so the authorization vocabulary it needs is re-exported
+// rather than reached for. A handler that could construct an `Actor` itself
+// would be a second place to get the principal wrong.
+pub use casual_task_authz::{
+    Decision, DenyReason, Principal, ProposedAssignment, Refusal, ResourceFacts, ResourceScopes,
+    Scope,
+};
 
 /// The state machine's vocabulary, re-exported for the same reason.
 ///

@@ -270,6 +270,26 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/tasks/{id}/environment",
             axum::routing::put(crate::environments::set_on_task),
         )
+        // Roles (`docs/04` §API). Authoring is workspace-scoped and is a
+        // different permission from assigning (D-049) — anyone who could do
+        // both could mint a role carrying more than they hold and grant it to
+        // themselves.
+        .route(
+            "/api/v1/roles",
+            get(crate::roles::list).post(crate::roles::create),
+        )
+        .route(
+            "/api/v1/roles/{id}",
+            axum::routing::patch(crate::roles::update),
+        )
+        .route(
+            "/api/v1/role-assignments",
+            axum::routing::post(crate::roles::assign),
+        )
+        .route(
+            "/api/v1/role-assignments/{id}",
+            axum::routing::delete(crate::roles::revoke),
+        )
         .route(
             "/api/v1/permissions/effective",
             get(crate::permissions::effective),
@@ -658,6 +678,10 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/environments",
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",
+    "/api/v1/roles",
+    "/api/v1/roles/{id}",
+    "/api/v1/role-assignments",
+    "/api/v1/role-assignments/{id}",
     "/api/v1/permissions/effective",
     "/api/v1/permissions/explain",
     "/api/v1/notifications",
