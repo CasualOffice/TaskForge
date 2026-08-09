@@ -11,9 +11,10 @@
 //! stops reading is cut off and told why (`Received::Lagged`), and a client that
 //! disconnects takes its subscription with it.
 //!
-//! **A fourth is missing and matters more than all three:** a revoked session
-//! does *not* close its stream. See this module's parent docs — it is a known
-//! security shortfall, written down rather than implied by silence.
+//! A fourth is the one `docs/40` names: a revoked session, or an authority that
+//! no longer permits this project, ends the stream from outside it
+//! ([`super::revalidate`]) and the client is told to re-authenticate rather than
+//! left to reconnect with a credential that will only be refused again.
 
 use std::convert::Infallible;
 use std::pin::Pin;
@@ -35,7 +36,8 @@ use crate::context::Context;
 use crate::error::ApiError;
 use crate::middleware::WorkspaceMember;
 use crate::server::{AppState, RequestId};
-use crate::{sse::authorize, unit};
+use crate::sse::{authorize, revalidate};
+use crate::unit;
 
 /// `docs/05`: "Heartbeat comment every 30 s keeps intermediaries from closing
 /// idle streams."
@@ -80,6 +82,16 @@ pub async fn stream(
     let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
     let decision =
         authorize::may_subscribe(&mut scoped, &ctx, query.project_id, &request_id).await?;
+    // Read in the SAME transaction as the authorization, so the pair cannot
+    // straddle a grant change: an epoch read afterwards could return a value
+    // from after a bump the authorization did not see, and the stream would
+    // then never re-check that change.
+    let epoch = revalidate::current_epoch(&mut scoped)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading the authorization epoch for a stream failed");
+            ApiError::internal(&request_id)
+        })?;
     unit::commit(tx, &request_id).await?;
 
     if let Err(refusal) = decision {
@@ -89,6 +101,25 @@ pub async fn stream(
     let topic = Topic::project(ctx.workspace, query.project_id);
     let subscription = state.broadcast.subscribe(topic);
     record_connections(&state.metrics, state.broadcast.subscriber_count());
+
+    // The other half of docs/40's revocation gate. Authorization at connect
+    // decides who gets in; this decides who stays, and without it a revoked
+    // session keeps receiving events until the client leaves.
+    //
+    // A detached task rather than work inside the stream: the checks are
+    // database reads, and doing them on the polling path would stall event
+    // delivery for every subscriber behind the slowest query. It stops itself
+    // when the subscription goes away.
+    tokio::spawn(revalidate::watch(revalidate::Watch {
+        state: state.clone(),
+        headers: headers.clone(),
+        member: member.clone(),
+        project: query.project_id,
+        epoch,
+        canceller: subscription.canceller(),
+        request_id: request_id.clone(),
+        interval: revalidate::INTERVAL,
+    }));
 
     tracing::info!(
         project_id = %query.project_id,
@@ -156,6 +187,15 @@ impl futures_core::Stream for EventStream {
             Poll::Ready(Received::Lagged) => Poll::Ready(Some(Ok(Event::default()
                 .event("stream.lagged")
                 .data(r#"{"reason":"too_slow","action":"reconnect_with_last_event_id"}"#)))),
+            // The stream was revoked out from under the client (`revalidate`).
+            // Named rather than silent: a plain end-of-stream would have the
+            // client reconnect with the same dead credential, get a 401, and
+            // have no idea the two were related.
+            Poll::Ready(Received::Cancelled) => {
+                Poll::Ready(Some(Ok(Event::default().event("stream.revoked").data(
+                    r#"{"reason":"credential_or_authority_revoked","action":"reauthenticate"}"#,
+                ))))
+            }
             // D-041: shutdown closes the stream. The client sees an ordinary
             // end-of-stream and reconnects, instead of a socket vanishing
             // mid-frame and looking like a parse error.

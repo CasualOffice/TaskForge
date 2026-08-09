@@ -19,25 +19,20 @@
 //!
 //! # What is not built yet
 //!
-//! Said here rather than discovered later, worst first.
+//! Said here rather than discovered later.
 //!
-//! - **Revocation does not close a live stream.** A security shortfall, not a
-//!   missing convenience. `docs/40`'s revocation test names it — "an SSE stream
-//!   held by that session closes" — and today a stream is authorized once, at
-//!   connect, then runs until the client leaves or the process stops. A session
-//!   revoked at 10:00 keeps receiving events. Nothing here mitigates it. Closing
-//!   it needs a per-subscription cancel handle and a revalidation tick, which is
-//!   the same machinery `docs/05`'s `authz_epoch` revalidation needs, so the two
-//!   belong in one change.
 //! - **`Last-Event-ID` replay.** `docs/05` bounds it to 5 minutes / 1,000
 //!   events. The header is accepted and ignored: a reconnecting client resumes
 //!   live and may have a gap it cannot see. Needs a replay buffer with its own
 //!   bound and eviction policy.
 //! - **Coalescing.** `docs/05` asks for one update per aggregate per 100 ms; the
 //!   hub forwards each event.
+//!
+//! Revocation is no longer on this list — see [`revalidate`].
 
 pub mod authorize;
 pub mod endpoint;
+pub mod revalidate;
 
 pub use endpoint::{HEARTBEAT, StreamQuery, stream};
 

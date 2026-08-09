@@ -18,7 +18,8 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
 
-use super::{Broadcast, LiveEvent, Topic};
+use super::subscription::{CountRelease, Delivery};
+use super::{Broadcast, LiveEvent, Subscription, Topic};
 
 /// How many events may be queued for one subscriber before it is dropped.
 ///
@@ -51,86 +52,6 @@ pub const MAX_SUBSCRIBERS: usize = 10_000;
 /// on the same channel that just proved to be full.
 const RESERVED: usize = 1;
 
-/// A live subscription. Dropping it unsubscribes.
-///
-/// # Why the receiver is wrapped rather than returned bare
-///
-/// A bare `mpsc::Receiver` cannot say *why* it ended, and the two reasons need
-/// different behaviour from the caller: a normal close is a shutdown (tell the
-/// client goodbye), and a lag is the overflow policy (tell the client to resume
-/// from `Last-Event-ID`). Collapsing them loses the only signal the client needs
-/// to recover correctly.
-#[derive(Debug)]
-pub struct Subscription {
-    rx: mpsc::Receiver<Delivery>,
-    /// Decrements the process-wide count on drop, whatever ends the stream —
-    /// a normal close, a lag, a panic in the handler, or a dropped connection.
-    /// A gauge maintained by the happy path only is a gauge that drifts up
-    /// forever and then gets ignored.
-    _guard: CountGuard,
-}
-
-/// What arrived on a subscription.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Received {
-    /// An event to send to the client.
-    Event(Box<LiveEvent>),
-    /// The subscriber fell `SUBSCRIBER_QUEUE` events behind and was dropped.
-    /// The client should reconnect with `Last-Event-ID`.
-    Lagged,
-    /// The hub closed — the process is shutting down (`docs/24` §D-041).
-    Closed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Delivery {
-    Event(Box<LiveEvent>),
-    Lagged,
-}
-
-impl Subscription {
-    /// The next thing to happen on this subscription.
-    ///
-    /// Resolves to [`Received::Closed`] once the hub is gone, which is what
-    /// makes a stream end on shutdown instead of hanging until the client
-    /// notices.
-    pub async fn recv(&mut self) -> Received {
-        match self.rx.recv().await {
-            Some(Delivery::Event(event)) => Received::Event(event),
-            Some(Delivery::Lagged) => Received::Lagged,
-            None => Received::Closed,
-        }
-    }
-
-    /// The same, for a caller driving this from a `Stream`.
-    ///
-    /// Exposed as a poll rather than handing out the receiver, so the
-    /// subscription and its `CountGuard` cannot be separated — a caller
-    /// holding a bare receiver would keep receiving events while
-    /// `sse_connections_active` had already forgotten it.
-    ///
-    /// `std::task` rather than a futures trait: this crate holds adapters, and
-    /// a `Stream` implementation here would put the choice of async ecosystem
-    /// in a crate whose job is to be indifferent to it.
-    pub fn poll_recv(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Received> {
-        self.rx.poll_recv(cx).map(|delivery| match delivery {
-            Some(Delivery::Event(event)) => Received::Event(event),
-            Some(Delivery::Lagged) => Received::Lagged,
-            None => Received::Closed,
-        })
-    }
-}
-
-/// Decrements the live-subscription count when a subscription ends.
-#[derive(Debug)]
-struct CountGuard(Arc<AtomicUsize>);
-
-impl Drop for CountGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::Relaxed);
-    }
-}
-
 /// Fan-out inside one process.
 #[derive(Debug, Default)]
 pub struct LocalBroadcast {
@@ -146,15 +67,22 @@ impl LocalBroadcast {
     }
 
     /// A subscription that is already over, for the at-capacity case.
+    ///
+    /// Its event channel has no sender, so the first poll reports
+    /// [`super::Received::Closed`] and the caller's stream ends immediately.
     fn refused(&self) -> Subscription {
-        let (tx, rx) = mpsc::channel(1);
-        drop(tx);
+        let (events_tx, events) = mpsc::channel(1);
+        drop(events_tx);
+        let (cancel_tx, cancel_rx) = mpsc::channel(1);
+        // A release that was never counted: `subscribe` decrements before
+        // calling this, so releasing again here would take the count below the
+        // number of live subscriptions.
+        let release = CountRelease::new(Arc::new(AtomicUsize::new(1)));
         Subscription {
-            rx,
-            // Counted and immediately uncounted: the guard exists so every
-            // Subscription has the same shape, and refusing one must not
-            // decrement a count it never incremented.
-            _guard: CountGuard(Arc::clone(&self.live)),
+            events,
+            cancel_rx,
+            cancel_tx,
+            release,
         }
     }
 }
@@ -212,20 +140,27 @@ impl Broadcast for LocalBroadcast {
         // just produced: two threads subscribing at the cap must not both
         // conclude there was room.
         let live = self.live.fetch_add(1, Ordering::Relaxed) + 1;
-        let guard = CountGuard(Arc::clone(&self.live));
         if live > MAX_SUBSCRIBERS {
-            drop(guard);
+            self.live.fetch_sub(1, Ordering::Relaxed);
             return self.refused();
         }
 
-        let (tx, rx) = mpsc::channel(SUBSCRIBER_QUEUE + RESERVED);
+        let (events_tx, events) = mpsc::channel(SUBSCRIBER_QUEUE + RESERVED);
+        // Capacity one: a second cancellation of an already-cancelled
+        // subscription is redundant, not something to queue.
+        let (cancel_tx, cancel_rx) = mpsc::channel(1);
         self.topics
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .entry(topic)
             .or_default()
-            .push(tx);
-        Subscription { rx, _guard: guard }
+            .push(events_tx);
+        Subscription {
+            events,
+            cancel_rx,
+            cancel_tx,
+            release: CountRelease::new(Arc::clone(&self.live)),
+        }
     }
 
     fn subscriber_count(&self) -> usize {
@@ -246,6 +181,7 @@ impl Broadcast for LocalBroadcast {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::broadcast::Received;
     use casual_task_model::WorkspaceId;
     use uuid::Uuid;
 

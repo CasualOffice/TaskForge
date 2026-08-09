@@ -93,7 +93,11 @@ impl FromRequestParts<AppState> for Authenticated {
 /// the membership check: sequential, so never a deadlock, but twice the pool
 /// churn and twice the exposure to the acquire timeout D-039 bounds — on every
 /// workspace-scoped request, which is eventually all of them.
-async fn authenticate(
+/// `pub(crate)` for one caller beyond the extractors: the SSE revalidation tick
+/// (`crate::sse::revalidate`) has to ask this exact question again, minutes
+/// after the stream opened. A second implementation of "is this credential
+/// still live" is how a revoked session keeps one door open.
+pub(crate) async fn authenticate(
     conn: &mut sqlx::PgConnection,
     headers: &HeaderMap,
     request_id: &str,

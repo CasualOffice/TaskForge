@@ -385,6 +385,25 @@ pub async fn delete_member(scoped: &mut Scoped<'_>, user_id: Uuid) -> Result<boo
     Ok(affected > 0)
 }
 
+/// The workspace's current `authz_epoch` (`docs/04` §Caching, ADR-012).
+///
+/// One indexed read by primary key. It exists so a long-lived reader — an open
+/// SSE stream — can ask "has any grant, role, team or project membership
+/// changed since I was authorized?" without re-resolving the whole authority.
+/// `docs/04` is explicit that the epoch answers exactly that: it is "bumped by
+/// any grant, role, team membership, or project membership change, in the same
+/// transaction as the change".
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn authz_epoch(scoped: &mut Scoped<'_>) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT authz_epoch FROM workspace WHERE id = $1")
+        .bind(scoped.workspace_id().as_uuid())
+        .fetch_one(scoped.conn())
+        .await
+}
+
 /// Bump the workspace's `authz_epoch` (`docs/04` §Caching, ADR-012).
 ///
 /// Returns the new value so a caller can put it in the audit record: "the

@@ -1302,14 +1302,43 @@ Three things are worth reading before the code:
   be full — so the client saw a clean end-of-stream and had no reason to resume.
   One reserved slot fixes it; a test asserts the notice arrives.
 
-**What is not done, and one of it is a security shortfall.** A revoked session's
-stream does **not** close. [40](40-IDENTITY-AUTH-AND-SESSION.md)'s revocation
-test names that case explicitly, and today a stream is authorized once at
-connect and then runs until the client leaves or the process stops. It needs a
-per-subscription cancel handle and a revalidation tick — the same machinery
-[05](05-API-SPEC.md)'s `authz_epoch` revalidation needs, which is why they
-belong in one change rather than two. `Last-Event-ID` replay and the 100 ms
-coalescing window are also unbuilt. C-015 is `Building`, not `Built`.
+**Revocation now reaches an open stream.** The shortfall this row declared —
+a revoked session's stream stayed open — is closed, in the shape the declaration
+predicted: a per-subscription cancel handle plus a tick that re-asks both
+questions.
+
+- **Is the credential still live?** Every tick, through
+  `middleware::authenticate` — the same function the extractors use, because a
+  second implementation of "is this credential still live" is how one door stays
+  open after the others close.
+- **Is the authority still sufficient?** Only when `workspace.authz_epoch` has
+  moved. [04](04-RBAC-AND-AUTHORIZATION.md) defines that counter as bumped by any
+  grant, role, team or project membership change *in the same transaction as the
+  change*, so an unchanged epoch is proof — not a guess — that re-resolving would
+  give the same answer. That makes [05](05-API-SPEC.md)'s "membership is
+  revalidated on every `authz_epoch` change" literally true, and it is why the
+  expensive check can be rare.
+
+**The window is 15 seconds and the cost is stated where the constant is:** a
+session destroyed just after a tick keeps receiving events for up to that long,
+and every open stream costs one session read plus one epoch read per tick —
+roughly 133 queries a second per 1,000 streams, and ~1,330 at the hub's
+10,000-subscriber cap. That is the dominant database cost of live updates, it
+scales with connections rather than events, and the way out is a shared
+invalidation signal (`LISTEN`/`NOTIFY`) rather than a smaller number.
+
+A tick that cannot reach the database does **not** cancel: a blip would otherwise
+drop every stream in the deployment at once, which is a self-inflicted outage
+arriving exactly when the system is already unwell. It fails closed on every
+answer that is an answer.
+
+`sse_connections_active` no longer counts a stream that has been cancelled but
+not yet dropped — the release is idempotent and runs at cancellation, so the
+gauge does not read high during precisely the incident an operator is watching it
+for.
+
+Still unbuilt: `Last-Event-ID` replay and the 100 ms coalescing window. C-015 is
+`Building`, not `Built`.
 
 **C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
 `Accepted` requires — "design final **and** its ADRs Accepted". It carries two

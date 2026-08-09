@@ -35,8 +35,10 @@
 //! enforces it.
 
 mod local;
+mod subscription;
 
-pub use local::{LocalBroadcast, Received, Subscription};
+pub use local::{LocalBroadcast, MAX_SUBSCRIBERS, SUBSCRIBER_QUEUE};
+pub use subscription::{Canceller, Received, Subscription};
 
 use casual_task_model::WorkspaceId;
 use uuid::Uuid;
