@@ -225,11 +225,19 @@ fn key() -> String {
 }
 
 /// A project and one task in it. Returns `(project_id, task_id, task etag)`.
+///
+/// The project is **`WORKSPACE`-visible on purpose**. The default is `TEAM`
+/// (migration 0004) and these projects have no team, so under the default only
+/// the creator could see them — through the `project_membership` row a create
+/// writes for itself. Several tests below need a *second* member of the same
+/// workspace to reach the task, and a fixture that quietly made them all
+/// invisible would turn every one of those into a `404` that looks like the
+/// refusal being asserted.
 async fn a_task(caller: &Caller) -> Result<(Uuid, Uuid, String)> {
     let (status, project, _) = caller
         .post(
             "/api/v1/projects",
-            &serde_json::json!({ "key": "WR", "name": "Work" }),
+            &serde_json::json!({ "key": "WR", "name": "Work", "visibility": "WORKSPACE" }),
             Some(&key()),
         )
         .await?;
