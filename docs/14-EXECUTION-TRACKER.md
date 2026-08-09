@@ -88,7 +88,7 @@ The documentation phase. All complete unless noted.
 | D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-006. Accept before C-002 closes |
 | D-055 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI |
 | D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
-| D-054 | Which permission governs workspace membership and team management | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002; Accept before C-002 is `Gated` |
+| D-054 | Which permission governs workspace membership, team management **and invitations** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002, widened by C-001's invitations; Accept before C-002 is `Gated` |
 | D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Open** — surfaced by C-002 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
@@ -864,15 +864,84 @@ session *and* the cookie stops authenticating, a short password is 400 with the
 link still working, asking twice leaves only the newest link live, and a request
 for an address with no account still writes its `auth_event` row.
 
-**Not `Gated`, and the reason:** the enumeration acceptance gate in
-[40](40-IDENTITY-AUTH-AND-SESSION.md) covers login, reset **and invite**, and
-invitations do not exist yet. The timing assertion here is an
-order-of-magnitude envelope rather than a statistical one, because a tight bound
-on a shared CI runner is a flaky test rather than a stronger one. The reset mail
-is plain text only — [29](29-NOTIFICATIONS-AND-DELIVERY.md) §Email content asks
-for "plain text and HTML, both readable" of *notification* mail, and an HTML
-part here would add a rendering surface without adding information to a message
-whose entire content is one URL.
+**Not `Gated` at the time this landed, and the reason:** the enumeration
+acceptance gate in [40](40-IDENTITY-AUTH-AND-SESSION.md) covers login, reset
+**and invite**, and invitations did not exist yet. *That third leg has since
+landed — see below.* The timing assertion here is an order-of-magnitude envelope
+rather than a statistical one, because a tight bound on a shared CI runner is a
+flaky test rather than a stronger one. The reset mail is plain text only —
+[29](29-NOTIFICATIONS-AND-DELIVERY.md) §Email content asks for "plain text and
+HTML, both readable" of *notification* mail, and an HTML part here would add a
+rendering surface without adding information to a message whose entire content
+is one URL.
+
+**Invitations are in, and the enumeration gate is closed.**
+[40](40-IDENTITY-AUTH-AND-SESSION.md) §Acceptance gates names three endpoints —
+"login, reset, and invite responses are indistinguishable for existing and
+non-existing accounts, in body, status, and timing envelope". Login closed the
+first, password reset the second, and this closes the third. All three legs now
+have a test that compares the two responses **byte for byte** plus a timing
+envelope, so the gate is a suite rather than a sentence.
+
+`docs/40` §Invitations states the rule this endpoint had to satisfy: "The
+response is identical whether or not the address has an account — only the
+delivered email differs." `POST .../invitations` therefore returns `202` with a
+**constant** body on every path: new address, existing account, already invited.
+The cost is stated and it is real — an inviter does not get the invitation id
+back and must `GET` the list to find it. It was taken because returning the
+created row makes the response a function of the state the caller is otherwise
+probing, and every future edit to that body becomes a chance to reintroduce the
+oracle. A constant cannot drift into one.
+
+**Tied to the address.** An invitation is not a bearer token for whoever holds
+the link: accepting while signed in as an account whose email differs from the
+invited address is refused, and a test forwards a link to a signed-in bystander
+to prove it. Without that, forwarding the email — which people do, in good
+faith — hands membership to the wrong person and the trail records it as the
+invitation working correctly.
+
+**Migration 0022 is the seam ADR-032 named this table for.** Accepting is the
+strongest form of the pre-workspace problem: the caller may have no account at
+all, so there is no `WorkspaceScope` and there cannot be one until the
+invitation says which workspace. This is the failure C-002 shipped and fixed in
+migration 0020 — read unscoped as `taskforge_app` the policy hides every row and
+every acceptance fails, while every test passes because the harness connects as
+the owner and RLS is inert for a superuser. Three functions, each `SECURITY
+DEFINER` with a pinned `search_path`, a fixed projection and `EXECUTE` to
+`taskforge_app` alone, all keyed on the **selector** — never a workspace id or
+an email — so none can enumerate a workspace's invitations or answer whether an
+address was invited. Single use lives in `consume_invitation`'s `WHERE` clause
+rather than in the application, so the predicate cannot be separated from the
+write.
+
+**Inviting with a role is gated; inviting is not — and neither half is
+invented.** An invitation carrying a `role_id` is a **deferred grant** at
+workspace scope, and [04](04-RBAC-AND-AUTHORIZATION.md) says `role.assign`
+"grants an existing role at workspace scope". So the endpoint requires
+`role.assign` and applies control 1 — "you cannot grant what you do not hold" —
+permission by permission against the closed registry, with an unrecognised
+permission string failing closed. Without it, inviting would hand out a role the
+inviter does not hold, which is the escalation hole D-049 split `role.assign`
+from `role.manage` to prevent.
+
+Issuing a **bare** invitation requires workspace membership and nothing more,
+exactly as adding a member directly already does, and for the same recorded
+reason: **D-054** is `Open`, the closed registry has no invitation permission,
+and [04](04-RBAC-AND-AUTHORIZATION.md) names none. Inviting is adding a member
+by another route, so it inherits that decision rather than pre-empting it.
+D-054's row is extended to say so — when it is Accepted, one mapping change
+covers membership, teams **and** invitations rather than three.
+
+Acceptance issues **no session**. It proves control of a mailbox, not of a
+password, and signing the caller in would turn a forwarded email into an
+authenticated session — the attack the address check exists to stop. An account
+created by acceptance gets no credential row; the invitee sets a password
+through the reset flow above, which is the same journey someone who forgot
+theirs takes.
+
+Fourteen integration tests, every one failing without its code. Still to come
+before C-001 is `Gated`: MFA enrolment and the break-glass path, both of which
+`docs/40` describes and neither of which exists yet.
 
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.

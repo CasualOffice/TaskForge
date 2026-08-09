@@ -662,14 +662,13 @@ async fn inviting_with_a_role_the_inviter_does_not_hold_is_refused() -> Result<(
     let owner = sign_up(&app, &db.pool, "owner@example.com").await?;
     let workspace = create_workspace(&app, &owner, "acme").await?;
 
-    // A powerful role exists; the inviter holds none of it.
-    let powerful = test_support::grant_at_workspace(
-        &db.pool,
-        workspace,
-        Uuid::now_v7(),
-        &["workspace.delete"],
-    )
-    .await?;
+    // A powerful role exists and somebody else holds it; the inviter does not.
+    // Granted to a REAL account: `role_assignment.granted_by` is a foreign key,
+    // so a made-up uuid fails the insert rather than the assertion.
+    let admin = Uuid::now_v7();
+    test_support::insert_user(&db.pool, admin, "admin@example.com", "Admin").await?;
+    let powerful =
+        test_support::grant_at_workspace(&db.pool, workspace, admin, &["workspace.delete"]).await?;
 
     let response = invite(
         &app,
