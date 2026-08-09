@@ -109,10 +109,20 @@ async fn lock_workspace(scoped: &mut Scoped<'_>) -> Result<(), sqlx::Error> {
     // The uuid's high bits as a bigint: advisory locks are keyed by integers,
     // and a collision between two workspaces costs serialization, never
     // correctness.
-    sqlx::query("SELECT pg_advisory_xact_lock(('x' || substr($1::text, 1, 16))::bit(64)::bigint)")
-        .bind(workspace)
-        .execute(scoped.conn())
-        .await?;
+    //
+    // `replace(..., '-', '')` first, and that is the whole bug this line once
+    // had: a uuid's text form is `019fe4a6-2cbc-...`, so the first 16
+    // *characters* include two dashes, and `'x' || '019fe4a6-2cbc-72'` cast to
+    // bit(64) fails with `"-" is not a valid hexadecimal digit`. Every write
+    // through this function 500'd. Sixteen hex digits is exactly 64 bits, which
+    // is what bit(64) wants.
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(
+                    ('x' || substr(replace($1::text, '-', ''), 1, 16))::bit(64)::bigint)",
+    )
+    .bind(workspace)
+    .execute(scoped.conn())
+    .await?;
     Ok(())
 }
 
