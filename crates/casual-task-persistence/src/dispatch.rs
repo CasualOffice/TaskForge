@@ -258,7 +258,12 @@ pub async fn claim(
                  ORDER BY e.created_at, e.id
                  LIMIT $3
                    FOR UPDATE OF c SKIP LOCKED)
-      RETURNING d.id, d.event_id, d.workspace_id, d.consumer,
+      -- `d.workspace_id` is deliberately NOT returned. A delivery and its event
+      -- are the same workspace by construction, and returning both put an
+      -- eleventh column in front of a ten-element tuple. sqlx reports that as a
+      -- type mismatch on column 2, which names neither the column that moved
+      -- nor the query that moved it.
+      RETURNING d.id, d.event_id, d.consumer,
                 (SELECT event_type   FROM outbox_event WHERE id = d.event_id),
                 (SELECT aggregate_id FROM outbox_event WHERE id = d.event_id),
                 (SELECT workspace_id FROM outbox_event WHERE id = d.event_id),
