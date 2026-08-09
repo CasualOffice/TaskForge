@@ -71,6 +71,17 @@ export const keys = {
     ['ws', workspaceId, 'projects', projectId, 'environments'] as const,
 
   /**
+   * What went out together. A sibling of `environments` rather than of
+   * `taskList`: a release is project configuration's twin — it changes when
+   * someone deploys, not when someone edits a task — so a task write must not
+   * invalidate it and a release must invalidate the task lists.
+   */
+  releases: (workspaceId: string, projectId: string) =>
+    ['ws', workspaceId, 'projects', projectId, 'releases'] as const,
+  release: (workspaceId: string, releaseId: string) =>
+    ['ws', workspaceId, 'releases', releaseId] as const,
+
+  /**
    * The signed-in person. Outside every workspace, like `session()`, because
    * `user_account` is the one table with no `workspace_id` (`docs/32`) — filing
    * it under a tenant would mean a workspace switch invalidated a name that

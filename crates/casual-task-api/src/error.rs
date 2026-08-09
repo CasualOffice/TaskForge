@@ -91,6 +91,14 @@ pub mod codes {
     /// The role name is taken in this workspace.
     pub const ROLE_NAME_TAKEN: Code = Code::new("TF-PRJ-0014");
 
+    /// `UNIQUE (project_id, name)` on `release`. Two things called 2.4.0 in one
+    /// project is not a release train, it is a question nobody can answer.
+    pub const RELEASE_NAME_TAKEN: Code = Code::new("TF-PRJ-0015");
+
+    /// A release id that names nothing, or whose project the caller cannot
+    /// open. The same answer for both, so it cannot be used to probe.
+    pub const RELEASE_NOT_FOUND: Code = Code::new("TF-PRJ-0016");
+
     /// Too many requests. Always carries `Retry-After`.
     pub const RATE_LIMITED: Code = Code::new("TF-LIM-0001");
     /// One bulk request named more tasks than `docs/21` allows.

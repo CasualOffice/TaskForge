@@ -68,6 +68,16 @@ renaming one is a breaking change to the event schema version.
 `task.tag.removed` `task.dependency.added` `task.moved` `task.archived`
 `task.deleted`
 
+**Lifecycle** (`docs/45`) — `task.team.transferred` `task.promoted`
+`task.verified` `release.cut`
+
+These are the chain of custody, and they are events rather than fields for the
+same reason the tables behind them grant no `DELETE`: "who held this, where it
+reached, and whether it passed" is a history, and a history that can be
+rewritten answers nothing. `release.cut` names the batch; every task it carried
+also gets its own `task.promoted` carrying the release id, because the only
+place someone looks when debugging one task is that task.
+
 **Collaboration** — `comment.created` `comment.updated` `comment.deleted`
 `attachment.added` `attachment.committed` `attachment.deleted`
 
