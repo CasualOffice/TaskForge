@@ -139,6 +139,7 @@ impl Caller {
 
 fn state(pool: sqlx::PgPool) -> AppState {
     AppState {
+        broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: SECRET.into(),

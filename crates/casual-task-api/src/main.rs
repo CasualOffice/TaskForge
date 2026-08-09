@@ -154,12 +154,20 @@ async fn run() -> ExitCode {
         );
     }
 
+    // One hub for the process. The SSE consumer publishes into it and every
+    // stream handler subscribes to it, which is only the same hub because both
+    // are handed this one value — `docs/48`: fan-out is single-instance until
+    // Redis exists.
+    let broadcast: Arc<dyn casual_task_infra::broadcast::Broadcast> =
+        Arc::new(casual_task_infra::broadcast::LocalBroadcast::new());
+
     let state = AppState {
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: config.secret_key.clone().into(),
         public_url: config.public_url.clone().into(),
         mailer,
+        broadcast,
     };
     match casual_task_api::serve(listener, state).await {
         Ok(()) => ExitCode::SUCCESS,

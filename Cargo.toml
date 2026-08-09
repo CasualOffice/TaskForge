@@ -103,6 +103,7 @@ subtle     = "2.6"
 base32     = "0.5"
 clap       = { version = "4", features = ["derive"] }
 tokio      = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures-core = { version = "0.3", default-features = false }
 # HTTP. Only casual-task-api may depend on these — casual-task-lint enforces it
 # (docs/19 §Boundary invariants), which is why they are declared once here and
 # named in exactly one crate's manifest.

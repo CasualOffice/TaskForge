@@ -140,13 +140,20 @@ impl UnitOfWork {
         .await?;
 
         sqlx::query(
+            // `project_id` (migration 0022) is the authorization scope every
+            // fan-out consumer filters on. It is written here, in the producing
+            // transaction, because here is the only place it is known for
+            // certain — a consumer reading it back from the aggregate gets the
+            // wrong answer for a delete, and reading it out of `payload` trusts
+            // a JSON field no schema enforces.
             "INSERT INTO outbox_event
-                 (id, workspace_id, event_type, aggregate_type, aggregate_id,
-                  payload, schema_version)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)",
+                 (id, workspace_id, project_id, event_type, aggregate_type,
+                  aggregate_id, payload, schema_version)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
         )
         .bind(event_id)
         .bind(workspace.as_uuid())
+        .bind(change.project_id)
         .bind(&change.event_type)
         .bind(&change.aggregate_type)
         .bind(change.aggregate_id)

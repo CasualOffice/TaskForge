@@ -9,11 +9,17 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
+//! [`broadcast`] is the live-update fan-out C-015 runs on: in-process on the
+//! single-node profile, behind a trait so a Redis implementation changes no
+//! caller (`docs/48` — SSE fan-out is single-instance without one).
+//!
 //! The mail adapter ([`mail`]) is the first of those traits to exist: SMTP with
 //! STARTTLS required (D-046), and a no-op that logs when `TF_SMTP_HOST` is
 //! empty — which `docs/48` §Configuration makes a supported deployment, not a
 //! degraded one.
 
+pub mod broadcast;
 pub mod mail;
 
+pub use broadcast::{Broadcast, LiveEvent, LocalBroadcast, Subscription, Topic};
 pub use mail::{Mailer, Message, SmtpConfig};
