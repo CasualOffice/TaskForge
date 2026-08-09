@@ -30,7 +30,8 @@ import { useDroppable } from '@dnd-kit/core'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import type { TaskQuery } from '../../api/tasks'
-import type { AppSearch } from '../../router'
+import { FILTER_KEYS, type AppSearch } from '../../router'
+import { EmptyState } from '../../shell/EmptyState'
 import { ErrorNotice } from '../../shell/notice'
 import { useTaskFeed } from '../../tasks/feed'
 import { filterFromSearch } from '../../tasks/query'
@@ -66,6 +67,11 @@ export function BoardColumn({
 }): ReactElement {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Whether the toolbar is narrowing this board, so an empty column can say
+  // which of the two empties it is: nothing to show, or nothing left after
+  // filtering. `project` is scope rather than a filter and does not count.
+  const hasFilters = FILTER_KEYS.some((key) => search[key] !== undefined)
 
   const spec = useMemo<TaskQuery>(() => {
     const base = filterFromSearch(search)
@@ -128,7 +134,18 @@ export function BoardColumn({
         {feed.error != null ? <ErrorNotice error={feed.error} /> : null}
         {feed.isPending ? <p className="field__hint">Loading…</p> : null}
         {!feed.isPending && feed.rows.length === 0 && feed.error == null ? (
-          <p className="field__hint column__empty">Nothing here.</p>
+          // LAYOUT §10: operational, not decorative. A column reading "Nothing
+          // here." is indistinguishable from one whose query failed, and it
+          // tells a user nothing about why this column is the empty one.
+          <EmptyState
+            compact
+            title={`No ${column.title.toLowerCase()} tasks.`}
+            detail={
+              hasFilters
+                ? 'Filters are narrowing this board.'
+                : 'Drag a card here, or create one.'
+            }
+          />
         ) : null}
 
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>

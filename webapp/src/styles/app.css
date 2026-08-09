@@ -63,43 +63,116 @@ body {
 
 /* ── App frame ───────────────────────────────────────────────────────────── */
 
+/* LAYOUT §2: a 48–52 px global bar spanning the full width, and a 52–60 px
+ * product rail beneath it. The global bar spans rather than sitting beside the
+ * rail because workspace, search and account are global concerns — putting the
+ * brand in a 232 px cell beside them was what forced the old sidebar to be
+ * 232 px wide in the first place. */
 .shell {
   display: grid;
-  grid-template-columns: 232px 1fr;
-  grid-template-rows: 48px 1fr;
-  grid-template-areas: 'brand top' 'nav main';
+  grid-template-columns: var(--tf-rail-w) 1fr;
+  grid-template-rows: var(--tf-global-bar-h) 1fr;
+  grid-template-areas: 'top top' 'rail main';
   height: 100%;
-}
-
-.shell__brand {
-  grid-area: brand;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4);
-  border-right: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-strip);
-  font-weight: 650;
-  letter-spacing: -0.01em;
 }
 
 .shell__top {
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  gap: var(--tf-space-3);
+  padding: 0 var(--tf-space-4);
+  border-bottom: 1px solid var(--tf-border);
+  background: var(--tf-surface);
 }
 
-.shell__nav {
-  grid-area: nav;
-  padding: var(--space-3) var(--space-2);
-  border-right: 1px solid var(--color-border);
-  background: var(--color-surface-strip);
-  overflow-y: auto;
+.shell__wordmark {
+  font: var(--tf-card-title);
+  letter-spacing: -0.01em;
+  color: var(--tf-text);
+  /* VISUAL-IDENTITY §5: clear space of at least 25% of the mark's width. */
+  padding-right: var(--tf-space-2);
+}
+
+/* ── Product rail (LAYOUT §2, §3) ────────────────────────────────────────── */
+
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tf-space-1);
+  padding: var(--tf-space-2) 0;
+  border-right: 1px solid var(--tf-border);
+  background: var(--tf-surface-subtle);
+  /* §1.8: the rail holds five items and must never be a scroll region. If it
+   * ever needs to scroll, the destination list has outgrown §3 and the fix is
+   * fewer destinations, not an overflow. */
+  overflow: visible;
+}
+
+.rail__mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--tf-space-1);
+  border-radius: var(--tf-radius-control);
+}
+
+.rail__group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+/* Foundation §3: a 20 px glyph inside a target that is not 20 px. The block is
+ * 48 px tall so glyph and label both fit without either being decorative. */
+.rail__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 52px;
+  padding: var(--tf-space-1) 0;
+  border: 0;
+  border-radius: var(--tf-radius-control);
+  background: none;
+  color: var(--tf-text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--tf-motion-hover) var(--tf-ease);
+}
+.rail__link:hover {
+  background: var(--tf-hover);
+  color: var(--tf-text);
+}
+.rail__icon {
+  display: grid;
+  place-items: center;
+  width: var(--tf-icon-nav);
+  height: var(--tf-icon-nav);
+}
+.rail__label {
+  font: var(--tf-meta);
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+/* The current destination is marked by ink and a tint, and the tint alone is
+ * not the signal — §7 forbids colour as the only carrier, and `aria-current`
+ * carries it for anyone the colour does not reach. */
+.rail__link[aria-current='page'] {
+  background: var(--tf-brand-subtle);
+  color: var(--tf-brand-strong);
+}
+.rail__link[aria-current='page'] .rail__label {
+  font-weight: 600;
 }
 
 .shell__main {
@@ -115,58 +188,36 @@ body {
   flex: 1;
 }
 
+/* LAYOUT §7, under 768 px: "one primary surface at a time", and touch targets
+ * move to the comfortable/touch tier. The rail becomes a bottom bar — the
+ * thumb reaches the bottom of a phone, not the left edge — and grows to the
+ * 44 px touch target the foundation §2 requires. */
 @media (max-width: 720px) {
   .shell {
     grid-template-columns: 1fr;
-    grid-template-rows: 48px auto 1fr;
-    grid-template-areas: 'top' 'nav' 'main';
+    grid-template-rows: var(--tf-global-bar-h) 1fr auto;
+    grid-template-areas: 'top' 'main' 'rail';
   }
-  .shell__brand {
+  .rail {
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 0;
+    border-right: 0;
+    border-top: 1px solid var(--tf-border);
+  }
+  .rail__mark {
     display: none;
   }
-  .shell__nav {
-    border-right: none;
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    gap: var(--space-1);
-    overflow-x: auto;
+  .rail__group {
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 0;
   }
-}
-
-.nav__group {
-  list-style: none;
-  margin: 0 0 var(--space-4);
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nav__label {
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  font-size: var(--text-xs);
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.nav__link {
-  display: block;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.nav__link:hover {
-  background: var(--color-hover);
-  color: var(--color-text);
-}
-.nav__link[aria-current='page'] {
-  background: var(--color-selected);
-  color: var(--color-accent);
-  font-weight: 600;
+  .rail__link {
+    width: auto;
+    flex: 1;
+    min-height: var(--tf-control-touch);
+  }
 }
 
 /* ── Primitives ──────────────────────────────────────────────────────────── */
@@ -326,6 +377,82 @@ kbd {
   padding: var(--space-6);
   text-align: center;
   color: var(--color-text-muted);
+}
+
+/* ── Empty states (LAYOUT §10) ───────────────────────────────────────────────
+ * Left-aligned, not centred: an operational sentence followed by the control
+ * that acts on it reads as an instruction, and a centred block of the same
+ * words reads as an apology. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-8) var(--tf-space-6);
+  max-width: 46ch;
+}
+.empty-state--compact {
+  padding: var(--tf-space-4) var(--tf-space-3);
+  gap: var(--tf-space-1);
+}
+.empty-state__icon {
+  display: grid;
+  place-items: center;
+  width: var(--tf-icon-empty);
+  height: var(--tf-icon-empty);
+  color: var(--tf-text-muted);
+}
+.empty-state__title {
+  margin: 0;
+  font: var(--tf-card-title);
+  color: var(--tf-text);
+}
+.empty-state--compact .empty-state__title {
+  font: var(--tf-meta);
+  font-weight: 600;
+}
+.empty-state__detail {
+  margin: 0;
+  font: var(--tf-meta);
+  color: var(--tf-text-secondary);
+}
+.empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-space-2);
+  margin-top: var(--tf-space-1);
+}
+
+/* ── Skeletons (§1.7, §10) ───────────────────────────────────────────────── */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+}
+.skeleton__row {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--tf-space-4);
+  border-bottom: 1px solid var(--tf-border);
+}
+.skeleton__bar {
+  height: 8px;
+  border-radius: var(--tf-radius-badge);
+  background: var(--tf-surface-subtle);
+  animation: skeleton-pulse 1.6s var(--tf-ease) infinite;
+}
+/* Dark needs a lighter bar than its own subtle surface, which is nearly the
+ * canvas; without this the skeleton is invisible in dark. */
+:root[data-theme='dark'] .skeleton__bar {
+  background: #34343a;
+}
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
 /* Announcements are read, not seen (docs/42 §Accessibility: live regions
@@ -511,6 +638,20 @@ kbd {
 
 /* ── Board ───────────────────────────────────────────────────────────────── */
 
+/* §1.8: "Nested scroll regions inside a scrolling page are the worst case and
+ * are not permitted."
+ *
+ * The board is the one surface where two scroll axes are unavoidable — columns
+ * are a horizontal run and each holds a vertical list — so the rule is applied
+ * as strictly as the surface allows: the page does not scroll at all
+ * (`.shell__main` is `hidden`), the board scrolls on **X only**, and a column
+ * scrolls on **Y only**. No element here is a two-axis scroller, and no
+ * scroller contains another on the same axis, so a wheel gesture always has
+ * exactly one owner.
+ *
+ * The alternative — letting columns grow and the board scroll vertically —
+ * hides the bottom of every column behind a scroll the user cannot see the end
+ * of, which is the failure §1.8 is actually about. */
 .board {
   display: grid;
   grid-auto-flow: column;
@@ -518,6 +659,7 @@ kbd {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   overflow-x: auto;
+  overflow-y: hidden;
   flex: 1;
   min-height: 0;
 }
@@ -559,7 +701,11 @@ kbd {
 .column__body {
   flex: 1;
   min-height: 0;
+  /* Y only — see `.board`. `hidden` rather than the default `visible` because
+   * `overflow-y: auto` alone computes X to `auto` too, which would make this a
+   * two-axis scroller inside another scroller. */
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-2);
 }
 .column__empty {

@@ -113,7 +113,10 @@
 
   /* ── §1 Layout geometry (LAYOUT-AND-INTERACTION-GUIDELINES §2) ─────────── */
   --tf-global-bar-h: 48px;
-  --tf-rail-w: 56px;
+  /* LAYOUT §2 allows 52–60 px. 60: the top of the range, because it is the
+   * width at which a rail label fits on the §4 type scale (Metadata, 12/16)
+   * instead of needing an off-scale 10 px that §11 would call arbitrary. */
+  --tf-rail-w: 60px;
   --tf-context-w: 224px;
   --tf-drawer-w: 480px;
   --tf-content-pad: 20px;
