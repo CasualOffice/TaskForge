@@ -139,6 +139,42 @@ Notifications are deleted after 90 days, read or unread. They are a delivery
 mechanism, not a record; the record is the activity stream, which has its own
 retention ([25](25-EVENTS-OUTBOX-AND-AUDIT.md)).
 
+## What C-016 implements, and what it does not
+
+The reason set and its ranking, self-action suppression, one notification per
+recipient at the highest reason, the 5-minute coalescing window, the
+permission-checked recipient computation, the in-app record, the inbox and
+mark-read endpoints, and immediate email for ranks 1–3 through the `Mailer`
+`docs/40` already introduced.
+
+Three things above are **not** implemented, and each is blocked on a table that
+does not exist rather than on effort:
+
+| Not in | Needs | Tracked |
+| --- | --- | --- |
+| Preferences (per user, per workspace, per project) | a preferences table | **D-059** |
+| `SUBSCRIBED`, and one-click unsubscribe | a subscription row per `(user, task)` | **D-059** |
+| Quiet hours and digest batching | the preferences table plus a per-user timezone | **D-059** |
+
+So the defaults in §Preferences are currently the **whole** policy rather than
+the fallback the screen overrides. That is a narrower product than this document
+describes, and it is narrower in the safe direction: every notification still
+lands in-app, and only ranks 1–3 mail.
+
+`TEAM` is declared in the ranking and nothing produces it — it fires when "a
+team-level rule matched", and rules are C-014/V-001.
+
+`In-Reply-To` / `References` threading is also not implemented: the composer in
+`casual-task-infra` takes no threading headers, and adding them changes a
+signature owned by another change. The subject is the documented stable
+`[WR-125] Task title`, which is what most clients thread on.
+
+**Delivery is per event, not per notification.** An email that fails is logged
+and not retried — the outbox delivery has already succeeded, because retrying it
+would re-run the fan-out and write a second in-app row to fix an email. The
+dedup on `(user, notification_id)` this document describes needs a per-channel
+delivery table, which is the same gap as the preferences one.
+
 ## Acceptance gates
 
 - **Dedup test** — a user with four applicable reasons for one event receives

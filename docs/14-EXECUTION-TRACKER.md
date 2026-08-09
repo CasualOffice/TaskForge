@@ -91,6 +91,8 @@ The documentation phase. All complete unless noted.
 | D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Consumed** — retired in favour of registry codes; the gate is now total |
 | D-056 | The template permission sets `docs/04`'s prose does not decide | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by D-054. Accept with C-004's golden matrix |
 | D-057 | Which permission governs workspace membership, team management **and invitations** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002, widened by C-001's invitations; Accept before C-002 is `Gated` |
+| D-059 | Notification preferences, subscriptions, quiet hours and digests — the tables `docs/29` assumes and the schema does not have | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Open** — surfaced by C-016. Accept before C-016 is `Gated` |
+| D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Open** — surfaced by C-016; blocks starting the dispatch loop in any documented deployment |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -352,7 +354,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-013 | Search projection + full-text | `Built` |
 | C-014 | Cursor pagination | `Building` |
 | C-015 | SSE + fan-out | `Building` |
-| C-016 | Notifications (in-app + email) | Accepted |
+| C-016 | Notifications (in-app + email) | `Building` |
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
@@ -1631,6 +1633,63 @@ grammar and a nullable timestamp in the schema, and compiled to
 `'true'::timestamptz` — a filter that returned a 500 rather than an answer. It
 now compares `archived_at IS NOT NULL`. It was unreachable before C-013 because
 no caller could express it.
+**C-016 is `Building`. Notifications exist, and the worker still cannot be
+started.**
+
+Before this, a task could be assigned, commented on and transitioned and nobody
+was ever told. Now the fan-out turns an outbox event into an in-app record and,
+for ranks 1–3, an email — through the `Mailer` C-001 already built.
+
+Four modules, four reasons to change, none over 300 lines:
+`casual-task-notification::{reason, audience, email}` are pure — no I/O, no SQL,
+no clock — and `casual-task-persistence::{notification, audience}` holds every
+statement. The consumer in `casual-task-worker::notify` composes them.
+
+**Two schema gaps had to be closed before the headline rule was even
+expressible.** `docs/29` rule 1 is "you are never notified about your own
+action", and `outbox_event` carried **no actor** — so a consumer could not tell
+who caused an event, and the one rule every tracker is complained about for
+getting wrong was the one the schema made impossible. `docs/25`'s event envelope
+had specified `actor` all along; migration 0024 stores it. `Claimed` carries it alongside the `workspace_id` and `project_id` C-015
+added, because the dispatcher's role is granted on the two outbox tables and
+nothing else (migration 0014, deliberately) and a consumer that reads assignees
+needs a scope of its own.
+
+**Two bugs in the mail path, both found by composing the first subject that
+carries customer content:**
+
+- `format_rfc5322` **refused** any non-ASCII subject, with a note that an RFC
+  2047 encoder was a dependency the module deliberately did without. Correct
+  while the only mail was a password reset with a fixed English subject. With
+  `[WR-125] Task title`, every notification about a task titled `Café` would
+  have failed to send, silently, per tenant. `casual-task-infra::header` is that
+  encoder — 30 lines and no dependency, because widening `deny.toml` is the
+  decision D-050 already refused.
+- `Message`'s `Debug` printed the **subject**, and `LoggingMailer` logged it.
+  Both were right until the subject became a task title, which `docs/46` forbids
+  in a log line at any level. The file's own comment had predicted this — "when
+  one is, the subject becomes tenant content and this impl is where that is
+  noticed" — and this is that change.
+
+**What is not in, and why it is a table rather than effort.** Preferences,
+subscriptions (`SUBSCRIBED` and one-click unsubscribe), quiet hours and digests
+all need tables `docs/29` assumes and migration 0008 does not provide. The
+documented defaults are therefore the *whole* policy rather than its fallback —
+narrower than the document, in the safe direction. **D-059**.
+
+**C-016 cannot be `Gated` until the worker runs it.** `dispatch::claim` requires
+a `BYPASSRLS` role and the consumer's reads require `taskforge_app` — two DSNs —
+and `docs/48` names one `DATABASE_URL`. So `main` still starts nothing, and says
+which decision is missing rather than restart-looping against a `verify` that
+would refuse the application role. **D-060**. Ten integration tests drive the
+consumer directly, which is exactly how the loop calls it; what is untested is
+the process wiring, not the fan-out.
+
+**One corpus defect, not fixed here.** `tests/explain/seed.sql` writes
+`reason = 'ASSIGNEE'`, which is not one of the six reasons `docs/29` defines —
+`ASSIGNED` is. It affects only the planning corpus, and changing seed data
+changes the plans the `explain-no-seq-scan` gate compares against, so it belongs
+in a change that can re-baseline that gate.
 
 ## Phases 2–4
 

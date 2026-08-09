@@ -38,6 +38,9 @@ async fn seed(pool: &sqlx::PgPool) -> Result<(Uuid, Uuid)> {
 
 fn event(workspace: Uuid, task: Uuid, event_type: &str) -> Claimed {
     Claimed {
+        // C-016 added the actor so the notification fan-out can suppress
+        // self-actions (migration 0024). The projection does not read it.
+        actor_id: None,
         delivery_id: Uuid::now_v7(),
         event_id: Uuid::now_v7(),
         workspace_id: workspace,

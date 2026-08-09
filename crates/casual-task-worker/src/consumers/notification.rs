@@ -337,6 +337,7 @@ mod tests {
             payload: serde_json::Value::Null,
             attempts: 1,
             workspace_id: Uuid::now_v7(),
+            project_id: Some(Uuid::now_v7()),
             actor_id: Some(Uuid::now_v7()),
         }
     }

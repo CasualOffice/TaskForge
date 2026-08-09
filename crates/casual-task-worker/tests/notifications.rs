@@ -16,8 +16,8 @@ use anyhow::Result;
 use casual_task_infra::mail::{LoggingMailer, Message};
 use casual_task_persistence::dispatch::Claimed;
 use casual_task_persistence::test_support::{self, TaskFixture};
+use casual_task_worker::consumers::notification::{NAME, NotificationFanout};
 use casual_task_worker::dispatcher::Consumer;
-use casual_task_worker::notify::{NAME, NotificationFanout};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -104,6 +104,9 @@ fn event(fixture: &TaskFixture, event_type: &str, actor: Option<Uuid>, aggregate
         payload: serde_json::Value::Null,
         attempts: 1,
         workspace_id: fixture.workspace_id,
+        // The authorization scope C-015 added. Every event the fan-out acts on
+        // is about a task, so it always has one.
+        project_id: Some(fixture.project_id),
         actor_id: actor,
     }
 }
