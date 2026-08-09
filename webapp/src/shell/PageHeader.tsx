@@ -33,6 +33,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
+import { listMyTeams } from '../api/admin'
 import { listProjects } from '../api/projects'
 import { useAppSearch } from './navigation'
 import { useSession, useWorkspaceId } from './session'
@@ -73,6 +74,20 @@ export function PageHeader({
   })
   const project = (projects.data?.data ?? []).find((entry) => entry.id === search.project)
 
+  // Named in the crumb rather than shown as a filter chip: a team is a place
+  // you are standing (`docs/45`), and a reader who cannot see which slice of
+  // the workspace a count belongs to will read it as the whole workspace.
+  const teams = useQuery({
+    queryKey: keys.myTeams(workspaceId),
+    queryFn: ({ signal }) => listMyTeams(workspaceId, signal),
+    enabled: workspaceId !== '' && search.team !== undefined && search.team !== '',
+    staleTime: 60_000,
+  })
+  const team =
+    search.team === ''
+      ? { id: '', name: 'Needs triage' }
+      : (teams.data?.data ?? []).find((entry) => entry.id === search.team)
+
   return (
     <header className="page">
       <nav className="page__crumbs" aria-label="Breadcrumb">
@@ -85,6 +100,7 @@ export function PageHeader({
               </Link>
             </li>
           )}
+          {team === undefined ? null : <li>{team.name}</li>}
           <li aria-current="page">{title}</li>
         </ol>
       </nav>

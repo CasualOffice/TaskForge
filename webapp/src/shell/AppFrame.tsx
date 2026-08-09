@@ -25,6 +25,7 @@ import { Avatar, Button, Icon, Kbd } from '@schnsrw/design-system'
 
 import { keys } from '../api/keys'
 import { readMe } from '../api/me'
+import { listMyTeams } from '../api/admin'
 import { listProjects } from '../api/projects'
 import { logout } from '../api/session'
 import { Popover } from './Popover'
@@ -127,8 +128,19 @@ function Sidebar(): ReactElement {
     staleTime: 60_000,
   })
 
+  // Mine, not the workspace's. A lead who needs another team's board reaches it
+  // through the toolbar; the sidebar is the short list of places this person
+  // actually stands, and it has to stay short to be worth reading.
+  const teams = useQuery({
+    queryKey: keys.myTeams(workspaceId),
+    queryFn: ({ signal }) => listMyTeams(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+
   const all = projects.data?.data ?? []
   const current = all.find((project) => project.id === search.project)
+  const mine = teams.data?.data ?? []
 
   return (
     <nav className="side" aria-label="Primary">
@@ -186,6 +198,58 @@ function Sidebar(): ReactElement {
               {all.length - PROJECTS_SHOWN} more — use search to reach them
             </p>
           ) : null}
+        </>
+      )}
+
+      {mine.length === 0 ? null : (
+        <>
+          <h2 className="side__heading" id="side-teams">
+            Your teams
+          </h2>
+          <ul className="side__group" aria-labelledby="side-teams">
+            {mine.map((team) => (
+              <li key={team.id}>
+                <button
+                  type="button"
+                  className="side__link"
+                  aria-current={team.id === search.team ? 'true' : undefined}
+                  onClick={() => update({ team: team.id })}
+                >
+                  <span className="side__icon" aria-hidden="true">
+                    <Icon name="groups" size="md" />
+                  </span>
+                  <span className="side__label">{team.name}</span>
+                </button>
+              </li>
+            ))}
+            {/* The triage queue is a place, not a filter: work that has arrived
+                and belongs to nobody yet is the thing a lead opens the product
+                to find (`docs/45`). `team=` is how the grammar spells it. */}
+            <li>
+              <button
+                type="button"
+                className="side__link"
+                aria-current={search.team === '' ? 'true' : undefined}
+                onClick={() => update({ team: '' })}
+              >
+                <span className="side__icon" aria-hidden="true">
+                  <Icon name="inbox" size="md" />
+                </span>
+                <span className="side__label">Needs triage</span>
+              </button>
+            </li>
+            {search.team === undefined ? null : (
+              <li>
+                <button
+                  type="button"
+                  className="side__link side__link--quiet"
+                  onClick={() => update({ team: undefined })}
+                >
+                  <span className="side__label">Clear team scope</span>
+                </button>
+              </li>
+            )}
+          </ul>
         </>
       )}
 

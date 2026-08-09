@@ -138,6 +138,19 @@ export function revokeInvitation(workspaceId: string, id: string): Promise<void>
   })
 }
 
+/**
+ * The teams the signed-in person is in.
+ *
+ * A different endpoint from [`listTeams`], not a filter on it, because they
+ * answer different questions: that one is an administrator choosing a team out
+ * of everything the workspace has, this one is a person finding their own work.
+ * A sidebar built on the administrative list would grow with the workspace
+ * rather than with the person.
+ */
+export function listMyTeams(workspaceId: string, signal?: AbortSignal): Promise<Paged<Team>> {
+  return request<Paged<Team>>('/api/v1/me/teams', { workspaceId, signal })
+}
+
 export function listTeams(workspaceId: string, signal?: AbortSignal): Promise<Paged<Team>> {
   return request<Paged<Team>>(`/api/v1/workspaces/${workspaceId}/teams${query({ limit: 100 })}`, {
     workspaceId,

@@ -100,6 +100,11 @@ export const keys = {
   workspaceSettings: (workspaceId: string) => ['ws', workspaceId, 'settings'] as const,
   invitations: (workspaceId: string) => ['ws', workspaceId, 'invitations'] as const,
   teams: (workspaceId: string) => ['ws', workspaceId, 'teams'] as const,
+  /**
+   * Mine, specifically. A child of `teams` so administering one invalidates
+   * both — being added to a team has to change the sidebar without a reload.
+   */
+  myTeams: (workspaceId: string) => ['ws', workspaceId, 'teams', 'mine'] as const,
   teamMembers: (workspaceId: string, teamId: string) =>
     ['ws', workspaceId, 'teams', teamId, 'members'] as const,
   roles: (workspaceId: string) => ['ws', workspaceId, 'roles'] as const,

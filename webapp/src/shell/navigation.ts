@@ -15,7 +15,7 @@
 import { useCallback } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
-import type { AppSearch } from '../router'
+import { EMPTY_IS_MEANINGFUL, type AppSearch } from '../router'
 
 export function useAppSearch(): AppSearch {
   return useSearch({ strict: false }) as AppSearch
@@ -51,17 +51,21 @@ export function useOpenTask(): (taskId: string | undefined) => void {
 /**
  * Drop empty values so the URL never carries `?task=`.
  *
- * `assignee` is the one exception, and it is not a special case so much as the
- * grammar's own rule: `docs/27` §URL form says "`field=` — the empty value is how
- * a URL says 'unset'", so `?assignee=` means *unassigned* and dropping it would
- * silently widen the filter to everyone. Every other parameter means nothing when
- * empty and is removed.
+ * The exceptions are not special cases so much as the grammar's own rule:
+ * `docs/27` §URL form says "`field=` — the empty value is how a URL says
+ * 'unset'", so `?assignee=` means *unassigned*, `?team=` means *untriaged*, and
+ * dropping either would silently widen the filter instead of narrowing it. The
+ * list is `EMPTY_IS_MEANINGFUL`, shared with the router's validator, because
+ * two copies of it drifted once already.
+ *
+ * Exported for the guard test that pins that sharing — the drift it prevents is
+ * invisible until someone tries to filter by "untagged" and touches the page.
  */
-function prune(search: AppSearch): AppSearch {
+export function prune(search: AppSearch): AppSearch {
   const out: Record<string, string> = {}
   for (const [name, value] of Object.entries(search)) {
     if (typeof value !== 'string') continue
-    if (value === '' && name !== 'assignee') continue
+    if (value === '' && !EMPTY_IS_MEANINGFUL.has(name)) continue
     out[name] = value
   }
   return out as AppSearch
