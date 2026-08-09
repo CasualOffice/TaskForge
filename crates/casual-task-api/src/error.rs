@@ -93,6 +93,8 @@ pub mod codes {
 
     /// Too many requests. Always carries `Retry-After`.
     pub const RATE_LIMITED: Code = Code::new("TF-LIM-0001");
+    /// One bulk request named more tasks than `docs/21` allows.
+    pub const BULK_TOO_LARGE: Code = Code::new("TF-LIM-0003");
     /// The service is temporarily unable to answer. Always carries
     /// `Retry-After`.
     pub const UNAVAILABLE: Code = Code::new("TF-SYS-0002");
@@ -286,6 +288,7 @@ pub mod codes {
         SELF_ELEVATION,
         ROLE_NAME_TAKEN,
         RATE_LIMITED,
+        BULK_TOO_LARGE,
         UNAVAILABLE,
         INTERNAL,
         MALFORMED_BODY,
@@ -578,19 +581,36 @@ impl ApiError {
     pub const fn code(&self) -> Code {
         self.code
     }
+
+    fn body(&self) -> Body<'_> {
+        Body {
+            code: self.code.as_str(),
+            message: &self.message,
+            details: &self.details,
+            request_id: &self.request_id,
+            docs: format!("https://docs.taskforge.dev/errors/{}", self.code.as_str()),
+        }
+    }
+
+    /// This error as the object a normal response would carry under `error`.
+    ///
+    /// `207 Multi-Status` reports many independent outcomes in one body, so a
+    /// failure there cannot become the response — but a client should not need
+    /// a second renderer for it. It is the same object, built from the same
+    /// place, so the two can never drift.
+    ///
+    /// # Panics
+    ///
+    /// Never: the shape is fixed and `details` is already a `Value`.
+    #[must_use]
+    pub fn envelope(&self) -> serde_json::Value {
+        serde_json::to_value(self.body()).expect("the error body is always serialisable")
+    }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = Json(Envelope {
-            error: Body {
-                code: self.code.as_str(),
-                message: &self.message,
-                details: &self.details,
-                request_id: &self.request_id,
-                docs: format!("https://docs.taskforge.dev/errors/{}", self.code.as_str()),
-            },
-        });
+        let body = Json(Envelope { error: self.body() });
 
         let mut response = (self.status, body).into_response();
         if let Some(seconds) = self.retry_after {

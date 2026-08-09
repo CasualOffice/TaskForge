@@ -44,7 +44,6 @@ use crate::{etag, unit};
 /// # Errors
 ///
 /// `404`, `409`, `428`, `403`, or one of `TF-WFL-0002`..`TF-WFL-0005`.
-#[allow(clippy::too_many_lines)] // one command, read top to bottom; the ORDER is the specification
 pub async fn transition(
     State(state): State<AppState>,
     member: WorkspaceMember,
@@ -54,41 +53,86 @@ pub async fn transition(
 ) -> Result<Response, ApiError> {
     let request_id = RequestId::of_parts(&headers);
     let expected = etag::if_match(&headers, &request_id)?;
+
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let done = apply_transition(&mut scoped, &ctx, id, expected, &body, &request_id).await?;
+    unit::commit(tx, &request_id).await?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::ETAG, etag::tag(done.version))],
+        axum::Json(done.view),
+    )
+        .into_response())
+}
+
+/// What a completed transition leaves behind.
+///
+/// The version is carried beside the view because the caller needs it for the
+/// `ETag` and, in the bulk case, so a client can build the inverse call for a
+/// task that succeeded next to ones that refused.
+pub(crate) struct Transitioned {
+    pub(crate) view: TaskView,
+    pub(crate) version: i64,
+    /// The status the task held before this call. The moved row no longer knows
+    /// it, and it is what an inverse transition needs.
+    pub(crate) from_status_id: Uuid,
+}
+
+/// One task's transition, inside a transaction the caller owns and commits.
+///
+/// Split out of [`transition`] so `POST /api/v1/tasks/bulk` runs *this* — the
+/// rules, in this order — rather than a second implementation of them that can
+/// drift. The caller owns the transaction because bulk gives every task its
+/// own: `docs/05` makes partial success the contract, and one task's refusal
+/// must not roll back the ones that already succeeded.
+///
+/// # Errors
+///
+/// `404`, `409`, `403`, or one of `TF-WFL-0002`..`TF-WFL-0005`. Not `428` —
+/// the expected version is already resolved by the caller.
+#[allow(clippy::too_many_lines)] // one command, read top to bottom; the ORDER is the specification
+pub(crate) async fn apply_transition(
+    scoped: &mut casual_task_persistence::Scoped<'_>,
+    ctx: &Context,
+    id: Uuid,
+    expected: i64,
+    body: &TransitionRequestBody,
+    request_id: &str,
+) -> Result<Transitioned, ApiError> {
     if let Some(comment) = body.comment.as_deref()
         && comment.len() > 65_536
     {
         return Err(ApiError::bad_request(
             codes::OUT_OF_RANGE,
             "comment must be at most 65536 bytes",
-            &request_id,
+            request_id,
         ));
     }
 
-    let mut tx = unit::begin(&state, &request_id).await?;
-    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
-
     // 1. Readable.
-    let (current, project_key) = visible(&mut scoped, &ctx, id, &request_id).await?;
+    let (current, project_key) = visible(scoped, ctx, id, request_id).await?;
     // 2. Version.
     if current.version != expected {
-        return Err(conflict(&current, &project_key, expected, &request_id));
+        return Err(conflict(&current, &project_key, expected, request_id));
     }
     // 3. task.transition on the project.
-    let facts = facts_for(&mut scoped, &ctx, &current, &request_id).await?;
-    let project_row = project::read_visible(&mut scoped, &ctx.viewer, current.project_id)
+    let facts = facts_for(scoped, ctx, &current, request_id).await?;
+    let project_row = project::read_visible(scoped, &ctx.viewer, current.project_id)
         .await
         .map_err(|error| {
             tracing::error!(%error, "reading the project failed");
-            ApiError::internal(&request_id)
+            ApiError::internal(request_id)
         })?
-        .ok_or_else(|| ApiError::missing(codes::TASK_NOT_FOUND, &request_id))?;
+        .ok_or_else(|| ApiError::missing(codes::TASK_NOT_FOUND, request_id))?;
     let team = project_row.teams();
     let project = ProjectId::from_uuid(current.project_id);
     unit::authorized(
         ctx.authority
             .may_in_project(permission::TASK_TRANSITION, project, &team, &facts),
-        &request_id,
+        request_id,
     )?;
 
     // A move to the status the task already occupies is a no-op that returns
@@ -96,16 +140,14 @@ pub async fn transition(
     // retries safe without an idempotency key". Answered before the workflow is
     // loaded, so a retry costs nothing.
     if body.to_status_id == current.status_id {
-        unit::commit(tx, &request_id).await?;
-        return Ok((
-            StatusCode::OK,
-            [(header::ETAG, etag::tag(current.version))],
-            axum::Json(view(&current, &project_key)),
-        )
-            .into_response());
+        return Ok(Transitioned {
+            view: view(&current, &project_key),
+            version: current.version,
+            from_status_id: current.status_id,
+        });
     }
 
-    let workflow = load_workflow(&mut scoped, project_row.workflow_id, &request_id).await?;
+    let workflow = load_workflow(scoped, project_row.workflow_id, request_id).await?;
 
     // Steps 4–7, in `casual-task-workflow`. Everything it needs is resolved
     // here and passed in; it reaches nothing itself, which is what lets the
@@ -120,11 +162,11 @@ pub async fn transition(
         })
         .collect();
     let may_override = held.contains(&permission::TASK_DEPENDENCY_OVERRIDE);
-    let blockers = task::unresolved_blockers(&mut scoped, &ctx.viewer, current.id)
+    let blockers = task::unresolved_blockers(scoped, &ctx.viewer, current.id)
         .await
         .map_err(|error| {
             tracing::error!(%error, "reading blocking dependencies failed");
-            ApiError::internal(&request_id)
+            ApiError::internal(request_id)
         })?;
 
     let request = casual_task_app::TransitionRequest {
@@ -150,7 +192,7 @@ pub async fn transition(
             casual_task_model::StatusId::from_uuid(body.to_status_id),
             &request,
         )
-        .map_err(|rejection| rejected(&rejection, &request_id))?;
+        .map_err(|rejection| rejected(&rejection, request_id))?;
 
     let from_status = workflow
         .status(casual_task_model::StatusId::from_uuid(current.status_id))
@@ -162,7 +204,7 @@ pub async fn transition(
         .to_owned();
 
     let moved = task::transition(
-        &mut scoped,
+        scoped,
         current.id,
         expected,
         valid.to_status.as_uuid(),
@@ -172,11 +214,11 @@ pub async fn transition(
     .await
     .map_err(|error| {
         tracing::error!(%error, "the transition failed");
-        ApiError::internal(&request_id)
+        ApiError::internal(request_id)
     })?;
     let Some(moved) = moved else {
-        let (now, key) = visible(&mut scoped, &ctx, id, &request_id).await?;
-        return Err(conflict(&now, &key, expected, &request_id));
+        let (now, key) = visible(scoped, ctx, id, request_id).await?;
+        return Err(conflict(&now, &key, expected, request_id));
     };
 
     if let Some(comment) = body
@@ -185,11 +227,11 @@ pub async fn transition(
         .map(str::trim)
         .filter(|c| !c.is_empty())
     {
-        task::insert_comment(&mut scoped, moved.id, ctx.actor.as_uuid(), comment)
+        task::insert_comment(scoped, moved.id, ctx.actor.as_uuid(), comment)
             .await
             .map_err(|error| {
                 tracing::error!(%error, "writing the transition comment failed");
-                ApiError::internal(&request_id)
+                ApiError::internal(request_id)
             })?;
     }
 
@@ -207,7 +249,7 @@ pub async fn transition(
     let after_view = view(&moved, &project_key);
     let payload = serde_json::json!(after_view);
     UnitOfWork::record(
-        &mut scoped,
+        scoped,
         &Change {
             aggregate_type: "task".to_owned(),
             aggregate_id: moved.id,
@@ -230,16 +272,14 @@ pub async fn transition(
     .await
     .map_err(|error| {
         tracing::error!(%error, "recording the transition failed");
-        ApiError::internal(&request_id)
+        ApiError::internal(request_id)
     })?;
-    unit::commit(tx, &request_id).await?;
 
-    Ok((
-        StatusCode::OK,
-        [(header::ETAG, etag::tag(moved.version))],
-        axum::Json(after_view),
-    )
-        .into_response())
+    Ok(Transitioned {
+        view: after_view,
+        version: moved.version,
+        from_status_id: current.status_id,
+    })
 }
 
 /// `POST /api/v1/tasks/{id}/assignees` — assign someone.

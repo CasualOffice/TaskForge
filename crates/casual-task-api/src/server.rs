@@ -226,6 +226,12 @@ pub fn router(state: AppState) -> Router {
             get(crate::attachments::download),
         )
         .route("/api/v1/tasks", get(crate::tasks::list))
+        // Static, so it is matched before `/tasks/{id}` — `bulk` is not a task
+        // id and never reaches the read handler.
+        .route(
+            "/api/v1/tasks/bulk",
+            axum::routing::post(crate::tasks::bulk),
+        )
         // C-016. Both take `WorkspaceMember`, and both scope every statement to
         // the caller's own user id — a notification is the one tenant row whose
         // owner is not implied by the workspace.
@@ -681,6 +687,7 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}",
     "/api/v1/projects/{id}/tasks",
     "/api/v1/tasks",
+    "/api/v1/tasks/bulk",
     "/api/v1/workflows/{id}",
     "/api/v1/workflows/{id}/statuses",
     "/api/v1/workflows/{id}/statuses/order",
@@ -814,6 +821,7 @@ mod tests {
             "/api/v1/projects/{id}",
             "/api/v1/projects/{id}/tasks",
             "/api/v1/tasks",
+            "/api/v1/tasks/bulk",
             "/api/v1/tasks/{id}",
             "/api/v1/tasks/{id}/transitions",
             "/api/v1/tasks/{id}/assignees",
