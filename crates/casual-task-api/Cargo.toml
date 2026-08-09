@@ -29,6 +29,9 @@ thiserror = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
+# The Stream trait alone, to hand a subscription to axum's Sse. futures-util
+# would bring combinators this crate has no use for.
+futures-core = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

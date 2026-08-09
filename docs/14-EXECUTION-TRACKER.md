@@ -351,7 +351,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | Accepted |
 | C-014 | Cursor pagination | `Building` |
-| C-015 | SSE + fan-out | Accepted |
+| C-015 | SSE + fan-out | `Building` |
 | C-016 | Notifications (in-app + email) | Accepted |
 | C-017 | Extension point registry (core panels only) | Accepted |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
@@ -1269,6 +1269,45 @@ code would show. It is integer duration arithmetic now, and two tests pin the
 published numbers. The second is that `client_ip` is duplicated from
 `casual-task-api/src/auth.rs`, where it is private; the copy is marked as
 temporary in both directions and the follow-up is to delete the one in `auth.rs`.
+
+**C-015 is `Building`.** Two people on the same board now see each other's
+changes. The path is the one [25](25-EVENTS-OUTBOX-AND-AUDIT.md) was built for:
+`UnitOfWork::record` writes the event, the dispatcher claims it, and
+`sse_fanout` — the first of the six consumers to exist — publishes it to an
+in-process hub that `GET /api/v1/stream?project_id=` subscribes to.
+
+Three things are worth reading before the code:
+
+- **The event now carries its project.** Migration
+  [0022](../migrations/0022_outbox_event_project.sql) adds `outbox_event.project_id`.
+  Without it a fan-out consumer cannot answer "who may see this?" — readability
+  is decided at the project, and the alternatives were re-reading the aggregate
+  (a round trip per event, and wrong for a delete) or trusting a JSON field no
+  schema enforces. NULL means workspace-level and is **not** a wildcard: an
+  event that cannot prove which project it belongs to reaches no project stream.
+- **A constrained reader is refused, not filtered.** `GET /tasks/{id}` evaluates
+  a permission against the task in front of it; a stream has no task in front of
+  it, and an outbox event does not carry assignees or an environment. So
+  `sse::authorize` asks the permission twice — once for the best-case task and
+  once for the worst — and admits the subscriber only if they may read *every*
+  task in the project. An actor with an `assignee_is_actor` grant gets `403` and
+  polls. That is fail-closed, and it needs no list of constraint kinds to stay
+  correct as `casual-task-authz` grows.
+- **The per-subscriber queue is 64 with a stated overflow policy** (D-040): the
+  slow subscriber is disconnected and *told* it was, so it reconnects with
+  `Last-Event-ID` instead of silently carrying a hole. The first version could
+  not deliver that notice — it was sent on the channel that had just proved to
+  be full — so the client saw a clean end-of-stream and had no reason to resume.
+  One reserved slot fixes it; a test asserts the notice arrives.
+
+**What is not done, and one of it is a security shortfall.** A revoked session's
+stream does **not** close. [40](40-IDENTITY-AUTH-AND-SESSION.md)'s revocation
+test names that case explicitly, and today a stream is authorized once at
+connect and then runs until the client leaves or the process stops. It needs a
+per-subscription cancel handle and a revalidation tick — the same machinery
+[05](05-API-SPEC.md)'s `authz_epoch` revalidation needs, which is why they
+belong in one change rather than two. `Last-Event-ID` replay and the 100 ms
+coalescing window are also unbuilt. C-015 is `Building`, not `Built`.
 
 **C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
 `Accepted` requires — "design final **and** its ADRs Accepted". It carries two

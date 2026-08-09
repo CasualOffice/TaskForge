@@ -37,6 +37,7 @@ struct Caller {
 
 fn app(pool: sqlx::PgPool) -> axum::Router {
     router(AppState {
+        broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: SECRET.into(),

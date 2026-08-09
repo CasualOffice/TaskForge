@@ -113,6 +113,10 @@ pub const DRAIN: Duration = Duration::from_secs(20);
 #[allow(missing_debug_implementations)]
 pub struct AppState {
     pub pool: PgPool,
+    /// Live-update fan-out (C-015). A trait object rather than the concrete hub
+    /// so `docs/48`'s Redis implementation, when it exists, replaces it without
+    /// touching a handler — and so a test can supply its own.
+    pub broadcast: Arc<dyn casual_task_infra::broadcast::Broadcast>,
     pub metrics: Arc<Recorder>,
     /// `TF_SECRET_KEY`. Used for the CSRF binding and nothing else — ADR-032:
     /// "TF_SECRET_KEY is not a cookie signature."
@@ -211,6 +215,11 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/tasks/{id}/tags",
             axum::routing::post(crate::tasks::tag),
         )
+        // C-015. Registered here with every other route — above the layers, so
+        // it is wrapped by CSRF, the rate limiter and `observe` like anything
+        // else. A stream that escaped those would be an unmetered, unlimited,
+        // unidentified connection.
+        .route("/api/v1/stream", get(crate::sse::stream))
         // C-002 — workspaces, membership, teams. Registered HERE, above the
         // layers, for the reason this function's docs give: a route appended to
         // the returned Router escapes the CSRF guard and the request id.
@@ -453,6 +462,7 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
+    "/api/v1/stream",
     "/api/v1/auth/password-reset",
     "/api/v1/auth/password-reset/confirm",
     // The route TEMPLATE, never the resolved path — `{id}` is one series, and
@@ -494,8 +504,20 @@ pub async fn serve(
     listener: tokio::net::TcpListener,
     state: AppState,
 ) -> Result<(), std::io::Error> {
+    // The hub is closed when the signal arrives, BEFORE axum stops accepting.
+    // D-041: a live stream must be *closed*, not dropped mid-frame — a client
+    // that sees end-of-stream reconnects, and one whose socket vanishes
+    // mid-event sees a parse error and may not.
+    //
+    // Held separately from `state` because `router` consumes it.
+    let broadcast = Arc::clone(&state.broadcast);
     axum::serve(listener, router(state))
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            let open = broadcast.subscriber_count();
+            broadcast.close_all();
+            tracing::info!(open, "closed live streams for shutdown");
+        })
         .await
 }
 
@@ -543,6 +565,7 @@ mod tests {
             "/api/v1/auth/login",
             "/api/v1/auth/logout",
             "/api/v1/auth/session",
+            "/api/v1/stream",
             "/api/v1/auth/password-reset",
             "/api/v1/auth/password-reset/confirm",
             "/api/v1/projects",

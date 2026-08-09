@@ -175,6 +175,13 @@ pub struct Claimed {
     pub consumer: String,
     pub event_type: String,
     pub aggregate_id: Uuid,
+    /// The tenant. Carried on the claim rather than looked up by a consumer,
+    /// because a consumer that has to ask "which workspace was this?" is a
+    /// consumer one forgotten join away from answering for the wrong one.
+    pub workspace_id: Uuid,
+    /// The authorization scope (migration 0022). `None` for workspace-level
+    /// events, which no project-scoped subscriber may receive.
+    pub project_id: Option<Uuid>,
     pub payload: serde_json::Value,
     pub attempts: i32,
 }
@@ -199,7 +206,20 @@ pub async fn claim(
     worker: &str,
     limit: i64,
 ) -> Result<Vec<Claimed>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, Uuid, serde_json::Value, i32)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            String,
+            Uuid,
+            Uuid,
+            Option<Uuid>,
+            serde_json::Value,
+            i32,
+        ),
+    >(
         "UPDATE outbox_delivery d
             SET claimed_at = now(), claimed_by = $2, attempts = d.attempts + 1
           WHERE d.id IN (
@@ -228,6 +248,8 @@ pub async fn claim(
       RETURNING d.id, d.event_id, d.consumer,
                 (SELECT event_type   FROM outbox_event WHERE id = d.event_id),
                 (SELECT aggregate_id FROM outbox_event WHERE id = d.event_id),
+                (SELECT workspace_id FROM outbox_event WHERE id = d.event_id),
+                (SELECT project_id   FROM outbox_event WHERE id = d.event_id),
                 (SELECT payload      FROM outbox_event WHERE id = d.event_id),
                 d.attempts",
     )
@@ -241,13 +263,25 @@ pub async fn claim(
     Ok(rows
         .into_iter()
         .map(
-            |(delivery_id, event_id, consumer, event_type, aggregate_id, payload, attempts)| {
+            |(
+                delivery_id,
+                event_id,
+                consumer,
+                event_type,
+                aggregate_id,
+                workspace_id,
+                project_id,
+                payload,
+                attempts,
+            )| {
                 Claimed {
                     delivery_id,
                     event_id,
                     consumer,
                     event_type,
                     aggregate_id,
+                    workspace_id,
+                    project_id,
                     payload,
                     attempts,
                 }

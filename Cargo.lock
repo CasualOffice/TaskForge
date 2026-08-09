@@ -331,6 +331,7 @@ dependencies = [
  "casual-task-persistence",
  "casual-task-plugin-contract",
  "casual-task-search",
+ "futures-core",
  "hmac",
  "serde",
  "serde_json",

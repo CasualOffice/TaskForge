@@ -27,6 +27,7 @@ fn unreachable_database() -> (AppState, axum::Router) {
         .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/nothing")
         .expect("a lazy pool never connects at construction");
     let state = AppState {
+        broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "test-key-long-enough-for-the-config-check".into(),
@@ -74,6 +75,7 @@ fn stalled_database(acquire_timeout: Duration) -> (axum::Router, Arc<AtomicUsize
         ))
         .expect("a lazy pool never connects at construction");
     let state = AppState {
+        broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "test-key-long-enough-for-the-config-check".into(),

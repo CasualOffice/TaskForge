@@ -31,6 +31,7 @@ pub mod password_reset;
 pub mod projects;
 pub mod rate_limit;
 pub mod server;
+pub mod sse;
 pub mod tasks;
 pub mod unit;
 pub mod wire;

@@ -14,9 +14,13 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true }
+# `sync` only: this crate needs mpsc for the broadcast hub and nothing else from
+# the runtime. Taking the whole of tokio here would put a scheduler in a crate
+# whose job is adapters.
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true
