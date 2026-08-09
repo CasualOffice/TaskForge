@@ -56,6 +56,13 @@ pub struct Authenticated {
     /// this field did not exist and `WorkspaceMember` trusted the header alone.
     /// A session has no workspace — a person spans them — so it is `None`.
     pub token_workspace: Option<uuid::Uuid>,
+    /// When this **session** last satisfied MFA, if it has.
+    ///
+    /// `docs/40` §Workspace-level SSO and MFA step-up puts the assertion on the
+    /// session rather than the user, so a step-up performed in one browser is
+    /// not inherited by another. `None` for a bearer token, which has no
+    /// session to carry one.
+    pub mfa_satisfied_at: Option<time::OffsetDateTime>,
 }
 
 /// A caller who is a member of a specific workspace.
@@ -175,6 +182,7 @@ pub(crate) async fn authenticate(
                         actor_type: ActorType::User,
                         session_id: Some(session.id),
                         token_workspace: None,
+                        mfa_satisfied_at: session.mfa_satisfied_at,
                     });
                 }
             }
@@ -223,6 +231,11 @@ pub(crate) async fn authenticate(
                         actor_type,
                         session_id: None,
                         token_workspace: Some(token.workspace_id),
+                        // A token has no session, so it carries no MFA
+                        // assertion. `docs/40` scopes MFA to browser sessions;
+                        // a machine credential is not the actor a second factor
+                        // is about.
+                        mfa_satisfied_at: None,
                     });
                 }
             }
@@ -310,6 +323,28 @@ impl FromRequestParts<AppState> for WorkspaceMember {
             // discover which workspace ids exist by probing this header
             // (`docs/04`).
             return Err(ApiError::not_found(&request_id));
+        }
+
+        // STEP-UP, HERE AND NOT AT LOGIN (`docs/40` §Workspace-level SSO and
+        // MFA step-up). The session is user-scoped; MFA enforcement is per
+        // workspace, so a login has no single policy to apply. This is the
+        // second of the two questions that section describes, and every
+        // workspace-scoped entry point asks it because they all come through
+        // here.
+        //
+        // AFTER the membership check, deliberately: a stranger probing
+        // workspace ids must get the same 404 whether or not the workspace
+        // demands MFA, or this refusal becomes the enumeration oracle the check
+        // above exists to prevent.
+        let requires_mfa =
+            casual_task_persistence::mfa::workspace_requires_mfa(&mut conn, workspace)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "reading the workspace MFA policy failed");
+                    ApiError::internal(&request_id)
+                })?;
+        if crate::mfa::step_up_required(requires_mfa, actor.mfa_satisfied_at) {
+            return Err(crate::mfa::step_up_refusal(&request_id));
         }
 
         Ok(Self {

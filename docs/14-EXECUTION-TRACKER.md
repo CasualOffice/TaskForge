@@ -96,6 +96,7 @@ The documentation phase. All complete unless noted.
 | D-061 | **What a board column is: a permanent state or a workflow status** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [42](42-FRONTEND-ARCHITECTURE.md) | **Open** — surfaced by C-018. Shipped as the five permanent states, with the cost stated; see below |
 | D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Proposed — fail closed. Needs the user's countersign.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
 | D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
+| D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -966,8 +967,85 @@ through the reset flow above, which is the same journey someone who forgot
 theirs takes.
 
 Fourteen integration tests, every one failing without its code. Still to come
-before C-001 is `Gated`: MFA enrolment and the break-glass path, both of which
-`docs/40` describes and neither of which exists yet.
+before C-001 is `Gated` at the time this landed: MFA enrolment and the
+break-glass path. *Both have since landed — see below.*
+
+**MFA is in: enrolment, step-up, recovery codes, replay refusal and
+break-glass.** `casual-task-identity::mfa` had the primitives from the start and
+nothing consumed them; `session.mfa_satisfied_at` and `auth_method` had been
+columns nothing wrote. This is the layer that uses all of it.
+
+**Replay refusal is a `WHERE` clause, and it is the reason `Totp::verify`
+returns a step.** RFC 6238 §5.2: a code is valid for a whole 30-second window,
+so an attacker who observes one — over a shoulder, through a phishing proxy —
+can present it inside that window. `Totp::verify` was written returning the
+matched **time step** rather than a bool precisely so a caller could refuse a
+step it had already accepted, and its doc comment said so; nothing could,
+because there was nowhere to remember one. Migration 0026 adds
+`mfa_factor.last_step`, and `mfa::accept_step` is an `UPDATE ... WHERE last_step
+IS NULL OR last_step < $2`. In the predicate, not a read-then-write: two
+requests carrying the same observed code would both pass a read-side check
+before either wrote, which is exactly the race the attacker is in.
+
+**Monotonic, not a set.** Refusing every *earlier* step as well as the exact one
+closes the window on a code captured seconds ago and presented after the clock
+ticks on. A per-step set would be bigger, need sweeping, and permit the replay
+it exists to stop.
+
+**An unconfirmed factor satisfies nothing.** `confirmed_at IS NOT NULL` lives in
+`mfa::confirmed_factor`'s query, not at its call sites, so no handler can forget
+it. Migration 0016's own comment named this failure two phases ago: "a user who
+lost the enrolment halfway would otherwise be locked out by a factor they do not
+have." A test enrols, abandons, and asserts both halves — entry is refused *and*
+a code from the unconfirmed factor does not satisfy the step-up.
+
+**Step-up is at workspace resolution, not at login** ([40](40-IDENTITY-AUTH-AND-SESSION.md)
+§Workspace-level SSO and MFA step-up). The session is user-scoped —
+`user_account` is the only table without a `workspace_id` — while enforcement is
+per workspace, so a login has no single policy to apply. The check sits in
+`WorkspaceMember`, **after** the membership check: a stranger probing workspace
+ids must get the same 404 whether or not the workspace demands MFA, or the
+refusal becomes the enumeration oracle the membership check exists to prevent. A
+test compares a real requiring workspace against an imaginary one.
+
+**The anti-lockout rule is enforced, not documented.** `docs/40`: "the enforcing
+admin must already have MFA enrolled, so nobody can lock themselves out while
+locking others in." Enabling the requirement without a confirmed factor is
+refused; disabling it carries no such check, because it can only widen access
+and demanding a factor there would be the same lockout with the opposite sign.
+
+**Break-glass is a command, not a route** (`--break-glass-clear-mfa <email>`,
+[50](50-RUNBOOKS.md) RB-08). An HTTP endpoint that removes a second factor is a
+backdoor with a URL: whatever it demanded would be either something the
+locked-out owner cannot produce, which defeats the purpose, or something an
+attacker could, which defeats the factor. There is no third option, so the
+authority is one the network cannot reach — possession of `DATABASE_URL`. It
+writes the `auth_event` **before** the delete, so the failure mode is a recorded
+attempt rather than an unrecorded removal, and it creates no session, resets no
+password and grants nothing. The integration test runs the **real binary**,
+because a documented recovery path nobody executes has rotted by the time it is
+needed and the argument parsing is the part that rots first.
+
+**The secret never reaches a log.** It is the one recoverable plaintext in the
+schema (migration 0016 says so, because TOTP recomputes codes from it). It is
+returned once, by `begin`, and wrapped in
+[46](46-OBSERVABILITY-AND-OPERATIONS.md)'s `Redacted<T>` everywhere else.
+`EnrolmentStarted` and `RecoveryCodesIssued` carry hand-written `Debug` impls
+that print `<redacted>` — the workspace lint requires a `Debug`, and a type with
+none invites the next person to add the derive.
+
+`TF-AUT-0014` was added to [20](20-ERROR-CODE-REGISTRY.md) through the process
+that document defines for adding one. `TF-AUT-0005` and `TF-AUT-0006` were
+already registered and unused, and are now what the step-up and the code refusal
+return — 401 for both, which is the registry's assignment and the right shape: a
+statement about the credential being incomplete, not about missing authority.
+
+Eleven integration tests. **Not `Gated`:** the remaining `docs/40` acceptance
+gates for C-001 are the SSO suite against a Keycloak container — SSO is Phase 2 —
+and the lockout test, which the login backoff has but no CI job asserts.
+**D-064** records the one thing `docs/40` does not decide: how long a step-up
+lasts. None is applied, and the instant is stored so a lifetime is one
+comparison away.
 
 **F-009 is `Gated`.** It was `Built` because the crate was a registry of names
 with no way to record a value — declared metrics that nothing could emit.

@@ -111,7 +111,18 @@ impl Totp {
     }
 
     /// The code for a given time step. RFC 4226 dynamic truncation.
-    fn code_at(&self, step: i64) -> String {
+    ///
+    /// Public because [`verify`](Self::verify) is only half the pair: anything
+    /// that must **produce** a code — an acceptance test, a future "show the
+    /// current code" affordance — otherwise has to reimplement RFC 4226, and a
+    /// second implementation of a security primitive is a second thing that can
+    /// be wrong.
+    ///
+    /// It grants no capability. Holding a [`Totp`] means holding the secret,
+    /// and anyone holding the secret can already compute every code; this only
+    /// saves them the arithmetic.
+    #[must_use]
+    pub fn code_at(&self, step: i64) -> String {
         let mut mac =
             Hmac::<Sha1>::new_from_slice(&self.secret).expect("HMAC accepts any key size");
         mac.update(&step.to_be_bytes());

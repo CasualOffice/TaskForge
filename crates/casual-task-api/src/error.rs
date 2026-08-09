@@ -95,6 +95,26 @@ pub mod codes {
     // code no client can look up and the `docs` URL in the envelope 404s.
     // ---------------------------------------------------------------------
 
+    // MFA (C-001, `docs/40` §MFA). The first two were already in `docs/20`
+    // waiting for an implementation; the third was added to the registry with
+    // this change, which `docs/20` §Rules describes as the way to add one.
+    /// This workspace requires MFA and the session has not satisfied it.
+    ///
+    /// **401, not 403** — and that is the registry's assignment, not a choice
+    /// made here. It is a statement about the *credential* being incomplete
+    /// rather than about the actor lacking authority, the same distinction
+    /// `TF-AUT-0013` draws. A 403 tells a client to give up; a 401 tells it to
+    /// strengthen the credential, which is what a step-up is.
+    pub const MFA_REQUIRED: Code = Code::new("TF-AUT-0005");
+    /// A TOTP or recovery code that did not verify — **for any reason**.
+    ///
+    /// Wrong, expired, already-replayed, and no-factor-at-all all produce this.
+    /// Distinguishing them would tell an attacker holding an observed code that
+    /// they had the right one and were merely late.
+    pub const MFA_CODE_INVALID: Code = Code::new("TF-AUT-0006");
+    /// Enrolment was begun for an account that already has a confirmed factor.
+    pub const MFA_ALREADY_ENROLLED: Code = Code::new("TF-AUT-0014");
+
     /// Malformed request body.
     pub const MALFORMED_BODY: Code = Code::new("TF-VAL-0001");
     /// Unknown field in request. `docs/05`: "silently ignoring a typo'd field

@@ -157,6 +157,34 @@ pub fn router(state: AppState) -> Router {
             axum::routing::post(crate::auth::logout),
         )
         .route("/api/v1/auth/session", get(crate::middleware::whoami))
+        // MFA (C-001, docs/40 §MFA). All under /auth because they are about
+        // the credential rather than about a workspace — the one exception is
+        // the per-workspace requirement toggle, which lives with the workspace
+        // it configures.
+        .route(
+            "/api/v1/auth/mfa",
+            get(crate::mfa::status).delete(crate::mfa::disable),
+        )
+        .route(
+            "/api/v1/auth/mfa/enrolment",
+            axum::routing::post(crate::mfa::begin),
+        )
+        .route(
+            "/api/v1/auth/mfa/enrolment/confirm",
+            axum::routing::post(crate::mfa::confirm),
+        )
+        .route(
+            "/api/v1/auth/mfa/step-up",
+            axum::routing::post(crate::mfa::step_up),
+        )
+        .route(
+            "/api/v1/auth/mfa/recovery",
+            axum::routing::post(crate::mfa::verify_recovery_code),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/mfa-requirement",
+            axum::routing::put(crate::mfa::set_requirement),
+        )
         // Both reset routes are registered HERE, above the layers, like every
         // other route: one registered below them escapes the CSRF guard and the
         // request id. They pass the CSRF guard because they carry no session
@@ -524,6 +552,12 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
+    "/api/v1/auth/mfa",
+    "/api/v1/auth/mfa/enrolment",
+    "/api/v1/auth/mfa/enrolment/confirm",
+    "/api/v1/auth/mfa/step-up",
+    "/api/v1/auth/mfa/recovery",
+    "/api/v1/workspaces/{workspace_id}/mfa-requirement",
     "/api/v1/stream",
     "/api/v1/exports",
     "/api/v1/exports/{id}",

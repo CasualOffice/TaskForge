@@ -24,6 +24,7 @@ pub mod health;
 pub mod idempotency;
 pub mod identity;
 pub mod invitation;
+pub mod mfa;
 pub mod notification;
 pub mod project;
 pub mod role;
