@@ -86,7 +86,7 @@ The documentation phase. All complete unless noted.
 | D-052 | Whether a shared test-support crate should exist | [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) | **Open** — surfaced by C-011 |
 | D-050 | Database TLS, and the `CDLA-Permissive-2.0` licence it requires | [52](52-DEPLOYMENT-GUIDE.md) | **Consumed** — no database TLS; trusted network required, and the licence gate is what holds it |
 | D-058 | `conflicting_fields` / `your_safe_fields` in the 409 body | [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Open** — surfaced by C-006. Accept before C-018's optimistic UI. (Was numbered D-055 by one branch while another used that number for the error-code drift; renumbered on integration.) |
-| D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — Accept before C-013 |
+| D-051 | How `key` (`WR-125`) is filtered, given it spans two tables | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Blocked** — was due before C-013 and is still open; C-013 ships the grammar with `key` compiling to `FALSE` and says so |
 | D-054 | **How a workspace acquires its first grant** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Accepted** — `docs/04`'s five templates are materialized per workspace and its creator is granted `Owner` at `WORKSPACE` scope, in the creating transaction |
 | D-055 | Four shipped error codes are not in the registry (`TF-REQ-*`, `TF-SRV-*`) | [20](20-ERROR-CODE-REGISTRY.md) | **Consumed** — retired in favour of registry codes; the gate is now total |
 | D-056 | The template permission sets `docs/04`'s prose does not decide | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by D-054. Accept with C-004's golden matrix |
@@ -349,7 +349,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-010 | Attachment pipeline | Accepted |
 | C-011 | Activity + audit + **outbox** | `Building` |
 | C-012 | Filter grammar + compiler | `Building` |
-| C-013 | Search projection + full-text | Accepted |
+| C-013 | Search projection + full-text | `Built` |
 | C-014 | Cursor pagination | `Building` |
 | C-015 | SSE + fan-out | Accepted |
 | C-016 | Notifications (in-app + email) | Accepted |
@@ -1431,6 +1431,98 @@ accepts them. They assert the owner may exercise every permission in the
 registry at workspace *and* project scope (the scope chain is what carries the
 grant down), that a stranger gets nothing, and that a grant in one workspace does
 not reach another.
+
+**C-013 is `Built`.** A user can now find a task by typing words from its
+title. Three parts: the projection that makes it possible, the query that reads
+it, and the grammar that reaches the rest of the closed field set.
+
+**The projection is an outbox consumer, and it recomputes rather than patches.**
+[26](26-SEARCH-INDEXING-AND-QUERY.md) puts the refresh after commit so a task
+write never waits on GIN maintenance, whose pending-list flushes are bursty —
+the latency spike a drag-and-drop board must not have. The cost is the one that
+document already states: search is eventually consistent, structured filters are
+not. Recomputation is what makes it safe behind at-least-once delivery: deliver
+twice, late, or out of order and the row still converges, which a delta would
+not. Asserted by delivering the same event three times and counting rows.
+
+It carries **its own pool as `taskforge_app`**. The dispatch loop runs as
+`taskforge_dispatcher`, which bypasses row-level security and is granted on the
+two outbox tables and nothing else (migration 0014) — granting it the task
+tables would hand a `BYPASSRLS` role every tenant's task text. `Claimed` gained
+`workspace_id` so a consumer can rebuild its scope through
+`WorkspaceScope::for_job`; every consumer will need it and none can derive it.
+
+**The URL grammar lives in `casual-task-search`, beside the AST.**
+[27](27-FILTER-AND-SAVED-VIEW-DSL.md) §Compilation draws one pipeline with two
+entry points meeting at the same AST, and a handler that re-derived what `<`
+means would be the second one. `<` on a date is `before`, on `priority` it is
+`lt`, and the field's own type decides. `status`, `assignee`, `priority`,
+`state`, `type`, dates and tags all reach the compiler now; `project_id` is kept
+as an alias for the grammar's `project` because it shipped in C-006.
+
+### D-043: not closed, and the honest answer
+
+**The accepted direction was already tried, and it is not sufficient.** D-043
+says "keep RLS; try a tenant-filtered projection first". The query C-013 emits
+*is* that shape — `s.workspace_id` and `s.project_id = ANY(...)` applied to
+`task_search` itself so `task_search_scope_ix` can combine with
+`task_search_gin` — and it is the same shape
+`tests/explain/queries/11` has been probing since Phase 0, where the measurement
+that opened D-043 was taken.
+
+The blocker is not the predicate. Under row-level security `@@` resolves to
+`ts_match_vq`, which is not `LEAKPROOF`, so PostgreSQL will not evaluate it
+before the row-security qual and **cannot use the GIN index as an index qual at
+all**. No arrangement of tenant predicates changes that; the previously recorded
+measurement is `Parallel Seq Scan` as `taskforge_app` against `Bitmap Index Scan`
+as the owner, on the same 2M-row corpus, with RLS the only difference.
+
+So, plainly: **`GET /api/v1/tasks?q=` is index-served at the gate's corpus and is
+not expected to be at reference scale.** The `explain-no-seq-scan` job will pass
+and does not prove the rule holds. Every remaining option — a `LEAKPROOF`
+wrapper, a `SECURITY DEFINER` projection reader, dropping RLS on `task_search`
+in favour of an explicit predicate, or ADR-014's external engine — trades
+tenant-isolation guarantees against query plans, which is what D-043 already
+identifies as an ADR decision touching ADR-011, ADR-014 and ADR-020. C-013 does
+not settle it in an implementation.
+
+**Still to come before C-013 is `Gated`:** D-043, and three of
+[26](26-SEARCH-INDEXING-AND-QUERY.md) §Acceptance gates — the cursor property
+test over random interleavings, the latency gate (which needs the reference
+corpus and a reference machine, F-007), and an `EXPLAIN` case per sortable field
+rather than per endpoint. The permission-filter gate that document names **is**
+here: a task whose text matches harder than the visible one, in a project the
+caller cannot see, and the assertion is that it never appears.
+
+**Gaps this opened, reported rather than quietly absorbed:**
+
+- **Symbol resolution uses UTC.** [27](27-FILTER-AND-SAVED-VIEW-DSL.md)
+  §Timezone requires the actor's — "`due before @today` must mean the same thing
+  to someone in Auckland and someone in Los Angeles" — and `user_account` has
+  nowhere to store one. `resolve::Context` demands an offset, so UTC is passed
+  and named here rather than a header being invented.
+- **One sort key only.** [27](27-FILTER-AND-SAVED-VIEW-DSL.md) documents
+  `sort=-due_at,key`; the cursor carries one key plus the id tiebreaker and the
+  compiler emits one keyset comparison. A second key is **refused**, not
+  silently dropped — honouring only the first would make the order
+  non-deterministic across pages, which is the bug the mandatory tiebreaker
+  exists to prevent.
+- **`sort=status.position` cannot execute.** It maps to `ws.position`, which has
+  no `FROM` entry; it needs a join to `workflow_status`. Pre-existing, now
+  reachable from a URL, and refused at the edge.
+- **No `IN`-list bound.** [26](26-SEARCH-INDEXING-AND-QUERY.md) §Query limits
+  caps it at 100 and `casual-task-search::validate` counts clauses and depth
+  only, so `?state=` with ten thousand values is accepted. Clause count, depth,
+  page size and search-term length are all enforced.
+- **An unknown symbol reports `TF-QRY-0003`.** [20](20-ERROR-CODE-REGISTRY.md)
+  has no code for it; the operator/value code is the closest true statement, and
+  a new one should be registered rather than guessed at here.
+
+**One pre-existing defect fixed in passing.** `archived` is `BOOLEAN` in the
+grammar and a nullable timestamp in the schema, and compiled to
+`'true'::timestamptz` — a filter that returned a 500 rather than an answer. It
+now compares `archived_at IS NOT NULL`. It was unreachable before C-013 because
+no caller could express it.
 
 ## Phases 2–4
 
