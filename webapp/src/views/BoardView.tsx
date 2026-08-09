@@ -1,28 +1,34 @@
 /**
  * The board.
  *
- * # Why the columns are the five permanent states, not the workflow's statuses
+ * # A column is a workflow status
  *
- * `docs/23` fixes five permanent states — `BACKLOG`, `PLANNED`, `ACTIVE`,
- * `COMPLETED`, `CANCELED` — and every `TaskView` carries the one it is in,
- * derived from its status in the same statement so the two cannot disagree.
- * Statuses are workspace-authored, and today a browser cannot read them at all:
- * `GET /api/v1/workflows/{id}` is specified in `docs/05` and not served
- * (**D-061**). Columns keyed on the closed set are therefore the only grouping
- * that is correct for every workspace *and* stable when the endpoint lands —
- * status columns become a refinement, not a rewrite.
+ * The default workflow has six statuses across the five permanent states of
+ * `docs/23` — "In Progress" and "Blocked" are both `ACTIVE`. Grouping by state
+ * collapses them and throws away the one distinction the workflow's author
+ * created, which is the distinction a board exists to show. **D-061 is settled
+ * this way**: columns are statuses, in the workflow's own `position` order, and
+ * state survives only as the colour of a column's dot and as the fallback
+ * grouping when no workflow can be read at all.
  *
- * The cost, stated: a workspace with three statuses inside `ACTIVE` sees them in
- * one column. That is the losing side of this trade and it is real.
+ * # The board picks a project rather than asking for one
  *
- * # Why a drop can be refused before it is sent
+ * A workflow belongs to a project, so a board with no project has no columns and
+ * no legal moves. It used to render a banner explaining that — which is an
+ * architecture lesson delivered to someone who wanted to drag a card. It now
+ * selects the first project instead, and the toolbar's dropdown is how anyone
+ * changes it. The cost, stated: there is no all-projects board. That is not a
+ * limitation being hidden — a board across two workflows has no coherent set of
+ * columns, and inventing one would be inventing a decision.
  *
- * `POST /tasks/{id}/transitions` needs a `to_status_id`, and without the
- * workflow there is no way to learn one. Sending the move anyway would produce a
- * `400` the user cannot act on and a card that slides back for no visible
- * reason. So the cards are not draggable at all, and the reason is on screen.
+ * # A drop is checked before it is sent
+ *
+ * `docs/23` gives each transition a `required_permission` on top of
+ * `task.transition`, so an actor who may move tasks in general may still not
+ * make one particular move. Refusing here means the card never appears to move
+ * and then springs back, which reads as a bug rather than as a refusal.
  */
-import { useCallback, useMemo, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, type ReactElement } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -33,47 +39,80 @@ import {
   type Announcements,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
-import { TASK_STATES, type Task, type TaskState } from '../api/tasks'
+import { listProjects } from '../api/projects'
+import { TASK_STATES, type Task } from '../api/tasks'
 import { TaskDrawer } from '../drawer/TaskDrawer'
+import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useAnnounce } from '../shell/announce'
-import { useAppSearch, useOpenTask } from '../shell/navigation'
-import { ErrorNotice, GapNotice } from '../shell/notice'
+import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
+import { ErrorNotice } from '../shell/notice'
 import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
-import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskTransition } from '../tasks/mutations'
 import { stateLabel } from '../tasks/present'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
-import { BoardColumn } from './board/BoardColumn'
+import { BoardColumn, type Column } from './board/BoardColumn'
 import { CreateTask } from './CreateTask'
-import { ScopeBar } from './ScopeBar'
+import { WorkToolbar } from './filters/WorkToolbar'
 
 export function BoardView(): ReactElement {
   const workspaceId = useWorkspaceId()
   const search = useAppSearch()
+  const update = useUpdateSearch()
   const openTask = useOpenTask()
   const announce = useAnnounce()
   const client = useQueryClient()
 
-  const { unavailable: missingWorkflow, moveInto } = useProjectWorkflow(search.project)
+  const projects = useQuery({
+    queryKey: keys.projects(workspaceId),
+    queryFn: ({ signal }) => listProjects(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+
+  const firstProject = projects.data?.data[0]?.id
+
+  // Chosen, not demanded. `replace` so the back button does not have to step
+  // through a redirect the user never asked for.
+  useEffect(() => {
+    if (search.project === undefined && firstProject !== undefined) {
+      update({ project: firstProject })
+    }
+  }, [search.project, firstProject, update])
+
+  const { workflow, moveTo } = useProjectWorkflow(search.project)
   const authority = useAuthority(search.project)
   const move = useTaskTransition(workspaceId)
 
-  // Live updates are project-scoped because the stream is: docs/05 requires
-  // `project_id` and refuses a wildcard subscription deliberately.
   useLiveUpdates(workspaceId, search.project)
 
-  // Two different reasons a card cannot move, kept apart. `docs/04` resolves the
-  // second; hiding it behind the first would tell someone without
-  // `task.transition` that the server is incomplete.
-  const unavailable = authority.can(PERMISSIONS.taskTransition)
-    ? missingWorkflow
-    : 'You do not have permission to change the status of tasks here.'
-  const canMove = unavailable === undefined
+  const columns = useMemo<Column[]>(() => {
+    if (workflow !== undefined) {
+      return [...workflow.statuses]
+        .sort((a, b) => a.position - b.position)
+        .map((status) => ({
+          id: status.id,
+          title: status.name,
+          statusId: status.id,
+          state: status.state,
+        }))
+    }
+    // No workflow readable — a workspace with no projects, or a server that does
+    // not serve the route. The five permanent states are the only grouping that
+    // is correct without one.
+    return TASK_STATES.map((state) => ({
+      id: state,
+      title: stateLabel(state),
+      statusId: undefined,
+      state,
+    }))
+  }, [workflow])
+
+  const canMove = workflow !== undefined && authority.can(PERMISSIONS.taskTransition)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -84,73 +123,67 @@ export function BoardView(): ReactElement {
     useSensor(KeyboardSensor),
   )
 
+  const titleOf = useCallback(
+    (id: string) => columns.find((column) => column.id === id)?.title ?? id,
+    [columns],
+  )
+
   /** dnd-kit speaks these to a live region; without them a keyboard drag is silent. */
   const announcements = useMemo<Announcements>(
     () => ({
       onDragStart: ({ active }) => `Picked up ${String(active.id)}.`,
-      onDragOver: ({ over }) =>
-        over === null ? 'No column.' : `Over ${stateLabel(String(over.id))}.`,
+      onDragOver: ({ over }) => (over === null ? 'No column.' : `Over ${titleOf(String(over.id))}.`),
       onDragEnd: ({ over }) =>
-        over === null ? 'Move cancelled.' : `Dropped in ${stateLabel(String(over.id))}.`,
+        over === null ? 'Move cancelled.' : `Dropped in ${titleOf(String(over.id))}.`,
       onDragCancel: () => 'Move cancelled.',
     }),
-    [],
+    [titleOf],
   )
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
       if (over === null) return
-      const toState = String(over.id) as TaskState
-      const fromState = (active.data.current as { state?: string } | undefined)?.state
-      if (fromState === toState) return
+      const toStatusId = String(over.id)
 
       // The card being dragged is the one already in a list cache; reading it
       // from there rather than refetching keeps the optimistic update instant.
       const task = findCachedTask(client, workspaceId, String(active.id))
-      if (task === undefined) return
+      if (task === undefined || task.status_id === toStatusId) return
 
-      // The workflow decides, not the column. `docs/23`: a transition exists or
-      // it does not, and a board that inferred one from two states being
-      // adjacent would send moves the state machine refuses.
-      const edge = moveInto(task.status_id, toState)
+      // The workflow decides, not the columns' adjacency. `docs/23`: a
+      // transition exists or it does not, and a board that inferred one from two
+      // columns sitting side by side would send moves the state machine refuses.
+      const edge = moveTo(task.status_id, toStatusId)
       if (edge === undefined) {
-        announce(`This workflow has no move from here into ${stateLabel(toState)}.`)
+        announce(`This workflow has no move from here into ${titleOf(toStatusId)}.`)
         return
       }
       if (!edge.permitted) {
-        // Refused here rather than by the server, so the card never appears to
-        // move and then springs back — which reads as a bug, not as a refusal.
         announce(`That move needs ${edge.needed ?? 'a permission you do not have'}.`)
         return
       }
 
       move.mutate(
         { task, toStatusId: edge.toStatusId, toState: edge.toState },
-        { onSuccess: () => announce(`${task.key} moved to ${stateLabel(toState)}`) },
+        { onSuccess: () => announce(`${task.key} moved to ${titleOf(toStatusId)}`) },
       )
     },
-    [moveInto, announce, client, workspaceId, move],
+    [moveTo, announce, client, workspaceId, move, titleOf],
   )
 
   return (
     <section className="view" aria-labelledby="board-heading">
-      <ScopeBar>
+      <h1 id="board-heading" className="visually-hidden">
+        Board
+      </h1>
+      {/* No sort control: a board is ordered by board rank (ADR-013) and by
+          nothing else — offering "sort by due date" would silently disable the
+          drag that writes that rank. */}
+      <WorkToolbar>
         <CreateTask projectId={search.project} />
-      </ScopeBar>
-      <div className="view__bar view__bar--sub">
-        <h1 id="board-heading" className="view__title">
-          Board
-        </h1>
-      </div>
+      </WorkToolbar>
 
-      {canMove ? null : (
-        <div className="board__notice">
-          <GapNotice what="Cards cannot be moved yet." tracker="D-061">
-            <span>{unavailable}</span>
-          </GapNotice>
-        </div>
-      )}
       {move.isError ? (
         <div className="board__notice">
           <ErrorNotice error={move.error} />
@@ -164,13 +197,12 @@ export function BoardView(): ReactElement {
         accessibility={{ announcements }}
       >
         <div className="board">
-          {TASK_STATES.map((state) => (
+          {columns.map((column) => (
             <BoardColumn
-              key={state}
+              key={column.id}
               workspaceId={workspaceId}
-              state={state}
-              projectId={search.project}
-              q={search.q}
+              column={column}
+              search={search}
               onOpen={openTask}
               draggable={canMove}
             />

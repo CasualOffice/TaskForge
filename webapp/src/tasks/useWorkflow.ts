@@ -42,6 +42,14 @@ export interface WorkflowState {
    * accept the drop, send it, and roll the card back on a `TF-WFL-0003`.
    */
   readonly moveInto: (fromStatusId: string, toState: string) => Move | undefined
+  /**
+   * The edge between two specific statuses, if the workflow has one.
+   *
+   * The board drops onto a *status* column, so this is the direct question;
+   * [`moveInto`] remains for the fallback board, which groups by state and has
+   * to search a column for a reachable status.
+   */
+  readonly moveTo: (fromStatusId: string, toStatusId: string) => Move | undefined
 }
 
 /** A legal edge into a column, and whether this actor may take it. */
@@ -94,6 +102,21 @@ export function useProjectWorkflow(projectId: string | undefined): WorkflowState
     loading,
     unavailable,
     statusFor: (state) => (loaded === undefined ? undefined : statusForState(loaded, state)?.id),
+    moveTo: (fromStatusId, toStatusId) => {
+      if (loaded === undefined) return undefined
+      const target = loaded.statuses.find((status) => status.id === toStatusId)
+      const edge = loaded.transitions.find(
+        (transition) => transition.from === fromStatusId && transition.to === toStatusId,
+      )
+      if (target === undefined || edge === undefined) return undefined
+      const needed = edge.required_permission
+      return {
+        toStatusId,
+        toState: target.state,
+        permitted: needed === null || authority.can(needed),
+        needed,
+      }
+    },
     moveInto: (fromStatusId, toState) => {
       if (loaded === undefined) return undefined
       // Every status in the target column, not just the first: the workflow may

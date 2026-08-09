@@ -48,11 +48,21 @@ export function useOpenTask(): (taskId: string | undefined) => void {
   return useCallback((taskId) => update({ task: taskId }), [update])
 }
 
-/** Drop empty values so the URL never carries `?task=`. */
+/**
+ * Drop empty values so the URL never carries `?task=`.
+ *
+ * `assignee` is the one exception, and it is not a special case so much as the
+ * grammar's own rule: `docs/27` §URL form says "`field=` — the empty value is how
+ * a URL says 'unset'", so `?assignee=` means *unassigned* and dropping it would
+ * silently widen the filter to everyone. Every other parameter means nothing when
+ * empty and is removed.
+ */
 function prune(search: AppSearch): AppSearch {
   const out: Record<string, string> = {}
   for (const [name, value] of Object.entries(search)) {
-    if (typeof value === 'string' && value !== '') out[name] = value
+    if (typeof value !== 'string') continue
+    if (value === '' && name !== 'assignee') continue
+    out[name] = value
   }
   return out as AppSearch
 }

@@ -1,5 +1,5 @@
 /**
- * One card on the board.
+ * A board card: the shared task card, plus the ability to pick it up.
  *
  * # The failure this module prevents
  *
@@ -10,14 +10,17 @@
  *
  * So the drag handle is a real `<button>`: it is in the tab order for free, it
  * announces itself, and dnd-kit's keyboard sensor drives it with the arrow keys.
- * Opening the task is a *second* button, because a control that both drags and
- * activates on Enter has to guess which the user meant.
+ * Opening the task is a *second* button, inside `TaskCard`, because a control
+ * that both drags and activates on Enter has to guess which the user meant.
+ *
+ * Everything about how a task *looks* lives in `TaskCard` and not here — see
+ * that module for why the board must not draw its own.
  */
 import type { CSSProperties, ReactElement } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 
 import type { Task } from '../../api/tasks'
-import { formatRelative, isOverdue, priorityLabel } from '../../tasks/present'
+import { TaskCard } from '../../tasks/TaskCard'
 
 export function BoardCard({
   task,
@@ -31,7 +34,7 @@ export function BoardCard({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     disabled: !draggable,
-    data: { state: task.state },
+    data: { statusId: task.status_id, state: task.state },
   })
 
   // Written out rather than pulled from `@dnd-kit/utilities`: docs/42 commits to
@@ -44,36 +47,24 @@ export function BoardCard({
   }
 
   return (
-    <article className="card" ref={setNodeRef} style={style}>
-      <div className="card__head">
-        <button type="button" className="card__key" onClick={() => onOpen(task.id)}>
-          <span className="key">{task.key}</span>
-        </button>
-        {draggable ? (
-          <button
-            type="button"
-            className="card__grip"
-            aria-label={`Move ${task.key}`}
-            {...attributes}
-            {...listeners}
-          >
-            <span aria-hidden="true">⠿</span>
-          </button>
-        ) : null}
-      </div>
-
-      <button type="button" className="card__title" onClick={() => onOpen(task.id)}>
-        {task.title}
-      </button>
-
-      <div className="card__foot">
-        <span className={`pill pill--${task.priority}`}>{priorityLabel(task.priority)}</span>
-        {task.due_at === null ? null : (
-          <span className={isOverdue(task) ? 'card__due card__due--late' : 'card__due'}>
-            due {formatRelative(task.due_at)}
-          </span>
-        )}
-      </div>
-    </article>
+    <div ref={setNodeRef} style={style} className="card__host">
+      <TaskCard
+        task={task}
+        onOpen={onOpen}
+        handle={
+          draggable ? (
+            <button
+              type="button"
+              className="card__grip"
+              aria-label={`Move ${task.key}`}
+              {...attributes}
+              {...listeners}
+            >
+              <span aria-hidden="true">⠿</span>
+            </button>
+          ) : null
+        }
+      />
+    </div>
   )
 }

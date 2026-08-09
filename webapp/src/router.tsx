@@ -28,7 +28,26 @@ import { TaskListView } from './views/TaskListView'
 
 const ReportsView = lazy(() => import('./views/ReportsView'))
 
-/** The search parameters every route understands. */
+/**
+ * The search parameters every route understands.
+ *
+ * # Why a filter lives in the URL and not in component state
+ *
+ * A filtered view is a *thing a person means* — "urgent bugs in Platform that
+ * are overdue" — and the only way to hand that to a colleague, bookmark it, or
+ * come back to it after a reload is for it to be the address. Filters kept in
+ * `useState` are lost on refresh, cannot be linked, and quietly disagree between
+ * the board and the list when a user switches views expecting the same scope.
+ *
+ * # Why the values are the server's own grammar
+ *
+ * `priority` here holds `HIGH,URGENT`, and `due` holds `<@today` — the exact
+ * spellings `docs/27` §URL form defines, passed through untranslated. A client
+ * dialect would be a second grammar to keep in step with the first, and `docs/27`
+ * is explicit that there is one AST with two entry points. The visible cost is
+ * that the address bar shows `due=%3C%40today`; the benefit is that a filter that
+ * works in the UI works in `curl`, and neither can drift from the other.
+ */
 export interface AppSearch {
   /** The task open in the drawer, if any. */
   readonly task?: string
@@ -36,7 +55,50 @@ export interface AppSearch {
   readonly project?: string
   /** Free-text search, passed through to the server's `q` filter. */
   readonly q?: string
+  /** Workflow status ids, comma-separated. */
+  readonly status?: string
+  /** `HIGH,URGENT` — the grammar's `in`. */
+  readonly priority?: string
+  /** `BUG,INCIDENT`. */
+  readonly type?: string
+  /** A user id, or `@me`, or empty for the grammar's `is_empty` (unassigned). */
+  readonly assignee?: string
+  /** A user id or `@me`. Distinct from `assignee`: who raised it, not who works it. */
+  readonly reporter?: string
+  /** A date clause: `<@today`, `<+7d`, `@today..+7d`. */
+  readonly due?: string
 }
+
+/** Every parameter above, so validation and clearing cannot drift from the type. */
+export const SEARCH_KEYS = [
+  'task',
+  'project',
+  'q',
+  'status',
+  'priority',
+  'type',
+  'assignee',
+  'reporter',
+  'due',
+] as const
+
+/**
+ * The filter parameters, as distinct from navigation state.
+ *
+ * `task` is not one — it says which drawer is open, not which rows to fetch — and
+ * neither is `project`, which "Clear filters" deliberately preserves: dropping
+ * the project would empty the board and unset the workflow, which is not what
+ * anyone means by clearing a filter.
+ */
+export const FILTER_KEYS = [
+  'q',
+  'status',
+  'priority',
+  'type',
+  'assignee',
+  'reporter',
+  'due',
+] as const
 
 /**
  * Validate rather than cast.
@@ -44,15 +106,21 @@ export interface AppSearch {
  * TanStack Router hands the raw parsed query string here, which is attacker
  * controlled: a `task` that is an array or an object would reach a template
  * literal and produce a request to a path nobody wrote. Only strings survive.
+ *
+ * The empty string is kept for `assignee` alone, because `assignee=` is how the
+ * grammar spells "unassigned" (`Operator::IsEmpty`) — dropping it the way every
+ * other empty value is dropped would silently turn "show me unassigned work"
+ * into "show me everything".
  */
 function validateSearch(raw: Record<string, unknown>): AppSearch {
-  const text = (value: unknown): string | undefined =>
-    typeof value === 'string' && value !== '' ? value : undefined
-  return {
-    ...(text(raw['task']) === undefined ? {} : { task: text(raw['task']) }),
-    ...(text(raw['project']) === undefined ? {} : { project: text(raw['project']) }),
-    ...(text(raw['q']) === undefined ? {} : { q: text(raw['q']) }),
+  const out: Record<string, string> = {}
+  for (const key of SEARCH_KEYS) {
+    const value = raw[key]
+    if (typeof value !== 'string') continue
+    if (value === '' && key !== 'assignee') continue
+    out[key] = value
   }
+  return out as AppSearch
 }
 
 const rootRoute = createRootRoute({ component: AppFrame, validateSearch })

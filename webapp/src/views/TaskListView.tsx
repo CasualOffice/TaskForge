@@ -28,9 +28,11 @@ import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { useWorkspaceId } from '../shell/session'
 import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskFeed } from '../tasks/feed'
-import { formatRelative, isOverdue, priorityLabel, stateLabel } from '../tasks/present'
+import { formatRelative, isOverdue } from '../tasks/present'
+import { PriorityBadge, TypeBadge } from '../tasks/TaskCard'
+import { filterFromSearch } from '../tasks/query'
 import { CreateTask } from './CreateTask'
-import { ScopeBar } from './ScopeBar'
+import { WorkToolbar } from './filters/WorkToolbar'
 import { TaskDrawer } from '../drawer/TaskDrawer'
 import { useSortPreference } from './sorting'
 
@@ -44,16 +46,11 @@ export function TaskListView(): ReactElement {
   const openTask = useOpenTask()
   const [sort, setSort] = useSortPreference()
 
+  // Every filter the toolbar set, translated once in `tasks/query.ts` so the
+  // list, the board and My Work cannot disagree about what the address means.
   const spec = useMemo<TaskQuery>(
-    () => ({
-      filter: {
-        ...(search.project === undefined ? {} : { project: search.project }),
-        ...(search.q === undefined ? {} : { q: search.q }),
-      },
-      sort,
-      limit: 100,
-    }),
-    [search.project, search.q, sort],
+    () => ({ filter: filterFromSearch(search), sort, limit: 100 }),
+    [search, sort],
   )
 
   const feed = useTaskFeed(workspaceId, spec)
@@ -78,9 +75,9 @@ export function TaskListView(): ReactElement {
 
   return (
     <section className="view" aria-labelledby="list-heading">
-      <ScopeBar>
+      <WorkToolbar sort={sort} onSort={setSort}>
         <CreateTask projectId={search.project} />
-      </ScopeBar>
+      </WorkToolbar>
       <div className="view__bar view__bar--sub">
         <h1 id="list-heading" className="view__title">
           Tasks
@@ -101,12 +98,12 @@ export function TaskListView(): ReactElement {
         <table className="list" role="table">
           <thead className="list__head">
             <tr>
+              <th scope="col" className="list__cell list__cell--type">
+                Type
+              </th>
               <SortableHeader label="Key" column="key" sort={sort} onSort={setSort} />
               <th scope="col" className="list__cell list__cell--title">
                 Title
-              </th>
-              <th scope="col" className="list__cell list__cell--state">
-                State
               </th>
               <SortableHeader label="Priority" column="priority" sort={sort} onSort={setSort} />
               <SortableHeader label="Due" column="due_at" sort={sort} onSort={setSort} />
@@ -135,7 +132,9 @@ export function TaskListView(): ReactElement {
 
         {feed.isPending ? <p className="empty">Loading tasks…</p> : null}
         {!feed.isPending && feed.rows.length === 0 && feed.error == null ? (
-          <p className="empty">No tasks match this view.</p>
+          // design/LAYOUT §10: empty states are operational. This is that
+          // document's own example sentence, verbatim.
+          <p className="empty">No tasks match this view. Change the filters or create a task.</p>
         ) : null}
         {feed.isFetchingMore ? (
           <p className="empty" role="status">
@@ -165,6 +164,9 @@ function TaskRow({
       className="list__row"
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height, transform: `translateY(${top}px)` }}
     >
+      <td className="list__cell list__cell--type">
+        <TypeBadge type={task.type} />
+      </td>
       <td className="list__cell list__cell--key">
         {/* A button, not a row-level click handler: a clickable `<tr>` is not
             reachable by keyboard and announces nothing. */}
@@ -177,14 +179,18 @@ function TaskRow({
           {task.title}
         </button>
       </td>
-      <td className="list__cell list__cell--state">
-        <span className={`pill pill--${task.state}`}>{stateLabel(task.state)}</span>
-      </td>
       <td className="list__cell">
-        <span className={`pill pill--${task.priority}`}>{priorityLabel(task.priority)}</span>
+        {/* `NONE` renders as nothing — see `tasks/TaskCard.tsx`. A pill reading
+            "None" on most rows occupies the position where a signal would be,
+            so the eye stops checking it and misses the URGENT. */}
+        {task.priority === 'NONE' ? null : <PriorityBadge priority={task.priority} />}
       </td>
       <td className={`list__cell${isOverdue(task) ? ' list__cell--overdue' : ''}`}>
-        {formatRelative(task.due_at)}
+        {task.due_at === null ? (
+          '—'
+        ) : (
+          <time dateTime={task.due_at}>{formatRelative(task.due_at)}</time>
+        )}
       </td>
       <td className="list__cell">{formatRelative(task.updated_at)}</td>
     </tr>

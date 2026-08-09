@@ -7,61 +7,83 @@
  * mistake docs/42 §Rendering strategy names by hand — "the client never
  * downloads a project to filter it locally... makes a tracker feel fine in
  * development and unusable at a real customer". Each column therefore asks the
- * server for *its* state, ordered by board rank, and pages with a cursor like
+ * server for *its* column, ordered by board rank, and pages with a cursor like
  * everything else.
+ *
+ * # A column is a workflow status, not a permanent state
+ *
+ * The default workflow has six statuses across the five states of `docs/23`:
+ * "In Progress" and "Blocked" are both `ACTIVE`. Grouping by state puts them in
+ * one column and throws away the distinction the workflow's author created —
+ * which is exactly the distinction a board exists to show. Columns therefore
+ * filter on `status`, and fall back to `state` only where no workflow is
+ * readable at all.
  *
  * # Why each column virtualizes separately
  *
  * A column is an independent scroll container, so a shared virtualizer would
- * have to model five viewports. Five small ones is less code and holds the
+ * have to model six viewports. Six small ones is less code and holds the
  * "board with 500 cards, no jank" target the same way.
  */
 import { useEffect, useMemo, useRef, type ReactElement } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
-import type { TaskQuery, TaskState } from '../../api/tasks'
+import type { TaskQuery } from '../../api/tasks'
+import type { AppSearch } from '../../router'
 import { ErrorNotice } from '../../shell/notice'
 import { useTaskFeed } from '../../tasks/feed'
-import { stateLabel } from '../../tasks/present'
+import { filterFromSearch } from '../../tasks/query'
 import { BoardCard } from './BoardCard'
 
-const CARD_HEIGHT = 96
+/** Roughly a card with a two-line title and a snippet; the virtualizer measures the rest. */
+const CARD_HEIGHT = 132
 const PREFETCH_MARGIN = 6
+
+export interface Column {
+  /** The droppable id: a status id, or a state name when there is no workflow. */
+  readonly id: string
+  readonly title: string
+  /** Present when the column is a real workflow status. */
+  readonly statusId: string | undefined
+  /** The permanent state, for the fallback grouping and for the card's colour. */
+  readonly state: string
+}
 
 export function BoardColumn({
   workspaceId,
-  state,
-  projectId,
-  q,
+  column,
+  search,
   onOpen,
   draggable,
 }: {
   workspaceId: string
-  state: TaskState
-  projectId: string | undefined
-  q: string | undefined
+  column: Column
+  /** The address, so a column inherits every filter the toolbar set. */
+  search: AppSearch
   onOpen: (id: string) => void
   draggable: boolean
 }): ReactElement {
-  const { setNodeRef, isOver } = useDroppable({ id: state })
+  const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const spec = useMemo<TaskQuery>(
-    () => ({
-      filter: {
-        state,
-        ...(projectId === undefined ? {} : { project: projectId }),
-        ...(q === undefined ? {} : { q }),
-      },
+  const spec = useMemo<TaskQuery>(() => {
+    const base = filterFromSearch(search)
+    // The column's own constraint wins over the toolbar's status filter: a
+    // column IS a status, and letting the toolbar override it would make every
+    // column show the same rows.
+    const scoped = column.statusId === undefined
+      ? { ...base, status: undefined, state: column.state }
+      : { ...base, status: column.statusId }
+    return {
+      filter: scoped,
       // The board rank (ADR-013), which is what a board is ordered by. Not
       // `updated_at`: a card that jumps to the top because someone edited its
       // description is a board that will not hold still.
       sort: { key: 'position', descending: false },
       limit: 100,
-    }),
-    [state, projectId, q],
-  )
+    }
+  }, [search, column.statusId, column.state])
 
   const feed = useTaskFeed(workspaceId, spec)
 
@@ -70,6 +92,12 @@ export function BoardColumn({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => CARD_HEIGHT,
     overscan: 6,
+    // Cards are not a fixed height — a description snippet and a due date each
+    // add a line — so the virtualizer measures them. Measurements are cached by
+    // KEY and not by index: after a card is dragged out of a column, index 2 is
+    // a different task, and a cache keyed on the index would lay the new one out
+    // at the old one's height and leave a visible hole in the column.
+    getItemKey: (index) => feed.rows[index]?.id ?? index,
   })
 
   const items = virtualizer.getVirtualItems()
@@ -83,11 +111,12 @@ export function BoardColumn({
     <section
       className={`column${isOver ? ' column--over' : ''}`}
       ref={setNodeRef}
-      aria-labelledby={`column-${state}`}
+      aria-labelledby={`column-${column.id}`}
     >
       <header className="column__head">
-        <h2 id={`column-${state}`} className="column__title">
-          {stateLabel(state)}
+        <span className={`column__dot column__dot--${column.state}`} aria-hidden="true" />
+        <h2 id={`column-${column.id}`} className="column__title">
+          {column.title}
         </h2>
         <span className="column__count">
           {feed.rows.length}
@@ -110,6 +139,8 @@ export function BoardColumn({
               <div
                 key={task.id}
                 className="column__slot"
+                ref={virtualizer.measureElement}
+                data-index={item.index}
                 style={{
                   position: 'absolute',
                   top: 0,
