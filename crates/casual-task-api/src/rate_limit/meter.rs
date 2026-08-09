@@ -1,134 +1,76 @@
-//! Per-IP rate limiting for the authentication endpoints (`docs/21` §Rate
-//! limits, `docs/40` §Local authentication).
+//! The token bucket, and the bound on how many of them exist
+//! (`docs/21` §Rate limits, `docs/24` §D-040).
 //!
-//! # The hole this fills
+//! # The failure this module prevents
 //!
-//! `casual-task-identity`'s password backoff is **per account**. It slows an
-//! attacker who guesses one account's password repeatedly, and it does nothing
-//! at all against credential stuffing — one attempt each against ten thousand
-//! accounts never increments any single account's counter. `docs/40` says
-//! "rate limited per account **and** per IP"; this is the per-IP half, and until
-//! it existed `POST /api/v1/auth/login` had no limit of any kind.
+//! Two, and the second is the one that bites.
 //!
-//! # The numbers are `docs/21`'s, not this module's
+//! **A limit that is not the published one.** The meter is GCRA over integer
+//! duration arithmetic, not a counter refilled by `elapsed × rate` in floating
+//! point — see `super::class` for the rounding that made the first version
+//! quietly stricter than `docs/21`.
 //!
-//! Auth class: **10 / min sustained, burst 5** — see [`AUTH`]. A token bucket,
-//! as `docs/21` §Rate limits specifies: the bucket holds `burst` tokens and
-//! refills at `sustained` per minute, so a client may spend five immediately and
-//! then one every six seconds.
+//! **A limiter that is itself the denial of service.** A map keyed by anything
+//! a client controls, growing without limit, is a memory-exhaustion primitive
+//! handed to the attacker the limiter exists to stop: spraying keys costs them
+//! one packet each and costs us an allocation each.
 //!
-//! # In-process only, and what that means for an operator
+//! So the map is capped at [`MAX_TRACKED_KEYS`], and `docs/24` §D-040 —
+//! "every bound names its overflow policy" — is answered explicitly:
 //!
-//! State lives in this process. `docs/48` Profile 1 is one binary and PostgreSQL
-//! with **no Redis**, and it must work — so a shared limiter is not an option
-//! here.
-//!
-//! **With more than one API instance the limit is per instance.** Two instances
-//! behind a round-robin load balancer admit up to twice the configured rate; N
-//! instances admit N times. `docs/48` already says Redis becomes *required* at
-//! ≥ 2 API instances "because rate limits and SSE fan-out need shared state",
-//! and this module is the reason the first half of that sentence is true. An
-//! operator running Profile 2 without Redis has a limiter that is weaker by
-//! exactly their instance count, and nothing will tell them so at runtime.
-//!
-//! # The state is bounded, because otherwise it is a weapon
-//!
-//! A map keyed by client IP that grows without limit is a memory-exhaustion
-//! primitive handed to the attacker the limiter exists to stop: spraying
-//! addresses costs them one packet each and costs us an allocation each.
-//!
-//! So the map is capped at [`MAX_TRACKED_KEYS`], and the **overflow policy** is
-//! stated rather than implied:
-//!
-//! 1. When the map is full, entries whose bucket has fully refilled are dropped.
-//!    That is free, not a heuristic: a full bucket is indistinguishable from one
-//!    that was never created, so forgetting it changes no decision.
-//! 2. If the map is still full after that sweep, a request whose key is not
-//!    already tracked is charged to a single **shared overflow bucket**.
+//! 1. When the map is full, entries whose bucket has fully refilled are
+//!    dropped. That is free rather than a heuristic: a full bucket is
+//!    indistinguishable from one that was never created, so forgetting it
+//!    changes no decision.
+//! 2. If it is still full after that sweep, a request whose key is not already
+//!    tracked is charged to a single **shared overflow bucket**.
 //!
 //! The cost of step 2, plainly: while the map is saturated, previously-unseen
 //! clients share one bucket and can throttle each other. That is the deliberate
-//! direction — an attacker rotating through addresses is collectively limited
-//! rather than being handed unlimited attempts *and* unlimited memory — but a
-//! legitimate client arriving during such a flood can be refused. Reaching that
-//! state requires [`MAX_TRACKED_KEYS`] distinct addresses to have each spent a
-//! token inside one refill window, which is an attack, not a login peak.
+//! direction — a key-rotating flood is limited collectively rather than being
+//! handed unlimited attempts *and* unlimited memory — but a legitimate client
+//! arriving during such a flood can be refused. Reaching that state requires
+//! [`MAX_TRACKED_KEYS`] distinct keys to have each spent a token inside one
+//! refill window, which is an attack, not a traffic peak.
 //!
-//! Sweeping is rate-limited to once per [`SWEEP_INTERVAL`] so a saturated map
+//! Sweeping is rate-limited to once per [`SWEEP_INTERVAL`], so a saturated map
 //! cannot turn every request into an O(n) scan.
+//!
+//! # In-process only, and what that means for an operator
+//!
+//! State lives in this process. `docs/48` Profile 1 is one binary and
+//! PostgreSQL with **no Redis**, and it must work — so a shared limiter is not
+//! an option.
+//!
+//! **With more than one API instance the limit is per instance.** N instances
+//! admit N times the configured rate. `docs/48` already says Redis becomes
+//! *required* at ≥ 2 API instances "because rate limits and SSE fan-out need
+//! shared state", and this module is why the first half of that is true. An
+//! operator running Profile 2 without Redis has a limiter weaker by exactly
+//! their instance count, and nothing tells them so at runtime.
 //!
 //! # Why there is no new dependency
 //!
-//! `docs/48`'s table says in-process limits "fall back to in-process (moka)".
-//! What is needed here is a bounded map with a documented overflow policy and a
-//! token bucket — about eighty lines — and a new crate would have to clear
-//! `cargo deny check licenses` to buy it. The deviation from that parenthetical
-//! is deliberate and is recorded here rather than left to be discovered.
+//! `docs/48` says in-process limits "fall back to in-process (moka)". What is
+//! needed is a bounded map with a documented overflow policy and a token
+//! bucket — about eighty lines — and a new crate would have to clear
+//! `cargo deny check licenses` to buy it. The deviation is deliberate and is
+//! recorded here rather than left to be discovered.
+//!
+//! # Reason to change
+//!
+//! This file changes when the algorithm or the overflow policy changes. The
+//! published numbers are `super::class`; the wiring is `super::layer`.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use axum::extract::{MatchedPath, State};
-use axum::http::{HeaderMap, HeaderValue, Request};
-use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
-use casual_task_observability::labels::{LabelSet, keys};
-use casual_task_observability::metrics::RATE_LIMIT_HITS_TOTAL;
-use casual_task_observability::recorder::Recorder;
+use axum::http::HeaderMap;
+use uuid::Uuid;
 
-use crate::error::ApiError;
-use crate::server::RequestId;
-
-/// One rate-limit class from `docs/21` §Rate limits.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Class {
-    /// Tokens added per minute — the table's "Sustained" column.
-    pub sustained_per_minute: u32,
-    /// Bucket capacity — the table's "Burst" column.
-    pub burst: u32,
-}
-
-impl Class {
-    /// The gap between two tokens: 60 s / sustained. Six seconds for [`AUTH`].
-    ///
-    /// Integer nanoseconds, not a rate in floating point. The first version of
-    /// this module carried `tokens: f64` and refilled by `elapsed * rate`, and
-    /// `6 s × (10/60)` is `0.999999999999999`, so the token that `docs/21` says
-    /// arrives after six seconds did not arrive — the limit was silently
-    /// stricter than the document, in a way no reading of the code would show.
-    #[must_use]
-    pub fn emission_interval(self) -> Duration {
-        Duration::from_secs(60) / self.sustained_per_minute.max(1)
-    }
-
-    /// How far ahead of real time the meter may run — the burst, expressed as
-    /// time. Also how long an emptied bucket takes to come all the way back,
-    /// which is what `RateLimit-Reset` counts down to.
-    #[must_use]
-    pub fn full_refill(self) -> Duration {
-        self.emission_interval() * self.burst
-    }
-}
-
-/// `docs/21`: "Auth (login, reset) | 10 / min **per IP and per account** | 5".
-pub const AUTH: Class = Class {
-    sustained_per_minute: 10,
-    burst: 5,
-};
-
-/// The routes the auth class governs.
-///
-/// A closed list, matched against the router's own `MatchedPath` template. A
-/// request that matched no route is not governed — it is a 404, and 404s are
-/// not what this limiter is for.
-///
-/// Health endpoints are **absent on purpose**. An orchestrator probes
-/// `/health/live` and `/health/ready` every second or two; throttling those
-/// turns the limiter into the outage it was added to prevent, because a
-/// liveness probe that returns 429 gets the container restarted.
-pub const LIMITED_ROUTES: &[&str] = &["/api/v1/auth/login"];
+use super::class::Class;
 
 /// The most distinct keys tracked at once. See the module docs for the overflow
 /// policy.
@@ -142,14 +84,17 @@ pub const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
 /// What a client is limited by.
 ///
-/// Only [`Scope::Ip`] exists today. The per-workspace and per-actor classes in
-/// `docs/21` need an authenticated actor, and they are **not implemented** —
-/// said plainly rather than left to be inferred from a `scope_kind` label that
-/// only ever reports one value.
+/// Two, and the split is `docs/21`'s enforcement order. [`Scope::Ip`] governs
+/// the auth class, which by definition runs before anybody is authenticated
+/// and therefore has no principal to key on. [`Scope::Principal`] governs
+/// everything else, keyed per `(workspace, actor)` exactly as `docs/21` §Rate
+/// limits specifies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scope {
     /// Keyed on the client address.
     Ip,
+    /// Keyed on `(workspace, actor)`.
+    Principal,
 }
 
 impl Scope {
@@ -157,9 +102,10 @@ impl Scope {
     /// can be a `&'static str` and therefore a legal [`LabelValue`].
     ///
     /// [`LabelValue`]: casual_task_observability::labels::LabelValue
-    const fn label(self) -> &'static str {
+    pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Ip => "ip",
+            Self::Principal => "principal",
         }
     }
 }
@@ -168,6 +114,17 @@ impl Scope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Key {
     Ip(IpAddr),
+    /// One actor inside one workspace — `docs/21`'s "per `(workspace, actor)`".
+    ///
+    /// **Both halves are part of the key**, which is what makes exhausting one
+    /// workspace's bucket leave another's untouched (`docs/21` §Acceptance
+    /// gates, "Rate-limit isolation"). Keying on the actor alone would let a
+    /// person who belongs to two workspaces spend one budget across both; the
+    /// workspace alone would let one member starve their colleagues.
+    Principal {
+        workspace: Uuid,
+        actor: Uuid,
+    },
     /// No usable client address: no `X-Forwarded-For`, or one that did not
     /// parse.
     ///
@@ -250,9 +207,19 @@ impl RateLimiter {
     /// A limiter for `class`, keyed by client address.
     #[must_use]
     pub fn per_ip(class: Class) -> Self {
+        Self::new(class, Scope::Ip)
+    }
+
+    /// A limiter for `class`, keyed per `(workspace, actor)`.
+    #[must_use]
+    pub fn per_principal(class: Class) -> Self {
+        Self::new(class, Scope::Principal)
+    }
+
+    fn new(class: Class, scope: Scope) -> Self {
         Self {
             class,
-            scope: Scope::Ip,
+            scope,
             state: Mutex::new(Buckets {
                 tracked: HashMap::new(),
                 overflow: None,
@@ -274,7 +241,17 @@ impl RateLimiter {
     /// six-second window is a test that gets marked `#[ignore]` and then stops
     /// being run.
     pub fn check_at(&self, headers: &HeaderMap, now: Instant) -> Decision {
-        let key = client_ip(headers).map_or(Key::Unattributed, Key::Ip);
+        self.spend(client_ip(headers).map_or(Key::Unattributed, Key::Ip), now)
+    }
+
+    /// Spend a token for one `(workspace, actor)`, at `now`.
+    ///
+    /// The per-principal half of `docs/21` §Rate limits.
+    pub fn check_principal_at(&self, workspace: Uuid, actor: Uuid, now: Instant) -> Decision {
+        self.spend(Key::Principal { workspace, actor }, now)
+    }
+
+    fn spend(&self, key: Key, now: Instant) -> Decision {
         let class = self.class;
         // A std Mutex, not tokio's: the critical section is float arithmetic on
         // one entry and there is no await inside it. A tokio mutex here would
@@ -400,115 +377,17 @@ pub fn client_ip(headers: &HeaderMap) -> Option<IpAddr> {
     raw.split(',').next()?.trim().parse::<IpAddr>().ok()
 }
 
-/// The state the layer carries: the limiter, and somewhere to report to.
-#[derive(Clone)]
-#[allow(missing_debug_implementations)]
-pub struct RateLimitState {
-    pub limiter: Arc<RateLimiter>,
-    pub metrics: Arc<Recorder>,
-}
-
-impl RateLimitState {
-    /// The auth-class limiter, per `docs/21`.
-    #[must_use]
-    pub fn auth(metrics: Arc<Recorder>) -> Self {
-        Self {
-            limiter: Arc::new(RateLimiter::per_ip(AUTH)),
-            metrics,
-        }
-    }
-}
-
-/// The middleware. Governs [`LIMITED_ROUTES`] and passes everything else
-/// through untouched.
-pub async fn rate_limit(
-    State(state): State<RateLimitState>,
-    request: Request<axum::body::Body>,
-    next: Next,
-) -> Response {
-    // The route TEMPLATE from the router, not the request path: a limiter that
-    // matched on attacker-supplied strings would be bypassable by a trailing
-    // slash. A request that matched no route is a 404 and is not governed.
-    let governed = request
-        .extensions()
-        .get::<MatchedPath>()
-        .is_some_and(|path| LIMITED_ROUTES.contains(&path.as_str()));
-    if !governed {
-        return next.run(request).await;
-    }
-
-    let request_id = RequestId::of_request(&request);
-    let decision = state.limiter.check_at(request.headers(), Instant::now());
-
-    let mut response = if let Some(retry_after) = decision.retry_after_seconds {
-        record_hit(&state.metrics, state.limiter.scope());
-        // docs/40 §What is audited: a burst of refusals is the clearest signal
-        // of an attack. The address is deliberately absent from the message and
-        // present in the log, where docs/46 allows an identifier.
-        tracing::warn!(
-            scope = state.limiter.scope().label(),
-            retry_after,
-            "a request was rate limited"
-        );
-        ApiError::too_many_requests(&request_id, retry_after).into_response()
-    } else {
-        next.run(request).await
-    };
-
-    // docs/05 §Rate limiting: "Returned on success too, so a client can slow
-    // down *before* being throttled."
-    let headers = response.headers_mut();
-    headers.insert(
-        "ratelimit-limit",
-        HeaderValue::from(AUTH.sustained_per_minute),
-    );
-    headers.insert("ratelimit-remaining", HeaderValue::from(decision.remaining));
-    headers.insert("ratelimit-reset", HeaderValue::from(decision.reset_seconds));
-    response
-}
-
-/// `docs/46` §Domain metrics: `rate_limit_hits_total` by limiter scope.
-///
-/// `scope_kind` only. The metric also declares `workspace_bucket` and
-/// `workspace_investigation`, and neither is knowable here: this limiter runs
-/// before authentication, on an endpoint whose entire purpose is that the caller
-/// has no identity yet. Attaching a made-up tenant would be worse than omitting
-/// one.
-fn record_hit(metrics: &Recorder, scope: Scope) {
-    match LabelSet::for_metric(RATE_LIMIT_HITS_TOTAL).with(keys::SCOPE_KIND, scope.label()) {
-        Ok(labels) => {
-            if let Err(error) = metrics.increment(RATE_LIMIT_HITS_TOTAL, &labels, 1) {
-                tracing::error!(%error, "recording a rate limit hit");
-            }
-        }
-        // Unreachable: scope_kind is declared on this metric and the value is a
-        // &'static str. Logged rather than unwrapped — a metric is not worth
-        // turning a 429 into a panic.
-        Err(error) => tracing::warn!(%error, "rate limit label rejected"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rate_limit::class::AUTH;
+    use axum::http::HeaderValue;
 
     fn headers_from(ip: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", HeaderValue::from_str(ip).expect("valid"));
         headers
     }
-
-    #[test]
-    fn the_class_is_the_one_docs_21_names() {
-        // The numbers are the design record's, and a test is what keeps them
-        // from drifting into "whatever felt right during a refactor".
-        assert_eq!(
-            AUTH.sustained_per_minute, 10,
-            "docs/21 §Rate limits: 10/min"
-        );
-        assert_eq!(AUTH.burst, 5, "docs/21 §Rate limits: burst 5");
-    }
-
     #[test]
     fn a_burst_is_spent_and_then_refused() {
         let limiter = RateLimiter::per_ip(AUTH);
@@ -612,7 +491,7 @@ mod tests {
             }
         }
         assert_eq!(
-            allowed, AUTH.sustained_per_minute,
+            allowed, AUTH.sustained,
             "a drained bucket admitted {allowed} requests in the following minute"
         );
     }
@@ -755,48 +634,5 @@ mod tests {
             "the sweep freed nothing, so the map stays saturated forever after \
              one flood"
         );
-    }
-
-    #[test]
-    fn health_routes_are_not_in_the_governed_set() {
-        // An orchestrator probes these every second. A 429 on a liveness probe
-        // is a container restart, which turns a limiter into an outage.
-        assert!(!LIMITED_ROUTES.contains(&"/health/live"));
-        assert!(!LIMITED_ROUTES.contains(&"/health/ready"));
-        assert!(!LIMITED_ROUTES.contains(&"/metrics"));
-        assert!(
-            LIMITED_ROUTES.contains(&"/api/v1/auth/login"),
-            "the endpoint this exists for is not governed"
-        );
-    }
-
-    #[test]
-    fn no_route_outside_the_auth_class_is_governed_by_it() {
-        // The auth class is 10/min. docs/21 gives reads 1,000/min and writes
-        // 300/min, and putting a project list or a task read under the auth
-        // bucket would throttle the product into uselessness while looking like
-        // a security improvement. Those classes are keyed per (workspace, actor)
-        // and are not implemented; until they are, everything outside auth is
-        // deliberately ungoverned, and this test is what stops a route being
-        // added to the wrong list by reflex.
-        for route in LIMITED_ROUTES {
-            assert!(
-                route.starts_with("/api/v1/auth/"),
-                "{route} is under the auth class (10/min); docs/21 gives \
-                 non-auth endpoints their own, much larger, per-(workspace, \
-                 actor) limits"
-            );
-        }
-    }
-
-    #[test]
-    fn every_governed_route_is_one_the_router_serves() {
-        // A typo here is a limit that silently governs nothing.
-        for route in LIMITED_ROUTES {
-            assert!(
-                crate::server::ROUTES.contains(route),
-                "{route} is rate limited but is not a route this server serves"
-            );
-        }
     }
 }

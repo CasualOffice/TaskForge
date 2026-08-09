@@ -315,6 +315,23 @@ pub fn router(state: AppState) -> Router {
             crate::rate_limit::RateLimitState::auth(Arc::clone(&state.metrics)),
             crate::rate_limit::rate_limit,
         ))
+        // The per-`(workspace, actor)` limiter, OUTSIDE the auth-class one so
+        // it is the first bucket a request meets, and outside CSRF for the same
+        // reason that one is: `docs/21` §Enforcement order runs the cheapest
+        // check first.
+        //
+        // This is step 4 of that order. It authenticates once — step 3, "cheap:
+        // one indexed read" — and puts the answer in the request extensions, so
+        // the extractors below it do not repeat the query. Placed any lower it
+        // would be limiting requests that had already cost a permission
+        // resolution and a tenant read, which is the work it exists to prevent.
+        .layer(axum::middleware::from_fn_with_state(
+            crate::rate_limit::PrincipalState {
+                pool: state.pool.clone(),
+                limits: crate::rate_limit::PrincipalLimits::new(Arc::clone(&state.metrics)),
+            },
+            crate::rate_limit::principal_rate_limit,
+        ))
         .layer(axum::middleware::from_fn_with_state(state.clone(), observe))
         .with_state(state)
 }

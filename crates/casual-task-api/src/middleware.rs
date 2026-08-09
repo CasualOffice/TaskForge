@@ -76,6 +76,13 @@ impl FromRequestParts<AppState> for Authenticated {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // The rate limiter authenticates first (`docs/21` §Enforcement order
+        // puts step 3 before step 4) and leaves the answer here. Reusing it is
+        // what keeps keying per principal from doubling the auth query on every
+        // request in the system.
+        if let Some(cached) = parts.extensions.get::<Self>() {
+            return Ok(*cached);
+        }
         let request_id = RequestId::of(parts);
         let mut conn = state
             .pool
@@ -84,6 +91,46 @@ impl FromRequestParts<AppState> for Authenticated {
             .map_err(|_| ApiError::unavailable(&request_id, 5))?;
         authenticate(&mut conn, &parts.headers, &request_id).await
     }
+}
+
+/// The workspace a request claims, from the header. Never trusted — it is
+/// validated against membership by [`WorkspaceMember`] before it means
+/// anything.
+///
+/// Exposed for the rate limiter, which needs the claimed pair to key on and
+/// runs before the extractor does. Keying on an unvalidated workspace is safe
+/// in the direction that matters: a caller who lies about it gets their *own*
+/// bucket for a workspace they cannot enter, and is refused a moment later.
+#[must_use]
+pub fn claimed_workspace(headers: &HeaderMap) -> Option<uuid::Uuid> {
+    headers
+        .get(WORKSPACE_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<uuid::Uuid>().ok())
+}
+
+/// Authenticate a request outside the extractor, for the rate limiter.
+///
+/// `Err(())` for "no usable credential, or the lookup failed" — deliberately
+/// not an [`ApiError`]. The limiter has no business answering a request; the
+/// extractor that runs after it produces the documented 401 or 503, once, with
+/// the request id in it.
+///
+/// # Errors
+///
+/// `Err(())` when the credential is absent, invalid, or unverifiable.
+/// Takes the headers rather than the request: `&Request<Body>` is not `Sync`,
+/// so holding one across the `acquire().await` below makes this future
+/// non-`Send` and `from_fn_with_state` then refuses the middleware with an
+/// error that names only a `Service` bound.
+pub async fn authenticate_request(
+    pool: &sqlx::PgPool,
+    headers: &HeaderMap,
+) -> Result<Authenticated, ()> {
+    let mut conn = pool.acquire().await.map_err(|_| ())?;
+    authenticate(&mut conn, headers, "rate-limit")
+        .await
+        .map_err(|_| ())
 }
 
 /// The authentication itself, taking a connection rather than acquiring one.

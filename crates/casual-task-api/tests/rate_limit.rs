@@ -283,7 +283,7 @@ async fn rate_limit_headers_are_returned_on_a_success_too() {
     };
     assert_eq!(
         header("ratelimit-limit"),
-        Some(AUTH.sustained_per_minute.to_string()),
+        Some(AUTH.per_minute().to_string()),
         "docs/05 shows RateLimit-Limit on every response"
     );
     assert_eq!(
