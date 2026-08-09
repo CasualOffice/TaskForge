@@ -363,6 +363,21 @@ pub fn router(state: AppState) -> Router {
         // in the same transaction as the change since C-011; this is the first
         // thing that reads them.
         .route("/api/v1/tasks/{id}/activity", get(crate::activity::stream))
+        // The chain of custody (`docs/45`). Three commands and the one read that
+        // renders them, because they are one panel and always read together.
+        .route("/api/v1/tasks/{id}/custody", get(crate::custody::read))
+        .route(
+            "/api/v1/tasks/{id}/team",
+            axum::routing::put(crate::custody::transfer),
+        )
+        .route(
+            "/api/v1/tasks/{id}/promotions",
+            axum::routing::post(crate::custody::promote),
+        )
+        .route(
+            "/api/v1/tasks/{id}/verifications",
+            axum::routing::post(crate::custody::verify),
+        )
         // C-008 — the Relations panel. The write is docs/05's; the read shape
         // is chosen (see the module docs) because docs/05 specifies none.
         .route(
@@ -736,6 +751,10 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/attachments/{id}/download",
     "/api/v1/tasks/{id}",
     "/api/v1/tasks/{id}/activity",
+    "/api/v1/tasks/{id}/custody",
+    "/api/v1/tasks/{id}/team",
+    "/api/v1/tasks/{id}/promotions",
+    "/api/v1/tasks/{id}/verifications",
     "/api/v1/tasks/{id}/dependencies",
     "/api/v1/tasks/{id}/dependencies/{other_id}",
     "/api/v1/tasks/{id}/comments",

@@ -19,6 +19,7 @@ pub mod auth;
 pub mod authz;
 pub mod comment;
 pub mod compile;
+pub mod custody;
 pub mod dependency;
 pub mod dispatch;
 pub mod environment;

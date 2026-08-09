@@ -73,7 +73,33 @@ POST   /api/v1/tasks/{id}/comments         comment
 GET    /api/v1/tasks/{id}/comments         thread        (cursor)
 POST   /api/v1/tasks/{id}/attachments      begin upload  (doc 28)
 POST   /api/v1/tasks/bulk                  bulk ops      (doc 24)
+
+GET    /api/v1/tasks/{id}/custody           who has held it, where it has been (doc 45)
+PUT    /api/v1/tasks/{id}/team              hand it to a team; clears assignees
+POST   /api/v1/tasks/{id}/promotions        it reached an environment
+POST   /api/v1/tasks/{id}/verifications     tested on an environment: PASS or FAIL
 ```
+
+The custody four are one story told three ways ([45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md)),
+and their shapes follow from the process rather than from the tables:
+
+- **Transfer is `PUT`**, because a task has exactly one owning team — but it is
+  not idempotent in the log: Android → Backend → Android is two real events, and
+  the bounce count is the number that exposes a broken process. Handing a task to
+  the team that already owns it is `409`, so a retry cannot inflate that count.
+- **Promotion is `POST` and deliberately not idempotent.** A second promotion to
+  the same environment is a redeploy — a real event that a log swallowing
+  duplicates would understate.
+- **Verification is neither a field nor a status.** It is a verdict against the
+  environment it was tested on, with evidence, and a task accumulates many:
+  "failed twice on qa, then passed" is a sentence a status column cannot produce
+  because a status only holds the latest value.
+- **The read is one endpoint for three lists**, because they are one panel and
+  always rendered together.
+
+`PUT /tasks/{id}/environment` still exists and still carries `If-Match`; it now
+writes a promotion row too, so the history is complete whichever door a task went
+through.
 
 The dependency **read** was not specified here and its shape is a choice, made
 by C-008 and recorded rather than left to be inferred:

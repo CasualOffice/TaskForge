@@ -175,6 +175,7 @@ mod tests {
             status_id: Uuid::now_v7(),
             state: "BACKLOG".into(),
             reporter_id: Uuid::now_v7(),
+            team_id: None,
             environment_id: None,
             milestone_id: None,
             parent_id: None,
