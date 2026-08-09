@@ -21,6 +21,7 @@ written by the person with the least time and the most adrenaline.
 | [RB-05](#rb-05--database-failover) | Database failover | 5xx > 1% / 5 min, pool > 90%, or a provider notice | page | Confirm which node is primary |
 | [RB-06](#rb-06--permission-incident) | Permission incident | Permission-denied spike for one actor, or a customer question | ticket (security) | Separate "can they now" from "could they then" |
 | [RB-07](#rb-07--restore-from-backup) | Restore from backup | Confirmed loss, or the scheduled drill | page / planned | Restore to a **scratch** instance, never in place |
+| [RB-08](#rb-08--mfa-break-glass) | MFA break-glass | An owner cannot produce a second factor **or** a recovery code | ticket (security) | Confirm the request out of band before touching anything |
 
 Alert definitions and severities are owned by [46](46-OBSERVABILITY-AND-OPERATIONS.md)
 §Alerts; latency and lag targets by [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md);
@@ -1425,6 +1426,126 @@ an unrecorded drill time is a drill that proves nothing.
 - Partition retention that exports before dropping ([25](25-EVENTS-OUTBOX-AND-AUDIT.md)),
   so a dropped partition is not a restore event.
 
+
+---
+
+## RB-08 — MFA break-glass
+
+*"The owner has lost their phone and their recovery codes."*
+
+### Symptom
+
+Someone who administers a workspace cannot get in. They have a working password
+and a valid session is not the problem — the workspace requires MFA
+([40](40-IDENTITY-AUTH-AND-SESSION.md) §Workspace-level SSO and MFA step-up) and
+they can produce neither a TOTP code nor one of the ten recovery codes issued at
+enrolment.
+
+[40](40-IDENTITY-AUTH-AND-SESSION.md) §Acceptance gates requires this path to
+exist, to be documented, and for the recovery to be audited. This is that
+document.
+
+### Before you touch anything
+
+**This procedure removes a second factor. Treat a request for it as a social
+engineering attempt until you have evidence it is not.**
+
+1. **Confirm out of band.** Not by replying to the email that asked. A known
+   phone number, a video call, an existing incident channel — something the
+   requester could not have chosen.
+2. **Check the cheaper paths first.** They are cheaper *and* safer:
+   - A **recovery code**. `POST /api/v1/auth/mfa/recovery` accepts one, and they
+     were shown once at enrolment — a password manager or a printout is the
+     usual place. Ten were issued; only the used ones are gone.
+   - **Another owner.** If a second person holds `workspace.owner`, they can
+     turn the requirement off with
+     `PUT /api/v1/workspaces/{id}/mfa-requirement {"required": false}`, and the
+     locked-out user can then sign in and re-enrol. This is the preferred
+     resolution and needs no operator at all.
+3. **Only if neither applies**, continue.
+
+### Diagnosis
+
+Confirm the account really is enrolled, and that MFA is really what is blocking
+them, before removing anything.
+
+```sql
+-- ✅ runs today.
+SELECT u.email,
+       f.confirmed_at IS NOT NULL           AS factor_confirmed,
+       (SELECT count(*) FROM recovery_code r
+         WHERE r.user_id = u.id AND r.used_at IS NULL) AS codes_left
+  FROM user_account u
+  LEFT JOIN mfa_factor f ON f.user_id = u.id
+ WHERE u.email = 'owner@example.com';
+```
+
+- `factor_confirmed = false` and `codes_left = 0` → they are **not** enrolled;
+  MFA is not what is blocking them. Stop, and look at
+  [RB-06](#rb-06--permission-incident) instead.
+- `codes_left > 0` → send them back to step 2. Do not remove the factor because
+  someone would rather not look for the codes.
+
+Which workspaces are actually enforcing:
+
+```sql
+SELECT id, slug, require_mfa FROM workspace WHERE require_mfa;
+```
+
+### Action
+
+Run in the deployment, by someone who already holds `DATABASE_URL`:
+
+```sh
+taskforge-api --break-glass-clear-mfa owner@example.com
+```
+
+**Why this is a command and not an endpoint.** An HTTP route that removes a
+second factor is a backdoor with a URL. Whatever it demanded would be either
+something the locked-out owner cannot produce — which defeats the purpose — or
+something an attacker could, which defeats the factor. There is no third option,
+so the authority is one the network cannot reach: possession of the database
+credentials.
+
+What it does, and deliberately all it does:
+
+- Writes an `auth_event` of type `mfa.break_glass` **before** removing anything,
+  so the failure mode is a recorded attempt rather than an unrecorded removal.
+- Deletes the factor and every recovery code with it. The codes are bypasses for
+  a factor that no longer exists.
+- **Creates no session, resets no password, grants nothing.** The owner still
+  has to sign in with their password afterwards.
+
+It exits non-zero and changes nothing if the address is unknown, so a typo at
+3 a.m. fails loudly instead of reporting success.
+
+### Verification
+
+```sql
+-- ✅ The factor is gone.
+SELECT count(*) FROM mfa_factor
+ WHERE user_id = (SELECT id FROM user_account WHERE email = 'owner@example.com');
+-- expect 0
+
+-- ✅ The recovery is in the trail. This is the half the acceptance gate names.
+SELECT occurred_at, event_type, user_agent
+  FROM auth_event
+ WHERE email = 'owner@example.com' AND event_type = 'mfa.break_glass'
+ ORDER BY occurred_at DESC LIMIT 5;
+```
+
+Then have the owner sign in and **re-enrol immediately**. Until they do, an
+account that administers a workspace is protected by a password alone — which is
+the state this whole feature exists to end.
+
+### Afterwards
+
+- Record the out-of-band confirmation from step 1 in the incident, with who
+  approved it. `auth_event` records that it happened; only you can record *why*.
+- If the workspace has exactly one owner, that is the root cause. A second owner
+  makes this runbook unnecessary, and
+  [04](04-RBAC-AND-AUTHORIZATION.md) has nothing against two.
+
 ---
 
 ## Executability matrix
@@ -1441,6 +1562,7 @@ What can be followed today (Phase 0), and what is waiting on which item in
 | RB-05 DB failover | ✅ entirely — this is the most executable runbook in the set | ✅ mostly (infrastructure, not application) | ✅ via `scripts/verify-schema.sh` | ⏳ startup superuser check (C-001 era) |
 | RB-06 Permission incident | ✅ SQL runs, returns nothing until Phase 1 | ⏳ `/permissions/explain`, revocation | ⏳ endpoint-based | C-003, C-011 |
 | RB-07 Restore | ✅ entirely for the database; ⏳ for the application | ✅ database; ⏳ attachment and app checks | ✅ mostly | attachment client, API binary |
+| RB-08 MFA break-glass | ✅ entirely | ✅ entirely — the command ships in the API image | ✅ entirely | — |
 
 Two honest summary statements:
 

@@ -46,10 +46,135 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // The break-glass path (`docs/40` §MFA acceptance gates, `docs/50`).
+    // Deliberately a command and not a route — see `break_glass`.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(position) = args.iter().position(|arg| arg == "--break-glass-clear-mfa") {
+        let Some(email) = args.get(position + 1) else {
+            eprintln!("--break-glass-clear-mfa needs the account's email address");
+            return ExitCode::FAILURE;
+        };
+        let email = email.clone();
+        return match tokio::runtime::Runtime::new() {
+            Ok(runtime) => runtime.block_on(break_glass(&email)),
+            Err(error) => {
+                tracing::error!(%error, "cannot start the async runtime");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime.block_on(run()),
         Err(error) => {
             tracing::error!(%error, "cannot start the async runtime");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Remove an account's MFA factor, for an owner who cannot produce one.
+///
+/// # Why this is a command and not an endpoint
+///
+/// `docs/40` §Acceptance gates requires a break-glass path: "an owner locked
+/// out by a broken IdP can recover through the documented path, and the
+/// recovery is audited." The same requirement applies to a broken factor — a
+/// lost phone with the recovery codes in the same bag.
+///
+/// An HTTP endpoint that removes a second factor is a backdoor with a URL. Any
+/// authentication it demanded would be either something the locked-out owner
+/// cannot produce — which defeats the purpose — or something an attacker could,
+/// which defeats the factor. There is no third option, so the authority used
+/// here is one the network cannot reach: **possession of `DATABASE_URL`**, held
+/// by whoever operates the deployment.
+///
+/// Three properties make that defensible rather than merely convenient:
+///
+/// - It is **not reachable from the internet**. It runs in the deployment, by
+///   someone who already has the credentials to edit the row by hand.
+/// - It writes an `auth_event` **before** it exits, so the recovery is in the
+///   same append-only trail as every login. `docs/40`'s gate says the recovery
+///   must be audited, not merely possible.
+/// - It removes the factor and **only** the factor. It does not create a
+///   session, reset a password, or grant anything. The owner still has to sign
+///   in afterwards, which is one more thing an attacker who somehow reached it
+///   would still need.
+///
+/// `docs/50` §Break-glass documents the procedure, because a path nobody can
+/// find at 3 a.m. is not a path.
+async fn break_glass(email: &str) -> ExitCode {
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        eprintln!("DATABASE_URL is required");
+        return ExitCode::FAILURE;
+    };
+
+    let pool = match PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+    {
+        Ok(pool) => pool,
+        Err(error) => {
+            eprintln!("cannot connect to the database: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut conn = match pool.acquire().await {
+        Ok(conn) => conn,
+        Err(error) => {
+            eprintln!("cannot acquire a connection: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let user = match casual_task_persistence::invitation::user_by_email(&mut conn, email).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            eprintln!("no active account for {email}");
+            return ExitCode::FAILURE;
+        }
+        Err(error) => {
+            eprintln!("looking up the account failed: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Audited FIRST. If the delete succeeds and the audit write then fails, the
+    // factor is gone with no record of who removed it — which is the one
+    // outcome `docs/40`'s gate rules out. Writing the event first means the
+    // worst case is a recorded attempt that did not complete, which is a
+    // question an operator can answer.
+    if let Err(error) = casual_task_persistence::identity::record_auth_event(
+        &mut conn,
+        Some(user),
+        Some(email),
+        "mfa.break_glass",
+        None,
+        Some("break-glass CLI"),
+    )
+    .await
+    {
+        eprintln!("refusing to proceed: the audit trail could not be written: {error}");
+        return ExitCode::FAILURE;
+    }
+
+    match casual_task_persistence::mfa::break_glass_clear(&mut conn, user).await {
+        Ok(true) => {
+            tracing::warn!(%user, "MFA cleared through the break-glass path");
+            println!(
+                "MFA cleared for {email}. The account can sign in with its password alone until \
+                 it enrols again. This is recorded in auth_event as mfa.break_glass."
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(false) => {
+            println!("{email} had no MFA factor; nothing to clear.");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("clearing the factor failed: {error}");
             ExitCode::FAILURE
         }
     }

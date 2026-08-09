@@ -1268,6 +1268,103 @@ pub async fn enable_app_login(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// The highest TOTP step accepted for a user's factor.
+///
+/// The replay guard's whole state. A test asserts it moved forward, which is
+/// the thing RFC 6238 §5.2 depends on and the thing a refactor could silently
+/// stop doing.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn mfa_last_step(pool: &sqlx::PgPool, user_id: Uuid) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT last_step FROM mfa_factor WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map(Option::flatten)
+}
+
+/// Whether the user has a factor, and whether it is confirmed.
+///
+/// Returns `(exists, confirmed)` so a test can tell "no factor" from "a factor
+/// nobody finished enrolling" — the distinction the whole unconfirmed-factor
+/// rule turns on.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn mfa_factor_state(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<(bool, bool), sqlx::Error> {
+    let row: Option<(bool,)> =
+        sqlx::query_as("SELECT confirmed_at IS NOT NULL FROM mfa_factor WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map_or((false, false), |(confirmed,)| (true, confirmed)))
+}
+
+/// How many recovery codes the user has, unused and used.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn recovery_code_counts(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<(i64, i64), sqlx::Error> {
+    sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE used_at IS NULL),
+                count(*) FILTER (WHERE used_at IS NOT NULL)
+           FROM recovery_code WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
+/// Turn a workspace's MFA requirement on without going through the endpoint.
+///
+/// Used to set up the step-up tests, so they assert the *resolution* behaviour
+/// rather than re-testing the toggle that switched it on.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn require_workspace_mfa(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    required: bool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE workspace SET require_mfa = $2 WHERE id = $1")
+        .bind(workspace_id)
+        .bind(required)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Whether any live session for the user carries an MFA assertion.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn session_mfa_satisfied(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM session
+                         WHERE user_id = $1 AND revoked_at IS NULL
+                           AND mfa_satisfied_at IS NOT NULL)",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+}
+
 /// Soft-delete a task, so a projection consumer can be tested against the
 /// removal path as well as the write path.
 ///

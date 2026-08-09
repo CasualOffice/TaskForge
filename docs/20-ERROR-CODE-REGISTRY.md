@@ -46,6 +46,7 @@ code is part of the public contract once shipped.
 | `TF-AUT-0011` | SSO required for this workspace | 403 |
 | `TF-AUT-0012` | Account locked — too many attempts | 429 |
 | `TF-AUT-0013` | Credential type not permitted for this endpoint | 403 |
+| `TF-AUT-0014` | MFA already enrolled for this account | 409 |
 
 `TF-AUT-0013` is not `TF-AZN-0001`. It is a fact about the *credential*, not
 about a grant: a workspace-scoped bearer token cannot create a different
