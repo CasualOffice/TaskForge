@@ -36,11 +36,13 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
+import { PERMISSIONS } from '../api/permissions'
 import { TASK_STATES, type Task, type TaskState } from '../api/tasks'
 import { TaskDrawer } from '../drawer/TaskDrawer'
 import { useAnnounce } from '../shell/announce'
 import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { ErrorNotice, GapNotice } from '../shell/notice'
+import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { useTaskTransition } from '../tasks/mutations'
 import { stateLabel } from '../tasks/present'
@@ -55,8 +57,16 @@ export function BoardView(): ReactElement {
   const announce = useAnnounce()
   const client = useQueryClient()
 
-  const { unavailable, statusFor } = useProjectWorkflow(search.project)
+  const { unavailable: missingWorkflow, statusFor } = useProjectWorkflow(search.project)
+  const authority = useAuthority(search.project)
   const move = useTaskTransition(workspaceId)
+
+  // Two different reasons a card cannot move, kept apart. `docs/04` resolves the
+  // second; hiding it behind the first would tell someone without
+  // `task.transition` that the server is incomplete.
+  const unavailable = authority.can(PERMISSIONS.taskTransition)
+    ? missingWorkflow
+    : 'You do not have permission to change the status of tasks here.'
   const canMove = unavailable === undefined
 
   const sensors = useSensors(

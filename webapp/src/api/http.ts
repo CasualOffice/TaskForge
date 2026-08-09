@@ -19,7 +19,15 @@
  */
 import { ApiError, type ErrorEnvelope } from './problem'
 
-/** Same-origin by default; a dev server proxies `/api` to the Rust process. */
+/**
+ * Same-origin, always, unless a deployment overrides it.
+ *
+ * The session cookie is `HttpOnly` and `SameSite=Lax` and the API registers no
+ * CORS layer, so a cross-origin base would fail on every authenticated request.
+ * `pnpm dev` proxies `/api` to the API process for exactly that reason
+ * (`vite.config.ts`), which also means development and production have the same
+ * origin shape rather than two different ones.
+ */
 const BASE = import.meta.env['VITE_API_BASE'] ?? ''
 
 /** `docs/05` §Authentication. Validated server-side against membership. */
