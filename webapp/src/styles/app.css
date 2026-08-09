@@ -1732,3 +1732,114 @@ kbd {
   height: 24px;
   font-size: 12px;
 }
+
+/* ── The pipeline page ───────────────────────────────────────────────────
+ *
+ * Three things stacked: where everything is now, what to release, and what has
+ * gone out before. The page scrolls; the columns keep their own scrollbars,
+ * because a board is the one place a reader expects them and a column that
+ * grows to its content would push the release bar past the fold on every
+ * project with a backlog.
+ */
+.view--pipeline {
+  overflow-y: auto;
+}
+.view--pipeline .board {
+  flex: 0 0 auto;
+  height: clamp(280px, 52vh, 620px);
+}
+
+/* The checkbox sits beside the card rather than inside it: the card is a link
+ * to the task, and a control nested in a link is a coin toss about what a
+ * click does. */
+.lane__pick {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+.lane__pick > label {
+  margin-top: 10px;
+}
+
+/* ── Cutting a release ─────────────────────────────────────────────────── */
+.relbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: var(--tf-surface, var(--color-surface-raised));
+  box-shadow: var(--shadow-raised);
+}
+.relbar__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.relbar__count {
+  font-size: var(--text-sm);
+}
+.relbar__what {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ── What has gone out ─────────────────────────────────────────────────── */
+.rel2 {
+  padding: var(--space-4);
+}
+.rel2__heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+.rel2__list,
+.rel2__contents ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rel2__item {
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+}
+.rel2__item:last-child {
+  border-bottom: 0;
+}
+.rel2__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.rel2__when,
+.rel2__note {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.rel2__contents {
+  padding: 0 0 var(--space-2) var(--space-3);
+}
+.rel2__task {
+  display: block;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rel2__task:hover {
+  background: var(--color-hover);
+}

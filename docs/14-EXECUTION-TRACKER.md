@@ -365,6 +365,23 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-019 | Bundle + a11y gates wired | `Built` |
 | C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
 | C-020 | Rate limiting at the edge | `Building` |
+| C-022 | **Chain of custody** — team transfer, environment promotion, verification, `/me/queue` | `Built` |
+| C-023 | **Releases** — what went out together, cut from the pipeline | `Built` |
+
+**C-022 and C-023 are `Built`, and the missing half of `Gated` is the client.**
+Both servers are protected: `cargo test --workspace -- --ignored` runs in CI, and
+`crates/casual-task-api/tests/custody.rs` and `tests/releases.rs` assert the
+properties the lifecycle depends on rather than that a row was written — a
+transfer clears the assignees, a promotion writes a log row as well as the
+column, a release with a task from another project moves *nothing*. What has no
+acceptance gate is the surface: the pipeline board, the selection, and the
+release bar are covered by `tsc`, `eslint` and the a11y suite, none of which
+would notice if cutting a release stopped invalidating the board. A Playwright
+path — select two, cut, assert both moved column — is what would close it.
+
+**C-022 went untracked while it was built**, which this row is correcting rather
+than hiding. AGENTS.md asks for the row when the work *starts*; it was written
+across several PRs that each looked like a continuation of C-018.
 
 - **D-050** was opened by a failing gate rather than by reading anything.
   Adding `sqlx` with `tls-rustls` pulled in `webpki-roots` — Mozilla's CA bundle,

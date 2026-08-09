@@ -12,12 +12,15 @@
  * whose cards are the same cards the status board draws. A task appears under
  * the environment it is on now; its history of getting there is on the task.
  *
- * # Why it is a read and not a drag surface
+ * # Why it is a selection surface and not a drag one
  *
  * A card does not move here by being dragged. An environment changes because
  * something was *deployed* — the promotion is a record of a real event, not a
- * wish — so promoting is a deliberate action on the task with the evidence
- * beside it, and this surface reports the result.
+ * wish. But a deploy carries many tasks at once, so the surface that reports
+ * where things are is also the natural place to say what went together: tick
+ * the ones that shipped, name the release, and every one of them moves
+ * (`docs/45`). A drag would move them one at a time and record eleven separate
+ * events for a single deployment.
  *
  * # Why "not yet deployed" is a column
  *
@@ -26,8 +29,9 @@
  * Leaving them out would make the columns add up to less than the project and
  * quietly hide the answer.
  */
-import { useMemo, type ReactElement } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useMemo, useState, type ReactElement } from 'react'
+import { Checkbox } from '@schnsrw/design-system'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { listEnvironments } from '../api/environments'
 import { keys } from '../api/keys'
@@ -39,6 +43,8 @@ import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { useWorkspaceId } from '../shell/session'
 import { TaskCard } from '../tasks/TaskCard'
 import { filterFromSearch } from '../tasks/query'
+import { ReleaseBar } from './ReleaseBar'
+import { Releases } from './Releases'
 
 /** One column's worth. Deliberately small: this is a survey, not a backlog. */
 const PER_COLUMN = 50
@@ -48,6 +54,11 @@ export function EnvironmentView(): ReactElement {
   const search = useAppSearch()
   const openTask = useOpenTask()
   const project = search.project
+
+  const client = useQueryClient()
+  // Across columns on purpose: a release usually promotes what is sitting on
+  // qa, but a hotfix that never went there belongs in the same batch.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
 
   const environments = useQuery({
     queryKey: keys.environments(workspaceId, project ?? ''),
@@ -59,7 +70,7 @@ export function EnvironmentView(): ReactElement {
   const ordered = useMemo(
     () => [...(environments.data?.data ?? [])].sort((a, b) => a.position - b.position),
     [environments.data],
-  );
+  )
 
   // One query per column, which is how the status board works too: the filter
   // grammar already answers "tasks on environment X", and a bespoke grouped
@@ -149,7 +160,7 @@ export function EnvironmentView(): ReactElement {
   ]
 
   return (
-    <section className="view" aria-labelledby="page-title">
+    <section className="view view--pipeline" aria-labelledby="page-title">
       <PageHeader title="Environments" />
       <div className="board" role="list" aria-label="Environments">
         {lanes.map((lane) => (
@@ -165,12 +176,42 @@ export function EnvironmentView(): ReactElement {
                 </p>
               ) : null}
               {lane.tasks.map((task) => (
-                <TaskCard key={task.id} task={task} onOpen={openTask} />
+                <div className="lane__pick" key={task.id}>
+                  <Checkbox
+                    checked={selected.has(task.id)}
+                    aria-label={`Include ${task.key} in a release`}
+                    onChange={() =>
+                      setSelected((current) => {
+                        const next = new Set(current)
+                        if (!next.delete(task.id)) next.add(task.id)
+                        return next
+                      })
+                    }
+                  />
+                  <TaskCard task={task} onOpen={openTask} />
+                </div>
               ))}
             </div>
           </section>
         ))}
       </div>
+
+      <ReleaseBar
+        workspaceId={workspaceId}
+        projectId={project}
+        environments={ordered}
+        selected={[...selected]}
+        onClear={() => setSelected(new Set())}
+        onCut={() => {
+          // The columns are five separate queries keyed by environment, and a
+          // release moves rows between them. Refetching the lot is the honest
+          // answer: patching them by hand would mean re-deriving the server's
+          // decision about which column each task now belongs in.
+          void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
+        }}
+      />
+
+      <Releases workspaceId={workspaceId} projectId={project} />
     </section>
   )
 }

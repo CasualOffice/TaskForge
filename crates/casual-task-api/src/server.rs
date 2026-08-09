@@ -288,6 +288,15 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/tasks/{id}/environment",
             axum::routing::put(crate::environments::set_on_task),
         )
+        // Releases (`docs/45`). A release is what went out together, which is
+        // the one fact neither the status board nor the environment view can
+        // hold. Cutting one takes `task.update` — the same authority as the
+        // promotions it batches, and deliberately not a key of its own.
+        .route(
+            "/api/v1/projects/{id}/releases",
+            get(crate::releases::list).post(crate::releases::cut),
+        )
+        .route("/api/v1/releases/{id}", get(crate::releases::read))
         // Roles (`docs/04` §API). Authoring is workspace-scoped and is a
         // different permission from assigning (D-049) — anyone who could do
         // both could mint a role carrying more than they hold and grant it to
@@ -736,6 +745,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/environments",
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",
+    "/api/v1/projects/{id}/releases",
+    "/api/v1/releases/{id}",
     "/api/v1/me",
     "/api/v1/me/queue",
     "/api/v1/me/password",
