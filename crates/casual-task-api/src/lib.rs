@@ -27,6 +27,7 @@ pub mod etag;
 pub mod invitations;
 pub mod json;
 pub mod middleware;
+pub mod notifications;
 pub mod password_reset;
 pub mod projects;
 pub mod rate_limit;

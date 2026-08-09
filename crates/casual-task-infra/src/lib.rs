@@ -19,6 +19,7 @@
 //! degraded one.
 
 pub mod broadcast;
+pub mod header;
 pub mod mail;
 
 pub use broadcast::{Broadcast, LiveEvent, LocalBroadcast, Subscription, Topic};

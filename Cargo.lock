@@ -445,6 +445,8 @@ name = "casual-task-notification"
 version = "0.0.0"
 dependencies = [
  "casual-task-model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -39,3 +39,10 @@ pub use casual_task_workflow::{Rejection, TransitionRequest, ValidTransition, Wo
 /// Lexicographic board ranks (ADR-013), re-exported from the task domain crate
 /// for the same reason.
 pub use casual_task_task::rank;
+
+/// The notification domain, re-exported.
+///
+/// `docs/19` makes this crate "the only layer permitted to compose domain
+/// crates", so the worker reaches `casual-task-notification` through here
+/// rather than depending on it directly.
+pub use casual_task_notification as notification;

@@ -181,6 +181,14 @@ pub fn router(state: AppState) -> Router {
             axum::routing::post(crate::tasks::create),
         )
         .route("/api/v1/tasks", get(crate::tasks::list))
+        // C-016. Both take `WorkspaceMember`, and both scope every statement to
+        // the caller's own user id — a notification is the one tenant row whose
+        // owner is not implied by the workspace.
+        .route("/api/v1/notifications", get(crate::notifications::list))
+        .route(
+            "/api/v1/notifications/read",
+            axum::routing::post(crate::notifications::mark_read),
+        )
         .route(
             "/api/v1/tasks/{id}",
             get(crate::tasks::read)
@@ -471,6 +479,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}",
     "/api/v1/projects/{id}/tasks",
     "/api/v1/tasks",
+    "/api/v1/notifications",
+    "/api/v1/notifications/read",
     "/api/v1/tasks/{id}",
     "/api/v1/tasks/{id}/comments",
     "/api/v1/comments/{id}",
