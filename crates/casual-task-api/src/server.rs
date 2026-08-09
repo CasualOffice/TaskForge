@@ -156,7 +156,30 @@ pub fn router(state: AppState) -> Router {
             axum::routing::post(crate::tasks::create),
         )
         .route("/api/v1/tasks", get(crate::tasks::list))
-        .route("/api/v1/tasks/{id}", get(crate::tasks::read))
+        .route(
+            "/api/v1/tasks/{id}",
+            get(crate::tasks::read)
+                .patch(crate::tasks::update)
+                .delete(crate::tasks::delete),
+        )
+        // docs/23: the ONLY door to a status change. A `PATCH` naming
+        // `status_id` is refused with TF-WFL-0001 and pointed here.
+        .route(
+            "/api/v1/tasks/{id}/transitions",
+            axum::routing::post(crate::tasks::transition),
+        )
+        .route(
+            "/api/v1/tasks/{id}/assignees",
+            axum::routing::post(crate::tasks::assign),
+        )
+        .route(
+            "/api/v1/tasks/{id}/assignees/{user_id}",
+            axum::routing::delete(crate::tasks::unassign),
+        )
+        .route(
+            "/api/v1/tasks/{id}/tags",
+            axum::routing::post(crate::tasks::tag),
+        )
         // C-002 — workspaces, membership, teams. Registered HERE, above the
         // layers, for the reason this function's docs give: a route appended to
         // the returned Router escapes the CSRF guard and the request id.
@@ -391,6 +414,10 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/tasks",
     "/api/v1/tasks",
     "/api/v1/tasks/{id}",
+    "/api/v1/tasks/{id}/transitions",
+    "/api/v1/tasks/{id}/assignees",
+    "/api/v1/tasks/{id}/assignees/{user_id}",
+    "/api/v1/tasks/{id}/tags",
     "/api/v1/workspaces",
     "/api/v1/workspaces/{workspace_id}",
     "/api/v1/workspaces/{workspace_id}/members",
@@ -468,6 +495,10 @@ mod tests {
             "/api/v1/projects/{id}/tasks",
             "/api/v1/tasks",
             "/api/v1/tasks/{id}",
+            "/api/v1/tasks/{id}/transitions",
+            "/api/v1/tasks/{id}/assignees",
+            "/api/v1/tasks/{id}/assignees/{user_id}",
+            "/api/v1/tasks/{id}/tags",
             "/api/v1/workspaces",
             "/api/v1/workspaces/{workspace_id}",
             "/api/v1/workspaces/{workspace_id}/members",

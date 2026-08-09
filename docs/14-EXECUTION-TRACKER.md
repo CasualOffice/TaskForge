@@ -1200,10 +1200,71 @@ since migration 0008; and lexicographic board ranks (ADR-013), append-only, with
 the minimum character reserved so a midpoint always exists for the drag path
 that arrives with C-018.
 
-**Not in C-008 yet:** update, delete, transitions, assignees, tags,
-dependencies, and the filter grammar on `GET /tasks` beyond `project_id`.
-`GET /tasks` compiles through the C-012 compiler, so adding the grammar is
-supplying a richer AST rather than a second query path.
+**The rest of C-008 is in: update, delete, transitions, assignees and tags.**
+A task could be created and then never changed; now it is a work item.
+
+`PATCH` and `DELETE` require `If-Match` (428 absent, 409 stale, and the `409`
+body carries the current representation so the loser can merge). `PATCH`
+**declares** `status_id` and `state` in order to refuse them with
+`TF-WFL-0001`: leaving them out would make `deny_unknown_fields` call them
+fields nobody has heard of, when the truth is that they exist and have their own
+door ([23](23-WORKFLOW-AND-STATE-MACHINE.md) §The transition command).
+
+**The transition handler does not re-derive the state machine.** Steps 1–3 of
+[23](23-WORKFLOW-AND-STATE-MACHINE.md) §Validation order are the handler's
+(readable → 404, version → 409, `task.transition` → 403); steps 4–7 are
+`casual-task-workflow`'s `validate`, which was already implemented and tested
+and already returns the **first** failure in the fixed order. The handler
+supplies the facts — the actor's held permissions on the project, the blockers
+they can see — and maps each `Rejection` onto its documented code. The order is
+covered by a test that violates several rules at once per request and asserts
+which one is reported; a handler checking permission before version, or version
+before visibility, passes every single-violation test and fails that one.
+
+Two behaviours from [23](23-WORKFLOW-AND-STATE-MACHINE.md) that are easy to miss
+and are both tested: a move to the status the task already occupies is a `200`
+no-op that writes **no** event, which is what makes retries safe without an
+idempotency key; and leaving a terminal state writes `task.reopened` rather than
+`task.status.changed`, because "how often does work come back?" cannot be
+answered from a generic status-change event.
+
+**Step 8 — plugin `validation.transition` hooks — is not implemented**, and
+nothing fakes it. It needs the plugin runtime (Phase 3,
+[34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)).
+
+**`fields` validates and is then discarded.** It satisfies step 6, and storing
+the values needs custom-field value storage — **D-033**, deliberately deferred
+to before Phase 3. The default workflow requires no fields, so no path in the
+product reaches the gap today; a custom workflow that required one would
+validate correctly and record nothing.
+
+**`TF-TSK-0005` is read as visibility, not as a membership row.** "Assignee is
+not a member of the project" cannot mean `project_membership` for a
+`WORKSPACE`-visible project — the default — because such projects usually have
+no membership rows at all, so the rule would be unsatisfiable in the common
+case. What is enforced is [04](04-RBAC-AND-AUTHORIZATION.md) §Visibility's own
+predicate: **work is never assigned to someone who cannot see it**. A stranger,
+another tenant's member, and a colleague who cannot open the project are refused
+identically.
+
+**Tags are applied by id, not created by name.** Authoring the tag vocabulary is
+`tag.manage` and belongs to a tags endpoint that does not exist yet; accepting a
+name here would make every typo a new tag. Applying an existing tag is a change
+to the *task*, so the permission is `task.update` rather than `tag.manage`.
+
+**Not in C-008 yet:** dependencies (`POST /tasks/{id}/dependencies`, which needs
+the cycle check under an advisory lock from
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)), bulk operations, and the filter grammar
+on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
+compiler, so adding the grammar is supplying a richer AST rather than a second
+query path.
+
+**Still to come before C-008 is `Gated`:** the derived-state property test
+[23](23-WORKFLOW-AND-STATE-MACHINE.md) §Acceptance gates names — a property test
+over *random* transitions asserting `task.state == status.state` always. The
+invariant is covered here by example rather than by generation, and it is
+asserted from the stored row rather than from the response so a handler that
+returned the right JSON and wrote the wrong column would fail.
 
 **One pre-existing divergence, reported rather than fixed here.** `ApiError`'s
 original codes — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` —

@@ -115,6 +115,24 @@ pub fn timestamp(at: OffsetDateTime) -> String {
         .replace("+00:00", "Z")
 }
 
+/// Distinguish "absent" from "present and null" in a `PATCH` body.
+///
+/// `docs/05` §Conventions: "absent = leave unchanged; `null` = clear". Both are
+/// expressible only if the field is *deserialized* — `Option<Option<T>>` with
+/// `#[serde(default)]` alone collapses them to `None` and the clear is silently
+/// lost. Used as `#[serde(default, deserialize_with = "wire::double_option")]`.
+///
+/// # Errors
+///
+/// Whatever `T`'s deserializer reports.
+pub fn double_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    serde::Deserialize::deserialize(deserializer).map(Some)
+}
+
 /// `docs/05` §Pagination: `limit` default 50, max 100.
 pub const DEFAULT_LIMIT: u32 = 50;
 /// The hard ceiling. `docs/26` §Query limits: "bounds work per request".

@@ -562,6 +562,131 @@ pub async fn outbox_event_types(
     .await
 }
 
+/// The default workflow's statuses, as `(name, id)`, in board order.
+///
+/// A transition test needs the id of "Todo" and there is no endpoint that
+/// serves one yet — workflow reads are C-007's `GET /workflows/{id}`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn default_status_ids(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<Vec<(String, Uuid)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT s.name, s.id
+           FROM workflow_status s
+           JOIN workflow w ON w.id = s.workflow_id
+          WHERE w.workspace_id = $1 AND w.is_default
+          ORDER BY s.position",
+    )
+    .bind(workspace_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// A task's status and state, read straight from the row.
+///
+/// Both together, because `docs/23`'s derived-state invariant is a claim about
+/// the pair: reading one of them could not catch a drift between them.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn task_status_and_state(
+    pool: &sqlx::PgPool,
+    task_id: Uuid,
+) -> Result<(Uuid, String), sqlx::Error> {
+    sqlx::query_as("SELECT status_id, state::text FROM task WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Whether a task is soft-deleted.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn task_is_deleted(pool: &sqlx::PgPool, task_id: Uuid) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT deleted_at IS NOT NULL FROM task WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// A task's assignees.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn task_assignees(pool: &sqlx::PgPool, task_id: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar("SELECT user_id FROM task_assignee WHERE task_id = $1 ORDER BY assigned_at")
+        .bind(task_id)
+        .fetch_all(pool)
+        .await
+}
+
+/// How many comments a task carries.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn comment_count(pool: &sqlx::PgPool, task_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM comment WHERE task_id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Create a tag. `project_id` of `None` is a workspace-scoped tag.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_tag(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    project_id: Option<Uuid>,
+    name: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO tag (id, workspace_id, project_id, name) VALUES ($1,$2,$3,$4::citext)",
+    )
+    .bind(id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .bind(name)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+/// Record that `blocker` blocks `blocked` (`docs/23` step 7).
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn add_blocker(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    blocker: Uuid,
+    blocked: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO task_dependency (from_task_id, to_task_id, workspace_id, kind)
+         VALUES ($1,$2,$3,'BLOCKS')",
+    )
+    .bind(blocker)
+    .bind(blocked)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing

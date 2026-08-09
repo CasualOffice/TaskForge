@@ -117,8 +117,21 @@ pub mod codes {
 
     /// Task not found or not visible — never disambiguated.
     pub const TASK_NOT_FOUND: Code = Code::new("TF-TSK-0001");
+    /// Assignee is not a member of the project.
+    pub const ASSIGNEE_NOT_PROJECT_MEMBER: Code = Code::new("TF-TSK-0005");
     /// Parent task must be in the same project (ADR-018).
     pub const PARENT_OUT_OF_PROJECT: Code = Code::new("TF-TSK-0006");
+
+    /// Status cannot be set directly — use a transition (`docs/23`).
+    pub const STATUS_NOT_DIRECTLY_WRITABLE: Code = Code::new("TF-WFL-0001");
+    /// No such transition in this workflow.
+    pub const NO_SUCH_TRANSITION: Code = Code::new("TF-WFL-0002");
+    /// The transition requires a permission the actor lacks.
+    pub const TRANSITION_PERMISSION: Code = Code::new("TF-WFL-0003");
+    /// Required fields missing for the target status.
+    pub const TRANSITION_FIELDS_MISSING: Code = Code::new("TF-WFL-0004");
+    /// Blocking dependencies unresolved.
+    pub const BLOCKED_BY_DEPENDENCIES: Code = Code::new("TF-WFL-0005");
 
     /// Version conflict.
     pub const VERSION_CONFLICT: Code = Code::new("TF-CNC-0001");
@@ -169,7 +182,13 @@ pub mod codes {
         PROJECT_KEY_IMMUTABLE,
         PROJECT_KEY_FORMAT,
         TASK_NOT_FOUND,
+        ASSIGNEE_NOT_PROJECT_MEMBER,
         PARENT_OUT_OF_PROJECT,
+        STATUS_NOT_DIRECTLY_WRITABLE,
+        NO_SUCH_TRANSITION,
+        TRANSITION_PERMISSION,
+        TRANSITION_FIELDS_MISSING,
+        BLOCKED_BY_DEPENDENCIES,
         VERSION_CONFLICT,
         IF_MATCH_REQUIRED,
         IF_MATCH_MALFORMED,
