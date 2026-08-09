@@ -81,6 +81,16 @@ pub mod codes {
     /// The last grant carrying `workspace.owner` cannot be removed or
     /// downgraded (`docs/04` control 4, migration 0021).
     pub const LAST_OWNER: Code = Code::new("TF-AZN-0005");
+    /// Control 1 — the role carries a permission the actor does not hold.
+    pub const GRANT_CEILING: Code = Code::new("TF-AZN-0003");
+    /// Controls 2 and 3 — the assignment is above the actor's scope ceiling, or
+    /// it would author a role below workspace scope.
+    pub const SCOPE_CEILING: Code = Code::new("TF-AZN-0004");
+    /// Control 5 — the actor would add to their own effective set.
+    pub const SELF_ELEVATION: Code = Code::new("TF-AZN-0006");
+    /// The role name is taken in this workspace.
+    pub const ROLE_NAME_TAKEN: Code = Code::new("TF-PRJ-0014");
+
     /// Too many requests. Always carries `Retry-After`.
     pub const RATE_LIMITED: Code = Code::new("TF-LIM-0001");
     /// The service is temporarily unable to answer. Always carries
@@ -271,6 +281,10 @@ pub mod codes {
         CSRF,
         NOT_FOUND,
         LAST_OWNER,
+        GRANT_CEILING,
+        SCOPE_CEILING,
+        SELF_ELEVATION,
+        ROLE_NAME_TAKEN,
         RATE_LIMITED,
         UNAVAILABLE,
         INTERNAL,

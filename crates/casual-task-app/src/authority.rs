@@ -272,6 +272,31 @@ impl Authority {
         self.effective_in(&scopes)
     }
 
+    /// Whether the actor may create this grant (`docs/04` §The rules).
+    ///
+    /// Every ceiling lives in `casual_task_authz::ceiling`, which is a pure
+    /// function and needs no database. This method exists only to hand it the
+    /// actor and grants it cannot reach from outside — `docs/19` makes this
+    /// crate the only layer permitted to compose, and a handler assembling an
+    /// `Actor` itself would be a second place to get the principal wrong.
+    ///
+    /// Control 4 (last owner) is deliberately absent: `docs/04` requires it "as
+    /// a database constraint check inside the transaction, not just in
+    /// application code", and migration 0021 is that check.
+    ///
+    /// # Errors
+    ///
+    /// The specific [`Refusal`](casual_task_authz::Refusal), so an admin is told which rule they hit rather
+    /// than "denied".
+    pub fn may_assign(
+        &self,
+        proposed: &casual_task_authz::ProposedAssignment,
+        scope: &casual_task_authz::ResourceScopes,
+        facts: &ResourceFacts,
+    ) -> Result<(), casual_task_authz::Refusal> {
+        casual_task_authz::ceiling::may_assign(&self.actor, proposed, scope, facts, &self.grants)
+    }
+
     /// The decision and the grants behind it, owned.
     ///
     /// Owned rather than borrowed so a handler can serialise the answer
