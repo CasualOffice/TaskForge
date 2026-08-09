@@ -27,11 +27,13 @@ pub mod idempotency;
 pub mod identity;
 pub mod invitation;
 pub mod mfa;
+pub mod milestone;
 pub mod notification;
 pub mod project;
 pub mod role;
 pub mod scoped;
 pub mod search;
+pub mod tag;
 pub mod task;
 #[cfg(feature = "test-support")]
 pub mod test_support;

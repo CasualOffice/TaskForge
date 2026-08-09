@@ -141,6 +141,13 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-PRJ-0006` | Cannot remove the last member of a workspace | 422 |
 | `TF-PRJ-0007` | Workspace slug already in use | 409 |
 | `TF-PRJ-0008` | Team name already in use in this workspace | 409 |
+| `TF-PRJ-0010` | Milestone name already in use in this project | 409 |
+| `TF-PRJ-0011` | Tag name already in use at that scope | 409 |
+| `TF-PRJ-0012` | Milestone limit for this project reached | 422 |
+| `TF-PRJ-0013` | Tag limit for this workspace reached | 422 |
+
+`TF-PRJ-0011` says "at that scope" and not "in this workspace" because a tag is
+`TF-PRJ-0013` bounds the tag vocabulary at the door. A tag is a user-authored
 
 `TF-PRJ-0006` is not `TF-AZN-0005`. That one protects the last *owner* — a
 grant — and this one protects the last *member*, which is a different fact: a
