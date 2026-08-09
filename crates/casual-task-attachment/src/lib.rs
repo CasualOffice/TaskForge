@@ -14,7 +14,7 @@
 //!
 //! - [`mod@sniff`] — what a file **is**, from its bytes. It takes no declared type,
 //!   so it cannot be called with the client's.
-//! - [`policy`] — whether an upload is allowed at all, and the object key,
+//! - [`mod@policy`] — whether an upload is allowed at all, and the object key,
 //!   which is built from UUIDs so a filename cannot reach it.
 
 pub mod policy;

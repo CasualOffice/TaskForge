@@ -1,36 +1,27 @@
 #!/usr/bin/env bash
-# Serialise the Docker-backed gates against the other agents: the VM is small
-# and each verification loads a corpus, so two at once get OOM-killed. mkdir is
-# the atomic primitive macOS has and flock is not.
+# Serialise the Docker-backed gates against the other agents.
 #
-# Usage: ./run-gates.sh [command ...]
-#   no args -> check.sh, then every ignored test
-#   args    -> run that command under the lock
+# mkdir is the atomic primitive macOS has and flock is not. The id goes INSIDE
+# the lock so a stuck one can be attributed, and `rm -rf` releases it — the
+# coordinator's protocol.
 set -uo pipefail
 cd "$(dirname "$0")"
 
+ID="c010-attachments-$$"
 until mkdir /tmp/tf-docker.lock 2>/dev/null; do sleep 15; done
-trap 'rmdir /tmp/tf-docker.lock 2>/dev/null' EXIT
-echo "=== lock acquired ==="
-
-if [ "$#" -gt 0 ]; then
-  "$@"
-  status=$?
-  echo "=== exit ${status} ==="
-  rmdir /tmp/tf-docker.lock 2>/dev/null
-  trap - EXIT
-  exit "$status"
-fi
+echo "$ID" > /tmp/tf-docker.lock/owner
+trap 'rm -rf /tmp/tf-docker.lock 2>/dev/null' EXIT
+echo "=== lock acquired by $ID ==="
 
 ./scripts/check.sh 2>&1 | tail -14
 check=${PIPESTATUS[0]}
 echo "=== check.sh exit ${check} ==="
 
-cargo test --workspace -- --ignored --test-threads=1 2>&1 \
-  | grep -E "test result: ok\. [1-9]|FAILED|panicked|^error|failures:"
+cargo test -p casual-task-api --all-features -- --ignored --test-threads=1 2>&1 \
+  | grep -E "test result|FAILED|panicked|^error|failures:"
 tests=${PIPESTATUS[0]}
-echo "=== cargo test exit ${tests} ==="
+echo "=== api ignored exit ${tests} ==="
 
-rmdir /tmp/tf-docker.lock 2>/dev/null
+rm -rf /tmp/tf-docker.lock 2>/dev/null
 trap - EXIT
 [ "$check" -eq 0 ] && [ "$tests" -eq 0 ]

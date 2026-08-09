@@ -94,7 +94,8 @@ The documentation phase. All complete unless noted.
 | D-059 | Notification preferences, subscriptions, quiet hours and digests — the tables `docs/29` assumes and the schema does not have | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Open** — surfaced by C-016. Accept before C-016 is `Gated` |
 | D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Consumed** — `DISPATCHER_DATABASE_URL`, a second DSN as `taskforge_dispatcher`. It was already in `deploy/docker-compose.yml` and read by nothing; now documented in [48](48-DEPLOYMENT-PROFILES.md) and wired into both binaries |
 | D-061 | **What a board column is: a permanent state or a workflow status** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [42](42-FRONTEND-ARCHITECTURE.md) | **Open** — surfaced by C-018. Shipped as the five permanent states, with the cost stated; see below |
-| D-062 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
+| D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Proposed — fail closed. Needs the user's countersign.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
+| D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -350,7 +351,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-007 | Default workflow + transitions | `Building` |
 | C-008 | Task CRUD, assignees, tags | `Building` |
 | C-009 | Comments | Accepted |
-| C-010 | Attachment pipeline | Accepted |
+| C-010 | Attachment pipeline | `Built` |
 | C-011 | Activity + audit + **outbox** | `Building` |
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | `Built` |
@@ -1756,6 +1757,17 @@ caller cannot see, and the assertion is that it never appears.
   has no code for it; the operator/value code is the closest true statement, and
   a new one should be registered rather than guessed at here.
 
+**One error code moved, and it is a contract change.** Before the grammar was
+wired, every unknown query parameter on `GET /tasks` went through a generic
+`reject_unknown` and reported `TF-VAL-0002`. The query string of that endpoint is
+now the grammar plus its reserved pagination keys, so an unrecognised key is an
+unknown *filter field* — `TF-QRY-0001`, which is what
+[26](26-SEARCH-INDEXING-AND-QUERY.md) requires for an unlisted field. The status
+stays `400`, so a client switching on status is unaffected; a client switching on
+the code sees a different one. It was caught by a C-006 test that asserted the
+old code, and it is written down here rather than absorbed into that test
+silently.
+
 **One pre-existing defect fixed in passing.** `archived` is `BOOLEAN` in the
 grammar and a nullable timestamp in the schema, and compiled to
 `'true'::timestamptz` — a filter that returned a 500 rather than an answer. It
@@ -1935,6 +1947,80 @@ provider in the wrong order or an import cycle — both of which are a blank pag
 that passes `typecheck` and `build`. `scripts/dev-up.sh` exists because "the
 tests pass" and "you can open it" turned out to be different claims; this is the
 cheap half of that lesson.
+**C-010 is `Built`.** The whole handshake `docs/28` draws: pre-sign, direct
+upload, commit, and a download that refuses anything the scanner has not
+cleared.
+
+**Files never pass through the API process.** `ObjectStore` has no method that
+takes a body — the only way to write an object is for the client to `PUT` the
+URL `presign_put` mints — and the only method that returns content returns a
+bounded **prefix**, for the magic-byte sniff. A test asserts the absence of a
+`put`, because the guarantee is the absence.
+
+**The type is decided by the bytes, twice over.** `sniff` takes no declared type
+at all, so it cannot be called with the client's; markup is checked *before*
+signatures, because a GIF/HTML polyglot must be a refusal and a signature-first
+sniffer stores it as an image; and commit separately rejects a declaration that
+contradicts the bytes (`TF-ATT-0003`), which is the case `docs/28` §Validation
+names. Anything unrecognised is `application/octet-stream`, which is inert.
+
+**The invisibility invariant is structural, not remembered.** Every
+client-facing read in the repository writes `committed_at IS NOT NULL`; the one
+read that must see an uncommitted row is called `find_for_commit`; and
+`mark_scanned` is the only statement that assigns `committed_at`. Two unit tests
+count those occurrences in the source, because the invariant is a property of
+*how many places* can write it.
+
+**Two documented-but-unread configuration keys are now read.**
+`TF_STORAGE_BACKEND` and `TF_STORAGE_PATH` appear in
+[48](48-DEPLOYMENT-PROFILES.md), [52](52-DEPLOYMENT-GUIDE.md) and
+`deploy/docker-compose.yml`, and nothing consumed them — so a deployment could
+set `TF_STORAGE_BACKEND=s3`, have it accepted, and get local disk. `s3` is not
+built, so it now refuses to start rather than pretending.
+
+### D-062: the scan default, proposed and not settled
+
+`docs/28` says "ClamAV by default; pluggable"; [48](48-DEPLOYMENT-PROFILES.md)
+lists `scan` among the worker's jobs and gives it **no configuration key** and no
+statement about a deployment without one. That is a real gap with two opposite
+answers, and both are bad in different directions:
+
+- **Fail closed** — no scanner means the attachment stays `PENDING` and is never
+  downloadable. Uploads work and downloads do not, out of the box.
+- **Fail open** — mark it `CLEAN` and serve it. The product's own stated
+  invariant, that nothing is downloadable before it is scanned, becomes untrue
+  and nothing says so.
+
+C-010 implements **fail closed**, because it is the only default that does not
+quietly make a security claim false, and because `AGENTS.md` puts correctness
+above UX. It is recorded as **D-062 and flagged as needing the user's
+countersign** rather than treated as settled: the cost — a single-node
+deployment where every download 409s until an operator configures a scanner — is
+a product decision, not an implementation detail.
+
+The seam is in place: `guard::scanned_clean` matches on the verdict with no
+catch-all arm, so a fifth scan state cannot be added without deciding whether it
+may be served, and an unrecognised verdict is refused.
+
+**Still to come before C-010 is `Gated`:** the scan worker itself (the consumer
+that turns `attachment.uploaded` into a verdict), the orphan sweeper
+`docs/28` §Orphan and lifecycle cleanup requires in **both** directions, the S3
+backend, inline preview, download auditing, and the per-workspace size and
+storage quota — `size_limit` takes the configured value and there is nowhere yet
+to configure one. Of `docs/28` §Acceptance gates, four are implemented
+(type-confusion, invisibility, cross-tenant, and the download-before-scan half
+of the infected-file gate); the streaming test needs a 2 GB fixture, the
+EICAR test needs the scanner, the orphan test needs the sweeper, and the
+separate-origin test needs a browser.
+
+**One gap in the checksum check, stated.** `docs/28` §Validation requires the
+client-supplied SHA-256 to match at commit. C-010 validates its *shape* and
+compares the **size**, and does not recompute the digest: doing so means reading
+the whole object, and `ObjectStore` deliberately exposes only a bounded prefix.
+Verifying it needs either a digest from the storage backend — S3 returns one,
+the filesystem backend would have to compute it during the upload handler — or a
+streaming read outside the API process. Tracked here rather than left as a
+passing test that checks nothing.
 
 ## Phases 2–4
 

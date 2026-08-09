@@ -766,6 +766,9 @@ async fn the_page_size_and_the_query_parameters_are_bounded() -> Result<()> {
     let (status, body, _) = caller.get("/api/v1/tasks?limt=10").await?;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(body["error"]["code"], "TF-QRY-0001");
+    // And it names the key that was wrong: "one of your parameters is unknown"
+    // makes a client bisect its own query string.
+    assert_eq!(body["error"]["details"]["field"], "limt", "{body}");
 
     let (status, body, _) = caller.get("/api/v1/tasks?cursor=!!!nonsense!!!").await?;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");

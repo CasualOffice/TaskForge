@@ -912,6 +912,60 @@ pub async fn indexed_count(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<i6
         .await
 }
 
+/// Whether an attachment row exists at all, committed or not.
+///
+/// The invisibility gate needs to assert that the row IS there and that no read
+/// path returns it — an assertion that only checked the API would pass if the
+/// pre-sign had silently written nothing.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn attachment_exists(pool: &sqlx::PgPool, id: Uuid) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM attachment WHERE id = $1)")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+}
+
+/// An attachment's object key, to assert it is built from ids alone.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn attachment_object_key(pool: &sqlx::PgPool, id: Uuid) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar("SELECT object_key FROM attachment WHERE id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+}
+
+/// Apply a scan verdict, as the scan worker will.
+///
+/// Goes through [`crate::attachment::mark_scanned`] rather than writing the
+/// columns directly, so a test cannot commit a row by a route the product does
+/// not have — which is the whole point of that function being the only writer
+/// of `committed_at`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn set_scan_verdict(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    id: Uuid,
+    verdict: &str,
+) -> Result<bool, sqlx::Error> {
+    let scope = casual_task_model::WorkspaceScope::for_job(
+        casual_task_model::WorkspaceId::from_uuid(workspace_id),
+    );
+    let mut tx = pool.begin().await?;
+    let mut scoped = crate::Scoped::apply(&mut tx, &scope).await?;
+    let applied = crate::attachment::mark_scanned(&mut scoped, id, verdict, None).await?;
+    tx.commit().await?;
+    Ok(applied)
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing

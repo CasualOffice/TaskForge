@@ -270,7 +270,7 @@ pub async fn commit(
         })?;
 
     // ADR-006: the domain change and its history in one transaction. The event
-    // is what a scan consumer will claim (D-061's seam).
+    // is what a scan consumer will claim (D-062's seam).
     UnitOfWork::record(
         &mut scoped,
         &Change {

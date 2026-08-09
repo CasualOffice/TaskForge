@@ -48,21 +48,35 @@ pub async fn task_for(
 
 /// An attachment the actor may **download**.
 ///
-/// Three conditions, in the order that keeps them distinguishable:
-///
-/// 1. The row is visible at all — committed, undeleted, in this tenant. Absent
-///    and invisible are one `404` (`docs/04`).
+/// 1. The row is visible at all — committed, undeleted, in this tenant.
 /// 2. The actor may read attachments on its task.
 /// 3. The scan says `CLEAN`.
 ///
-/// The third is **not** folded into the first. A `404` for a file that is
-/// merely still being scanned would tell the person who just uploaded it that
-/// their file vanished; `409` with its own code tells them to wait, which is
-/// true and actionable.
+/// # An unscanned file is a `404`, and that is the invariant rather than a
+/// courtesy
+///
+/// `docs/28` §The invariant: an attachment "is invisible to **every** read
+/// path until `committed_at` is set". A download is a read path, so a file that
+/// is still being scanned is absent — not "wait a moment".
+///
+/// That is a worse message and the right answer. The friendlier alternative
+/// (find the uncommitted row, return `409 TF-ATT-0007`) means the download
+/// endpoint reads rows the partial index was built to hide, which is precisely
+/// the "forgotten `WHERE` clause" that index exists to make impossible. One
+/// endpoint allowed to see uncommitted rows is one edit away from serving one.
+///
+/// The cost is real and is recorded with **D-061**: an uploader has no visible
+/// row to poll, so "has my file finished scanning?" currently has no answer
+/// after the `202`.
+///
+/// [`scanned_clean`] therefore runs on a row that is already committed, as the
+/// second gate: only `CLEAN` commits, so a committed row with another verdict
+/// means a re-scan changed its mind, and that file stops being served.
 ///
 /// # Errors
 ///
-/// `404` invisible, `403` unpermitted, `409` still scanning, `422` infected.
+/// `404` invisible — including unscanned — `403` unpermitted, `422` when a
+/// committed file was later found infected.
 pub async fn downloadable(
     scoped: &mut Scoped<'_>,
     ctx: &Context,
@@ -92,13 +106,16 @@ pub async fn downloadable(
 
 /// Refuse anything the scanner has not cleared.
 ///
-/// `docs/28` step 4 makes `CLEAN` the only verdict that produces a visible
-/// file, and D-061 makes "no scanner configured" fail closed — an attachment
-/// stays `PENDING` forever and is never downloadable, rather than being served
+/// `docs/28` step 4 makes `CLEAN` the only verdict that commits a row, and
+/// D-062 makes "no scanner configured" fail closed — an attachment stays
+/// `PENDING` forever and is never downloadable, rather than being served
 /// unscanned.
 ///
-/// Written as a `match` over the verdict with no `_` arm, so a fifth scan state
-/// cannot be added without deciding whether it may be downloaded.
+/// **Defence in depth.** In the ordinary flow this cannot fire: a non-`CLEAN`
+/// row has no `committed_at`, so it never reaches here. It fires when a
+/// committed file is re-scanned and the verdict changes, and it is written as a
+/// `match` with no `_` arm so a fifth scan state cannot be added without
+/// deciding whether it may be served.
 ///
 /// # Errors
 ///
@@ -177,7 +194,7 @@ mod tests {
 
     #[test]
     fn an_unknown_verdict_fails_closed() {
-        // D-061's shape, one level down: the default when the system does not
+        // D-062's shape, one level down: the default when the system does not
         // know is "do not serve".
         let error = scanned_clean(&row("WHO_KNOWS"), "r").expect_err("unknown");
         assert_eq!(error.status(), StatusCode::UNPROCESSABLE_ENTITY);

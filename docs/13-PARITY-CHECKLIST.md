@@ -123,7 +123,7 @@ may see whose time; whether an estimate is a separate field; whether it feeds
 derives everything from state intervals rather than logged effort. Answering it
 in code first would settle all of that by accident.
 
-**Recorded as D-062, open.** Needs a decision before implementation.
+**Recorded as D-063, open.** Needs a decision before implementation.
 
 ### Milestones — modelled and unreachable
 
