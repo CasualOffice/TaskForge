@@ -602,6 +602,30 @@ mod tests {
     }
 
     #[test]
+    fn every_code_this_crate_emits_is_in_the_registry() {
+        // docs/20 is what the `docs` URL in every error body points at. A code
+        // that is not there is a link to a 404 in the exact moment a user is
+        // trying to understand a failure.
+        //
+        // There is deliberately no exception list. One existed while four codes
+        // were drifting from the registry; D-055 corrected the codes instead,
+        // and an exception list that outlives its exceptions is a gate with a
+        // hole in it.
+        //
+        // This test was dropped once already, by a merge that resolved two
+        // versions of the enclosing module by keeping matching lines. Losing it
+        // is silent — the codes keep working, and only their documentation
+        // links rot.
+        let registry = include_str!("../../../docs/20-ERROR-CODE-REGISTRY.md");
+        for code in codes::ALL {
+            assert!(
+                registry.contains(code.as_str()),
+                "{code:?} is emitted by this crate and absent from docs/20"
+            );
+        }
+    }
+
+    #[test]
     fn every_code_follows_the_registry_format() {
         // docs/20: TF-XXX-NNNN. A code that does not match is one no client can
         // look up, and the URL in the envelope would 404.
