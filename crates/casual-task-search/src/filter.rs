@@ -94,6 +94,73 @@ pub enum Operator {
     Matches,
 }
 
+impl Operator {
+    /// The operator's name in `docs/27` §The AST — the spelling the JSON form
+    /// stores and the error messages quote.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Eq => "eq",
+            Self::In => "in",
+            Self::NotIn => "not_in",
+            Self::Gt => "gt",
+            Self::Gte => "gte",
+            Self::Lt => "lt",
+            Self::Lte => "lte",
+            Self::Before => "before",
+            Self::After => "after",
+            Self::Between => "between",
+            Self::IsEmpty => "is_empty",
+            Self::IsNotEmpty => "is_not_empty",
+            Self::StartsWith => "starts_with",
+            Self::Contains => "contains",
+            Self::Matches => "matches",
+        }
+    }
+
+    /// The only way to name an operator from stored or user input.
+    ///
+    /// Returns `None` rather than a default, for the same reason
+    /// [`Field::parse`] does: an operator nobody wrote is not one to guess at.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "eq" => Self::Eq,
+            "in" => Self::In,
+            "not_in" => Self::NotIn,
+            "gt" => Self::Gt,
+            "gte" => Self::Gte,
+            "lt" => Self::Lt,
+            "lte" => Self::Lte,
+            "before" => Self::Before,
+            "after" => Self::After,
+            "between" => Self::Between,
+            "is_empty" => Self::IsEmpty,
+            "is_not_empty" => Self::IsNotEmpty,
+            "starts_with" => Self::StartsWith,
+            "contains" => Self::Contains,
+            "matches" => Self::Matches,
+            _ => return None,
+        })
+    }
+}
+
+/// Whether a raw value is a symbol rather than a literal.
+///
+/// `@name`, or a signed relative offset (`+7d`, `-3mo`). The sign is required on
+/// the relative form — [`crate::resolve`] demands it too, so an unsigned `7d`
+/// stays a literal and fails as the malformed date it is rather than resolving
+/// to something the user did not write.
+///
+/// Shared by both entry points on purpose. `docs/27` §Compilation draws one AST
+/// with two surfaces; if the URL form and the JSON form classified `@me`
+/// differently, the same saved view would mean different things depending on
+/// which door it came through.
+#[must_use]
+pub fn is_symbolic(raw: &str) -> bool {
+    raw.starts_with('@') || (raw.starts_with(['+', '-']) && raw.len() > 1)
+}
+
 impl Field {
     pub fn as_str(self) -> &'static str {
         match self {

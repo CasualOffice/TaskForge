@@ -209,12 +209,14 @@ fn list(raw: &str) -> Value {
 
 /// Whether a value is a symbol the resolver understands.
 ///
-/// `@name` or a signed relative offset (`+7d`, `-3mo`). The sign is required on
-/// the relative form — `crate::resolve` demands it too, so an unsigned `7d`
-/// stays a literal and fails as a malformed date rather than resolving to
-/// something the user did not write.
+/// Whether a value is a symbol the resolver understands.
+///
+/// Delegates to [`crate::filter::is_symbolic`], which the JSON surface uses too:
+/// `docs/27` §Compilation has one AST with two entry points, and two copies of
+/// this rule would let the same saved view mean different things depending on
+/// which door it came through.
 fn is_symbol(raw: &str) -> bool {
-    raw.starts_with('@') || (raw.starts_with(['+', '-']) && raw.len() > 1)
+    crate::filter::is_symbolic(raw)
 }
 
 /// `sort=-due_at,key` — leading `-` is descending.

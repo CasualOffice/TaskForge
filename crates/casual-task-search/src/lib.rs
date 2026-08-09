@@ -13,6 +13,7 @@
 //! projection and cursor pagination are not. See `docs/14-EXECUTION-TRACKER.md`.
 
 pub mod filter;
+pub mod json;
 pub mod resolve;
 pub mod sort;
 pub mod url;
@@ -20,6 +21,7 @@ pub mod url;
 pub use filter::{
     Clause, Field, FieldType, FilterError, MAX_CLAUSES, MAX_DEPTH, Node, Operator, Value, validate,
 };
+pub use json::{JsonError, from_json, to_json};
 pub use resolve::{Context, ResolveError, resolve};
 pub use sort::{Direction, Sort, SortField};
 pub use url::{Query, UrlError, parse as parse_url};

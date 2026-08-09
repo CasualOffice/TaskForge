@@ -503,6 +503,7 @@ name = "casual-task-search"
 version = "0.0.0"
 dependencies = [
  "casual-task-model",
+ "serde_json",
  "time",
 ]
 
