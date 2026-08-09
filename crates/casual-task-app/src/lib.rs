@@ -36,6 +36,22 @@ pub use casual_task_authz::{Decision, DenyReason, ResourceFacts};
 /// second dependency edge from HTTP straight into the domain.
 pub use casual_task_workflow::{Rejection, TransitionRequest, ValidTransition, Workflow};
 
+/// The attachment pipeline's two I/O-free decisions, re-exported for the same
+/// reason as the state machine's.
+///
+/// `docs/19` lets this layer compose domain crates and keeps the API crate from
+/// reaching past it. A handler needs to know what a file *is* and whether an
+/// upload is allowed; both answers come from `casual-task-attachment`, and they
+/// travel through here rather than adding a second dependency edge from HTTP
+/// straight into the domain.
+pub mod attachment {
+    pub use casual_task_attachment::policy::{
+        self, DEFAULT_MAX_BYTES, DOWNLOAD_TTL_SECONDS, MAX_FILES_PER_TASK, Refusal,
+        UPLOAD_TTL_SECONDS, object_key, size_limit, workspace_prefix,
+    };
+    pub use casual_task_attachment::sniff::{OPAQUE, PREFIX, Sniffed, agrees, sniff, stored_type};
+}
+
 /// Lexicographic board ranks (ADR-013), re-exported from the task domain crate
 /// for the same reason.
 pub use casual_task_task::rank;

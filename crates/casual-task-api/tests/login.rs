@@ -46,6 +46,11 @@ async fn seed_user(pool: &sqlx::PgPool, email: &str) -> Result<Uuid> {
 
 fn app(pool: sqlx::PgPool) -> axum::Router {
     router(AppState {
+        storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
         broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),

@@ -170,6 +170,15 @@ other.
 | `TF-ATT-0006` | Malware detected | 422 |
 | `TF-ATT-0007` | Scan pending — not yet available | 409 |
 | `TF-ATT-0008` | Workspace storage quota exceeded | 507 |
+| `TF-ATT-0009` | Uploaded object does not match the declared size | 422 |
+| `TF-ATT-0010` | Scan did not complete; the file will not be served | 422 |
+| `TF-ATT-0011` | Task attachment limit reached | 422 |
+
+`TF-ATT-0009` is not `TF-ATT-0001`: "larger than you are allowed" is a rule the
+caller can fix by uploading something smaller, and "the object is not the size
+you told us it would be" means the upload and the declaration disagree — which
+is a broken client or a tampered upload. `TF-ATT-0010` is not `TF-ATT-0007`
+either: pending is a wait, and failed is a refusal (**D-061**).
 
 ### Plugins — `PLG`
 

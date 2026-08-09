@@ -24,6 +24,16 @@ use std::time::Duration;
 /// through, because this text is the entire diagnostic an operator gets.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfigError {
+    /// `TF_STORAGE_BACKEND` names a backend that is not built.
+    #[error(
+        "TF_STORAGE_BACKEND={0} is not a backend this build has. `fs` is \
+         implemented; `s3` is documented in docs/48 and not yet built, and \
+         starting with it would silently store files on local disk."
+    )]
+    UnsupportedStorageBackend(String),
+    /// `TF_STORAGE_PATH` is empty with the filesystem backend selected.
+    #[error("TF_STORAGE_PATH must be set when TF_STORAGE_BACKEND is `fs`")]
+    MissingStoragePath,
     #[error("{0} is required and not set")]
     Missing(&'static str),
     #[error("{name} is not valid: {reason}")]
@@ -59,6 +69,35 @@ pub struct Config {
     pub pool: PoolConfig,
     /// `TF_SMTP_*`. An empty host disables email (`docs/48`, D-046).
     pub smtp: casual_task_infra::SmtpConfig,
+    /// `TF_STORAGE_*`. Where attachment bytes live (`docs/48`, `docs/28`).
+    pub storage: StorageConfig,
+}
+
+/// Object storage selection (`docs/48` §Configuration).
+///
+/// Both keys were documented in `docs/48` and `docs/52` and set in
+/// `deploy/docker-compose.yml` from the beginning, and **nothing read them** —
+/// so a deployment could set `TF_STORAGE_BACKEND=s3`, see it accepted, and get
+/// the filesystem. Configuration that is documented and unread is worse than
+/// undocumented: it reports success.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageConfig {
+    /// `fs` or `s3`. `docs/48` defaults it to `fs`.
+    pub backend: StorageBackend,
+    /// `TF_STORAGE_PATH`, the filesystem root. Meaningful only for `fs`.
+    pub path: String,
+}
+
+/// The backends `TF_STORAGE_BACKEND` names.
+///
+/// A closed enum rather than a string: `s3` is **not implemented**, and an
+/// operator who asks for it must be refused at startup rather than silently
+/// served the filesystem. That is the whole reason this parses instead of
+/// defaulting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageBackend {
+    Filesystem,
+    S3,
 }
 
 /// Connection pool bounds (D-039).
@@ -169,6 +208,22 @@ impl Config {
             return Err(ConfigError::Missing("TF_SMTP_FROM"));
         }
 
+        // `docs/48` defaults the backend to `fs`. An unrecognised value is a
+        // refusal, not a fallback: "TF_STORAGE_BACKEND=s4" quietly writing to
+        // local disk is the failure this parse exists to prevent.
+        let storage = {
+            let raw = get("TF_STORAGE_BACKEND").unwrap_or_else(|| "fs".to_owned());
+            let backend = match raw.trim().to_ascii_lowercase().as_str() {
+                "fs" => StorageBackend::Filesystem,
+                other => return Err(ConfigError::UnsupportedStorageBackend(other.to_owned())),
+            };
+            let path = get("TF_STORAGE_PATH").unwrap_or_else(|| "./data/attachments".to_owned());
+            if backend == StorageBackend::Filesystem && path.trim().is_empty() {
+                return Err(ConfigError::MissingStoragePath);
+            }
+            StorageConfig { backend, path }
+        };
+
         Ok(Self {
             bind_addr,
             database_url: required("DATABASE_URL")?,
@@ -177,7 +232,63 @@ impl Config {
             secret_key,
             pool,
             smtp,
+            storage,
         })
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+
+    fn with(extra: &[(&'static str, &'static str)]) -> Result<Config, ConfigError> {
+        let base: Vec<(&'static str, &'static str)> = vec![
+            ("DATABASE_URL", "postgres://localhost/tf"),
+            ("TF_SECRET_KEY", "a-secret-key-long-enough-for-the-check"),
+            ("TF_PUBLIC_URL", "https://tasks.example.com"),
+            ("TF_ATTACHMENT_ORIGIN", "https://files.example.com"),
+        ];
+        Config::from_source(move |name| {
+            extra
+                .iter()
+                .chain(base.iter())
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_owned())
+        })
+    }
+
+    #[test]
+    fn the_backend_defaults_to_the_filesystem() {
+        // docs/48: "TF_STORAGE_BACKEND fs | s3 (default fs)".
+        let config = with(&[]).expect("defaults are valid");
+        assert_eq!(config.storage.backend, StorageBackend::Filesystem);
+        assert_eq!(config.storage.path, "./data/attachments");
+    }
+
+    #[test]
+    fn a_backend_this_build_does_not_have_refuses_to_start() {
+        // The failure this parse exists for: `s3` is documented and not built,
+        // so accepting it would store files on local disk while the operator
+        // believed they were in a bucket.
+        assert!(matches!(
+            with(&[("TF_STORAGE_BACKEND", "s3")]).err(),
+            Some(ConfigError::UnsupportedStorageBackend(_))
+        ));
+        assert!(with(&[("TF_STORAGE_BACKEND", "nonsense")]).is_err());
+    }
+
+    #[test]
+    fn an_empty_path_with_the_filesystem_backend_refuses_to_start() {
+        assert!(matches!(
+            with(&[("TF_STORAGE_PATH", "   ")]).err(),
+            Some(ConfigError::MissingStoragePath)
+        ));
+    }
+
+    #[test]
+    fn the_documented_spelling_is_accepted_case_insensitively() {
+        assert!(with(&[("TF_STORAGE_BACKEND", "FS")]).is_ok());
+        assert!(with(&[("TF_STORAGE_BACKEND", " fs ")]).is_ok());
     }
 }
 

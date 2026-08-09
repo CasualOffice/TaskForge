@@ -35,6 +35,11 @@ fn app() -> (AppState, axum::Router) {
         .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/nothing")
         .expect("a lazy pool never connects at construction");
     let state = AppState {
+        storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
         broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),

@@ -161,8 +161,28 @@ async fn run() -> ExitCode {
     let broadcast: Arc<dyn casual_task_infra::broadcast::Broadcast> =
         Arc::new(casual_task_infra::broadcast::LocalBroadcast::new());
 
+    // The backend is chosen ONCE, here, from TF_STORAGE_BACKEND. No handler
+    // branches on it again, which is what keeps the single-node profile running
+    // the identical handshake S3 would (`docs/28` §Local deployment).
+    let storage: std::sync::Arc<dyn casual_task_infra::ObjectStore> = match config.storage.backend {
+        casual_task_api::config::StorageBackend::Filesystem => {
+            std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+                std::path::PathBuf::from(&config.storage.path),
+                config.attachment_origin.clone(),
+                config.secret_key.clone(),
+            ))
+        }
+        // Unreachable: `Config::from_source` refuses this value rather than
+        // letting a deployment believe its files are in a bucket.
+        casual_task_api::config::StorageBackend::S3 => {
+            eprintln!("TF_STORAGE_BACKEND=s3 is not implemented");
+            return ExitCode::FAILURE;
+        }
+    };
+
     let state = AppState {
         pool,
+        storage,
         metrics: Arc::new(Recorder::new()),
         secret_key: config.secret_key.clone().into(),
         public_url: config.public_url.clone().into(),

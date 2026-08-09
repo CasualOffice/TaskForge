@@ -178,6 +178,25 @@ pub mod codes {
     /// Idempotency key required.
     pub const IDEMPOTENCY_REQUIRED: Code = Code::new("TF-IDM-0003");
 
+    /// File exceeds the size limit.
+    pub const ATTACHMENT_TOO_LARGE: Code = Code::new("TF-ATT-0001");
+    /// The bytes are a content type this system will not store — markup.
+    pub const ATTACHMENT_TYPE_REFUSED: Code = Code::new("TF-ATT-0002");
+    /// The declared type does not match what the bytes are.
+    pub const ATTACHMENT_TYPE_MISMATCH: Code = Code::new("TF-ATT-0003");
+    /// Upload not found or expired.
+    pub const ATTACHMENT_NOT_FOUND: Code = Code::new("TF-ATT-0005");
+    /// Malware detected.
+    pub const ATTACHMENT_INFECTED: Code = Code::new("TF-ATT-0006");
+    /// Scan pending — not yet available.
+    pub const ATTACHMENT_SCAN_PENDING: Code = Code::new("TF-ATT-0007");
+    /// The uploaded object is not the size that was declared.
+    pub const ATTACHMENT_SIZE_MISMATCH: Code = Code::new("TF-ATT-0009");
+    /// The scan did not complete and the file will not be served.
+    pub const ATTACHMENT_SCAN_FAILED: Code = Code::new("TF-ATT-0010");
+    /// This task already holds the maximum number of attachments.
+    pub const ATTACHMENT_TOO_MANY: Code = Code::new("TF-ATT-0011");
+
     /// A workspace would lose its last member.
     pub const LAST_MEMBER: Code = Code::new("TF-PRJ-0006");
     /// The slug is taken by another workspace.
@@ -232,6 +251,15 @@ pub mod codes {
         IDEMPOTENCY_IN_PROGRESS,
         IDEMPOTENCY_BODY_CHANGED,
         IDEMPOTENCY_REQUIRED,
+        ATTACHMENT_TOO_LARGE,
+        ATTACHMENT_TYPE_REFUSED,
+        ATTACHMENT_TYPE_MISMATCH,
+        ATTACHMENT_NOT_FOUND,
+        ATTACHMENT_INFECTED,
+        ATTACHMENT_SCAN_PENDING,
+        ATTACHMENT_SIZE_MISMATCH,
+        ATTACHMENT_SCAN_FAILED,
+        ATTACHMENT_TOO_MANY,
         LAST_MEMBER,
         SLUG_TAKEN,
         TEAM_NAME_TAKEN,

@@ -125,6 +125,11 @@ pub struct AppState {
     /// reset link is built from it, so a deployment that sets it wrongly sends
     /// links to the wrong host rather than merely rendering one oddly.
     pub public_url: Arc<str>,
+    /// Where attachment bytes live. `Arc<dyn ObjectStore>` for the reason
+    /// `Mailer` is one: `TF_STORAGE_BACKEND` picks the backend once at startup
+    /// and no handler branches on it again, so the filesystem profile runs the
+    /// identical handshake S3 does (`docs/28` §Local deployment).
+    pub storage: Arc<dyn casual_task_infra::ObjectStore>,
     /// Where outbound mail goes. `Arc<dyn Mailer>` and not an `Option`: an
     /// empty `TF_SMTP_HOST` selects the no-op implementation at startup
     /// (`docs/48`, D-046), so no handler has to ask whether email is on.
@@ -179,6 +184,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/projects/{id}/tasks",
             axum::routing::post(crate::tasks::create),
+        )
+        .route(
+            "/api/v1/tasks/{id}/attachments",
+            get(crate::attachments::list).post(crate::attachments::presign),
+        )
+        .route(
+            "/api/v1/attachments/{id}/commit",
+            axum::routing::post(crate::attachments::commit),
+        )
+        .route(
+            "/api/v1/attachments/{id}/download",
+            get(crate::attachments::download),
         )
         .route("/api/v1/tasks", get(crate::tasks::list))
         // C-016. Both take `WorkspaceMember`, and both scope every statement to
@@ -481,6 +498,9 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/tasks",
     "/api/v1/notifications",
     "/api/v1/notifications/read",
+    "/api/v1/tasks/{id}/attachments",
+    "/api/v1/attachments/{id}/commit",
+    "/api/v1/attachments/{id}/download",
     "/api/v1/tasks/{id}",
     "/api/v1/tasks/{id}/comments",
     "/api/v1/comments/{id}",

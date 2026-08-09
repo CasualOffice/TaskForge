@@ -17,6 +17,7 @@
 //! database. Those need a router, and a router cannot be reached from inside
 //! `main`.
 
+pub mod attachments;
 pub mod auth;
 pub mod comments;
 pub mod config;

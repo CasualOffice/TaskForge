@@ -87,6 +87,11 @@ async fn fixture(pool: sqlx::PgPool) -> Result<Fixture> {
 
     let pool_for_epoch = pool.clone();
     let state = AppState {
+        storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
         pool,
         broadcast: casual_task_api::sse::local_hub(),
         metrics: Arc::new(Recorder::new()),

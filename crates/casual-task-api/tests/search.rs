@@ -119,6 +119,11 @@ impl Caller {
 
 fn state(pool: sqlx::PgPool) -> AppState {
     AppState {
+        storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: SECRET.into(),
