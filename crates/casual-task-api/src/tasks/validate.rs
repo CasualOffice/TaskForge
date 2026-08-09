@@ -188,6 +188,7 @@ mod tests {
             version: 1,
             rank: None,
             archived_at: None,
+            is_blocked: false,
         };
         assert_eq!(view(&row, "WR").key, "WR-125");
     }

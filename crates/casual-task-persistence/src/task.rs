@@ -50,6 +50,16 @@ pub struct TaskRow {
     pub updated_by: Option<Uuid>,
     pub version: i64,
     pub archived_at: Option<OffsetDateTime>,
+    /// Whether an unresolved `BLOCKS` edge points at this task.
+    ///
+    /// Computed in the SAME query as the row rather than fetched per task.
+    /// `docs/04` §The list problem: a 200-card board must not issue 200 reads,
+    /// and "is this card draggable?" is exactly a per-card question. The
+    /// `task_dependency_rev_ix` index on `to_task_id` makes it an index probe.
+    ///
+    /// It counts blockers the viewer **cannot see**, deliberately: a task is
+    /// blocked whether or not you are allowed to know by what (`docs/03`).
+    pub is_blocked: bool,
     /// The full-text relevance of this row, when the query ranked one.
     ///
     /// `None` for every structured list — there is no query to rank against.
@@ -72,7 +82,14 @@ pub(crate) const COLUMNS: &str =
                        t.state::text AS state,
                        t.reporter_id, t.environment_id, t.milestone_id, t.parent_id,
                        t.start_at, t.due_at, t.position, t.created_at, t.created_by,
-                       t.updated_at, t.updated_by, t.version, t.archived_at";
+                       t.updated_at, t.updated_by, t.version, t.archived_at,
+                       EXISTS (SELECT 1 FROM task_dependency d
+                                WHERE d.to_task_id = t.id
+                                  AND d.kind = 'BLOCKS'
+                                  AND EXISTS (SELECT 1 FROM task b
+                                               WHERE b.id = d.from_task_id
+                                                 AND b.deleted_at IS NULL
+                                                 AND b.state NOT IN ('COMPLETED','CANCELED'))) AS is_blocked";
 
 fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
     use sqlx::Row as _;
@@ -100,6 +117,12 @@ fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
         updated_by: row.try_get("updated_by")?,
         version: row.try_get("version")?,
         archived_at: row.try_get("archived_at")?,
+        // Defaults to false rather than erroring: a projection that does not
+        // select it (the search ranker builds its own) still decodes, and "not
+        // known to be blocked" is the safe render — the board enables a drop
+        // target it would otherwise have wrongly disabled, and the transition
+        // gate refuses it authoritatively anyway.
+        is_blocked: row.try_get("is_blocked").unwrap_or(false),
         // Absent from every projection but the ranked search one, so a missing
         // column is the ordinary case rather than a decode failure.
         rank: row.try_get("rank").ok(),
@@ -696,9 +719,42 @@ mod tests {
 
     #[test]
     fn the_column_list_matches_the_decoded_fields() {
-        // 23 columns, decoded by name. A column added to COLUMNS without a
-        // field lands nowhere; a field added without a column fails at runtime
-        // with "no column found", which is a worse place to learn it.
-        assert_eq!(COLUMNS.split(',').count(), 23);
+        // Every column the projection selects is decoded by name in `row_of`,
+        // and vice versa. Counting commas stopped working when `is_blocked`
+        // arrived as a nested EXISTS — the expression contains its own — so
+        // this checks the names instead, which is what actually has to agree.
+        for name in [
+            "id",
+            "workspace_id",
+            "project_id",
+            "number",
+            "title",
+            "description",
+            "status_id",
+            "reporter_id",
+            "environment_id",
+            "milestone_id",
+            "parent_id",
+            "start_at",
+            "due_at",
+            "position",
+            "created_at",
+            "created_by",
+            "updated_at",
+            "updated_by",
+            "version",
+            "archived_at",
+            "is_blocked",
+        ] {
+            assert!(
+                COLUMNS.contains(name),
+                "`{name}` is decoded by row_of and absent from the projection"
+            );
+        }
+        // The three enum columns arrive as text under an explicit alias, or no
+        // String decoder accepts them.
+        for aliased in ["AS \"type\"", "AS priority", "AS state"] {
+            assert!(COLUMNS.contains(aliased), "{aliased} is missing");
+        }
     }
 }

@@ -2023,6 +2023,82 @@ the filesystem backend would have to compute it during the upload handler — or
 streaming read outside the API process. Tracked here rather than left as a
 passing test that checks nothing.
 
+**The task drawer's two empty panels are filled.** Both were the same shape of
+gap: the write side had existed for a while and nothing read it, so the data
+accumulated where nobody could see it.
+
+**`GET /api/v1/tasks/{id}/activity` (C-011).** Every change has written an
+`activity_event` in the same transaction as the change since C-011 (ADR-006).
+Nothing read them. It is keyset-paginated newest-first, and the cursor carries
+`(occurred_at, id)` rather than an id alone — `activity_event` is **partitioned
+by `occurred_at`** (migration 0007), so an id-only cursor could not be resumed
+without searching every partition. Actor names are resolved once per page, not
+once per row.
+
+The permission is **`task.history.read`**, which
+[25](25-EVENTS-OUTBOX-AND-AUDIT.md) §The three streams assigns explicitly —
+activity is the user-facing stream and "must be readable by anyone who can see
+the task", while `audit.read` governs the compliance stream with its IPs and
+before/after. Gating this on `audit.read` would have hidden a user's own task
+history behind an administrator's permission.
+
+**`GET`/`POST /api/v1/tasks/{id}/dependencies` (C-008).** No endpoint read a
+task's relations at all, so the Relations panel had nothing to call. The read
+shape is a choice — [05](05-API-SPEC.md) specifies only the write — and it is
+recorded there: two named lists, `blocked_by` and `blocks`, each carrying
+`key`, `title` and `state`, unpaginated because
+[21](21-API-LIMITS-AND-QUOTAS.md) bounds dependencies at 100 per task.
+
+**The cycle check is one statement, not a check above one.** `insert` is a
+single `INSERT ... SELECT ... WHERE NOT EXISTS (<recursive reachable>)` under a
+transaction-scoped advisory lock on the workspace. There is no separate "is this
+safe?" call to forget, and no window in which a concurrent request closes the
+loop from the other side — which is exactly what
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md) asks for and why the lock is there. The
+walk is bounded to [21](21-API-LIMITS-AND-QUOTAS.md)'s 64 hops, and **the cost
+is stated**: a cycle that closes only at hop 65 is not detected.
+
+**A live defect found on the way, and fixed.** The filter compiler's
+`is_blocked` clause selected `d.blocked_task_id` — a column `task_dependency`
+has never had; migration 0005 names the two ends `from_task_id` and
+`to_task_id`. Both `?is_blocked=true` and `?is_blocked=false` returned
+`TF-SYS-0001`, and it held back the built-in **My Work · Blocked** view
+[27](27-FILTER-AND-SAVED-VIEW-DSL.md) ships.
+
+The direction is a domain call, not a guess: [03](03-DOMAIN-MODEL.md) says
+"`from` blocks `to`" and gates a transition on an **incoming** `BLOCKS` edge, so
+a task is blocked when it is the `to` end — which is also the direction
+`task::unresolved_blockers` already read and what `task_dependency_rev_ix` on
+`to_task_id` indexes.
+
+Nothing caught it because the C-012 suite asserts the compiler's SQL *text*,
+which a wrong column name satisfies perfectly, and the `EXPLAIN` catalogue has
+no probe for that field — the same blind spot that hid the cursor cast bug in
+C-006. The test added with the fix reads `migrations/0005` and asserts that
+every `<alias>.<column>` the compiler emits is a column that migration
+declares, so the next wrong name fails in CI rather than in production.
+
+**The design spec's constraints are met.** A restricted edge is **returned**
+with its identity withheld rather than filtered out — [03](03-DOMAIN-MODEL.md):
+a blocking task "shows as 'restricted' if the viewer cannot see its project,
+never as its title", and dropping the row would show a task as blocked by
+nothing. A cycle refusal **names the loop** (`ONB-4 → API-2 → ONB-4`) in both
+the message and `details.cycle`. And blocked-ness is on `TaskView` itself,
+computed in the same query as the row: the board disables a drop target rather
+than letting a card spring back, so it must know before the drag, and asking per
+card would be the N+1 [04](04-RBAC-AND-AUTHORIZATION.md) §The list problem
+exists to prevent. A bulk endpoint was the alternative and was rejected — it is
+a second round trip that can disagree with the first.
+
+**What is not covered:** removing a dependency (`DELETE`) is not implemented, so
+a relation added in the drawer cannot be undone through the API; the activity
+stream has no project-level feed (`activity_project_ix` exists and nothing reads
+it); `is_blocked` still has no `EXPLAIN` probe, so the fix above is covered by
+unit and integration tests rather than by the plan gate; and the subtask rollup
+and the `task.dependency.override` reason are **not** implemented here — the
+override lives on the transition endpoint (C-007), and its required-reason field
+is a change to that surface rather than to these two.
+
 ## Phases 2–4
 
 Rolled up until Phase 1 closes; expanded at each phase gate.

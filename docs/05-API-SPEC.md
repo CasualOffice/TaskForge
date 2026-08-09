@@ -64,6 +64,7 @@ POST   /api/v1/tasks/{id}/transitions      status change (If-Match required)
 POST   /api/v1/tasks/{id}/assignees        assign
 DELETE /api/v1/tasks/{id}/assignees/{uid}  unassign
 POST   /api/v1/tasks/{id}/tags             tag
+GET    /api/v1/tasks/{id}/dependencies     relations     (two named lists)
 POST   /api/v1/tasks/{id}/dependencies     add dependency (cycle-checked)
 GET    /api/v1/tasks/{id}/activity         history       (cursor)
 POST   /api/v1/tasks/{id}/comments         comment
@@ -71,6 +72,20 @@ GET    /api/v1/tasks/{id}/comments         thread        (cursor)
 POST   /api/v1/tasks/{id}/attachments      begin upload  (doc 28)
 POST   /api/v1/tasks/bulk                  bulk ops      (doc 24)
 ```
+
+The dependency **read** was not specified here and its shape is a choice, made
+by C-008 and recorded rather than left to be inferred:
+
+```json
+{ "blocked_by": [ { "id", "key", "title", "state" } ], "blocks": [ … ] }
+```
+
+Two named lists rather than one array with a `direction` field, because the task
+drawer renders them as two headed sections and a flat array makes every client
+partition it again. `state` is included so a blocker that is already `COMPLETED`
+can be struck through rather than shown as live. It is **not paginated**:
+[21](21-API-LIMITS-AND-QUOTAS.md) bounds dependencies at 100 per task and that
+bound is enforced on the write, so the whole set is one bounded response.
 
 `GET /tasks` is one endpoint for lists, boards, My Work, saved views, and
 full-text. They differ only in filter and sort — which is the point of having one

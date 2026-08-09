@@ -237,6 +237,16 @@ pub fn router(state: AppState) -> Router {
         )
         // C-009 — comments. Visibility is decided by the task, never by the
         // comment: a comment carries no permission of its own.
+        // C-011 — the History tab. Every change has written an activity record
+        // in the same transaction as the change since C-011; this is the first
+        // thing that reads them.
+        .route("/api/v1/tasks/{id}/activity", get(crate::activity::stream))
+        // C-008 — the Relations panel. The write is docs/05's; the read shape
+        // is chosen (see the module docs) because docs/05 specifies none.
+        .route(
+            "/api/v1/tasks/{id}/dependencies",
+            get(crate::dependencies::read).post(crate::dependencies::add),
+        )
         .route(
             "/api/v1/tasks/{id}/comments",
             get(crate::comments::thread).post(crate::comments::create),
@@ -545,6 +555,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/attachments/{id}/commit",
     "/api/v1/attachments/{id}/download",
     "/api/v1/tasks/{id}",
+    "/api/v1/tasks/{id}/activity",
+    "/api/v1/tasks/{id}/dependencies",
     "/api/v1/tasks/{id}/comments",
     "/api/v1/comments/{id}",
     "/api/v1/tasks/{id}/transitions",

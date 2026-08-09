@@ -35,6 +35,16 @@ services:
       # owner, and a superuser bypasses RLS unconditionally — tenant isolation
       # and append-only history would both be inert (migration 0012).
       - ./init-app-role.sh:/docker-entrypoint-initdb.d/10-init-app-role.sh:ro
+      # Applies migrations/*.sql as the OWNER, once, after the roles above.
+      # Nothing did this before: the stack came up with an empty database, an
+      # API whose /health/ready passed (it is `SELECT 1`), and a 500 on the
+      # first real request. docs/52 §Roles already said the owner runs
+      # migrations; this is the step that does it.
+      #
+      # 20 after 10 is load-bearing: migrations 0012 and 0014 GRANT to the roles
+      # the first script creates.
+      - ./apply-migrations.sh:/docker-entrypoint-initdb.d/20-apply-migrations.sh:ro
+      - ../migrations:/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
@@ -85,10 +95,10 @@ services:
       # during a database blip restarts every healthy instance at once and turns
       # a partial outage into a total one (docs/46).
       #
-      # THIS PROBE FAILS TODAY, ON PURPOSE. There is no HTTP server yet
-      # (tracker C-001), so the binary refuses the flag rather than exiting 0.
-      # It used to ignore every argument and therefore always pass, which is the
-      # worse failure: an unhealthy service reported as healthy forever.
+      # `--health-check` short-circuits before telemetry and opens a socket to
+      # the configured bind address. It used to ignore every argument and
+      # therefore always pass, which is the worse failure: an unhealthy service
+      # reported as healthy forever.
       test: ["CMD", "/usr/local/bin/taskforge-api", "--health-check"]
       interval: 30s
       timeout: 5s

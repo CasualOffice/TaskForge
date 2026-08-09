@@ -12,12 +12,14 @@
 //! The scoped-connection seam, the project and task repositories, and workflow
 //! storage are implemented. See `docs/14-EXECUTION-TRACKER.md`.
 
+pub mod activity;
 pub mod attachment;
 pub mod audience;
 pub mod auth;
 pub mod authz;
 pub mod comment;
 pub mod compile;
+pub mod dependency;
 pub mod dispatch;
 pub mod export;
 pub mod health;

@@ -421,8 +421,27 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
         Field::IsBlocked => {
             let p = cast(&bind(params, param_of(value)), Field::IsBlocked, false);
             return format!(
+                // `blocked_task_id` is a column `task_dependency` has never
+                // had — migration 0005 names the two ends `from_task_id` and
+                // `to_task_id`. Every `is_blocked` filter therefore failed at
+                // execution time with "column does not exist"; no test caught
+                // it because the compiler's own suite asserts the SQL text, and
+                // the EXPLAIN catalogue has no probe for this field.
+                //
+                // "Blocked" is the same question `task::unresolved_blockers`
+                // asks: an unresolved BLOCKS edge pointing AT this task.
+                // Nested EXISTS rather than a JOIN, so the compiler's simple
+                // invariant — no JOIN anywhere in a compiled query — keeps
+                // holding. A JOIN inside EXISTS cannot duplicate outer rows,
+                // but "no JOIN" is a rule a reader can check at a glance and a
+                // narrower one is a rule that erodes.
                 "(EXISTS (SELECT 1 FROM task_dependency d \
-                  WHERE d.blocked_task_id = t.id)) = ({p})"
+                  WHERE d.to_task_id = t.id \
+                    AND d.kind = 'BLOCKS' \
+                    AND EXISTS (SELECT 1 FROM task b \
+                                 WHERE b.id = d.from_task_id \
+                                   AND b.deleted_at IS NULL \
+                                   AND b.state NOT IN ('COMPLETED','CANCELED')))) = ({p})"
             );
         }
         Field::Key => {
@@ -842,6 +861,83 @@ mod tests {
         let c = paged(&Node::And(Vec::new()), &page);
         assert!(!c.sql.contains(hostile), "{}", c.sql);
         assert!(c.params.contains(&Param::Text(hostile.to_owned())));
+    }
+
+    #[test]
+    fn every_column_the_compiler_names_exists_in_the_schema() {
+        // The bug this would have caught: `is_blocked` emitted
+        // `d.blocked_task_id`, a column `task_dependency` has never had —
+        // migration 0005 names the ends `from_task_id` and `to_task_id`. Both
+        // `?is_blocked=true` and `?is_blocked=false` returned TF-SYS-0001, and
+        // the built-in "My Work · Blocked" view could not ship.
+        //
+        // Nothing caught it because every other test here asserts the SQL
+        // *text*, which a wrong column name satisfies perfectly. This reads the
+        // migration instead.
+        let schema = include_str!("../../../migrations/0005_tasks.sql");
+        let mut compiled = String::new();
+        for (field, op, value) in [
+            (
+                Field::IsBlocked,
+                Operator::Eq,
+                Value::Literal("true".into()),
+            ),
+            (Field::Assignee, Operator::Eq, Value::Literal("x".into())),
+            (Field::Tag, Operator::In, Value::List(vec!["x".into()])),
+            (Field::Q, Operator::Matches, Value::Literal("x".into())),
+        ] {
+            compiled.push_str(&compiled_sql_of(field, op, value));
+            compiled.push(' ');
+        }
+
+        // Every `<alias>.<column>` the compiler emitted, for the tables whose
+        // DDL lives in this migration.
+        for token in compiled.split_whitespace() {
+            let token =
+                token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '_');
+            let Some((alias, column)) = token.split_once('.') else {
+                continue;
+            };
+            // Aliases used for tables defined in migration 0005.
+            if !matches!(alias, "d" | "a" | "tt") || column.is_empty() {
+                continue;
+            }
+            assert!(
+                schema.contains(column),
+                "the compiler emits `{alias}.{column}`, which migration 0005 \
+                 does not define — every query using it fails at execution time"
+            );
+        }
+    }
+
+    #[test]
+    fn blocked_means_the_task_is_the_to_end_of_an_unresolved_edge() {
+        // docs/03: "`from` blocks `to`", and a transition is gated by an
+        // INCOMING BLOCKS edge. Getting this backwards would report every
+        // blocker as blocked and every blocked task as free — plausible-looking
+        // and exactly wrong.
+        let sql = compiled_sql_of(
+            Field::IsBlocked,
+            Operator::Eq,
+            Value::Literal("true".into()),
+        );
+        assert!(
+            sql.contains("d.to_task_id = t.id"),
+            "blocked-ness must key on the `to` end: {sql}"
+        );
+        assert!(
+            !sql.contains("d.from_task_id = t.id"),
+            "that is the blocking end, not the blocked one: {sql}"
+        );
+        // And it ignores blockers that are already finished, like
+        // `task::unresolved_blockers` does — otherwise a closed blocker would
+        // hold a card down forever.
+        assert!(sql.contains("COMPLETED"), "{sql}");
+    }
+
+    /// The SQL for one clause, with the injected permission filter stripped.
+    fn compiled_sql_of(field: Field, op: Operator, value: Value) -> String {
+        compiled(&clause(field, op, value)).sql
     }
 
     #[test]
