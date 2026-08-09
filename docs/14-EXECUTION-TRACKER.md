@@ -92,7 +92,12 @@ The documentation phase. All complete unless noted.
 | D-056 | The template permission sets `docs/04`'s prose does not decide | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by D-054. Accept with C-004's golden matrix |
 | D-057 | Which permission governs workspace membership, team management **and invitations** | [04](04-RBAC-AND-AUTHORIZATION.md) | **Open** — surfaced by C-002, widened by C-001's invitations; Accept before C-002 is `Gated` |
 | D-059 | Notification preferences, subscriptions, quiet hours and digests — the tables `docs/29` assumes and the schema does not have | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Open** — surfaced by C-016. Accept before C-016 is `Gated` |
+<<<<<<< HEAD
 | D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Consumed** — `DISPATCHER_DATABASE_URL`, a second DSN as `taskforge_dispatcher`. It was already in `deploy/docker-compose.yml` and read by nothing; now documented in [48](48-DEPLOYMENT-PROFILES.md) and wired into both binaries |
+=======
+| D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Open** — surfaced by C-016; blocks starting the dispatch loop in any documented deployment |
+| D-061 | **What a board column is: a permanent state or a workflow status** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [42](42-FRONTEND-ARCHITECTURE.md) | **Open** — surfaced by C-018. Shipped as the five permanent states, with the cost stated; see below |
+>>>>>>> cfcac10 (fix(ci): formatting, a missing AppState field, and two broken doc links)
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -356,8 +361,8 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-015 | SSE + fan-out | `Built` |
 | C-016 | Notifications (in-app + email) | `Building` |
 | C-017 | Extension point registry (core panels only) | `Built` |
-| C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
-| C-019 | Bundle + a11y gates wired | Accepted |
+| C-018 | Web shell, board, list, My Work, drawer, palette | `Building` |
+| C-019 | Bundle + a11y gates wired | `Built` |
 | C-020 | Rate limiting at the edge | `Building` |
 
 - **D-050** was opened by a failing gate rather than by reading anything.
@@ -1804,6 +1809,7 @@ the process wiring, not the fan-out.
 changes the plans the `explain-no-seq-scan` gate compares against, so it belongs
 in a change that can re-baseline that gate.
 
+<<<<<<< HEAD
 **D-060 is consumed, and the dispatch loop runs for the first time outside a
 test.** The answer was already in the repository: `deploy/docker-compose.yml` has
 set `DISPATCHER_DATABASE_URL` since it was written, and **nothing read it** — the
@@ -1836,6 +1842,108 @@ usefully. A separate worker publishes into its own in-process hub, and the
 browsers are connected to the API process. [48](48-DEPLOYMENT-PROFILES.md)
 already requires Redis at more than one process for exactly this reason; the
 worker now warns at startup rather than appearing to work.
+=======
+### C-018 and C-019: the web client, and what it cannot do yet
+
+**C-018 is `Building`. C-019 is `Built`.** `webapp/` stops being a bundle-floor
+harness and becomes the product: sign-in, a workspace switcher, a board, a list,
+My Work, a task drawer, and a command palette — all against the real API, with
+no mock and no fixture anywhere in `src/` outside `src/floor/`.
+
+**One transport carries every obligation.** `docs/05` §Authentication and
+`docs/40` put four requirements on a browser call — the session cookie, the
+double-submit CSRF token, the workspace header, and `If-Match`/`Idempotency-Key`
+on writes. All four live in `api/http.ts`, and no view calls `fetch`. That is a
+mechanism rather than a rule: a call site *cannot* forget the CSRF header
+because it never sets one.
+
+**Refusals are rendered from the registry, never from a body.** `docs/20`'s
+codes map to a sentence and a remedy in `api/problem.ts`, and a test asserts the
+server's own message never reaches the screen. `ApiError` also records whether a
+response carried the error envelope at all — which is how a 404 from the router
+(the route is not served) is told apart from a 404 from the application (absent
+or invisible). The two look identical on the wire and mean opposite things to a
+client.
+
+**Affordances come from `/permissions/effective`, not from a role check.** A
+`conditional` grant counts as permission: only the server can evaluate a
+constraint for a given task, and hiding it would hide the reporter's own edit on
+the task they reported — the exact case the constraint exists to allow. Hiding a
+control stays presentation; the server re-authorizes every mutation.
+
+**The drawer's panels and the palette's entries come from the extension point
+registry** (`docs/34`, C-017), so the core's own contributions go through the
+seam a plugin will. A registered contribution with nothing behind it renders
+with its declared title and the reason rather than being skipped — skipping is
+what makes a registry decorative.
+
+**The registry table is mirrored in TypeScript, and that is a known defect.**
+`crates/casual-task-plugin-contract/src/core_contributions.rs` has no HTTP
+surface, so a browser cannot read it. `webapp/src/extensions/coreContributions.ts`
+copies the rows and says so at the top. The two will drift the first time
+someone edits one side; the fix is C-017's remaining half, an endpoint.
+
+#### D-061: a board column is a permanent state, and the cost of that
+
+`docs/23` fixes five permanent states, and every `TaskView` carries the one it is
+in, derived from its status in the same statement so the two cannot disagree.
+Statuses are workspace-authored, and today a browser cannot read them at all —
+see below. Columns keyed on the closed set are the only grouping that is correct
+for every workspace *and* stable when the endpoint lands, so status columns
+become a refinement rather than a rewrite.
+
+**The losing side, stated:** a workspace with three statuses inside `ACTIVE` sees
+all three in one column, and the board cannot show the distinction its author
+created. That is real, and it is why the decision is `Open` rather than settled —
+it should be re-decided once statuses are readable.
+
+#### What blocks drag-and-drop, and it is not the client
+
+`GET /api/v1/workflows/{id}` is specified in [05](05-API-SPEC.md) §Other
+resources and **no route is registered for it**. `POST /tasks/{id}/transitions`
+requires a `to_status_id`, and there is no other way for a browser to learn one:
+`TaskView` carries the current `status_id` and the derived `state`, never the
+workflow's status set.
+
+So cards render and cannot be dragged, and the board says exactly that on screen
+rather than sending a move that would be refused with a code the user cannot act
+on. `webapp/src/api/workflow.ts` is already written against the documented
+contract, so registering the route makes the board work with **no client
+change**. It is C-007's remaining half.
+
+#### The gaps C-018 could not close, each with its owner
+
+| Not built | Why | Row |
+| --- | --- | --- |
+| Drag-and-drop on the board | `GET /api/v1/workflows/{id}` is not served | C-007 |
+| A task's assignees, anywhere | `TaskView` has no `assignees` field and there is no `GET /tasks/{id}/assignees` — the set is write-only, though `assignee=@me` filters correctly | C-008 |
+| Relations and dependencies | `POST /tasks/{id}/dependencies` is specified and not routed | C-008 |
+| Activity in the drawer | Every change writes an activity record already; `GET /tasks/{id}/activity` is not served | C-011 |
+| Attachments in the drawer | The pipeline exists in `casual-task-attachment`; no route is registered | C-010 |
+| Watched tasks in My Work | `watcher` is not in the filter grammar's closed field set and no endpoint exposes watchers | C-008 |
+| Live updates | The SSE endpoint exists; the client does not subscribe, and `docs/42`'s `BroadcastChannel` sharing and `Last-Event-ID` replay are unwritten | C-015 |
+| Permission invalidation within a second | `docs/42` invalidates the permission set on an `authz_epoch` bump over SSE; the stream carries no such event, so the window is the five-minute stale time | C-003 |
+| Saved views, the filter builder, bulk operations, the rich-text editor, offline drafts and the retry queue | Not started | C-018 |
+| The design system | AGENTS.md forbids depending on `../design-system`, and `docs/42` requires re-measuring the budget when it is wired in. Tokens are declared locally under the design system's own names, so adopting it is a changed import in one file | C-018 |
+
+**C-019 is `Built`, not `Gated`, and the reason is contrast.** Two layers run on
+every push: `eslint` with `jsx-a11y` over the source, and `axe-core` over
+rendered DOM under jsdom. jsdom has no layout, so axe's `color-contrast` rule
+cannot run — it is disabled explicitly in the helper rather than left to report
+"incomplete", which fails nothing and appears in no report. `docs/42` requires
+4.5:1 verified in light and dark; that verification is **not** in this suite, nor
+is focus order, nor anything measured. Those need the Playwright row
+[15](15-CI-AND-RELEASE-GATES.md) still lists as open. A suite called "the
+accessibility gate" that silently skips contrast is worse than no suite, because
+it retires the question.
+
+A third gate runs beside them and is not about accessibility: `boot.test.tsx`
+mounts every route. `tsc` proves the types agree and proves nothing about a
+provider in the wrong order or an import cycle — both of which are a blank page
+that passes `typecheck` and `build`. `scripts/dev-up.sh` exists because "the
+tests pass" and "you can open it" turned out to be different claims; this is the
+cheap half of that lesson.
+>>>>>>> cfcac10 (fix(ci): formatting, a missing AppState field, and two broken doc links)
 
 ## Phases 2–4
 

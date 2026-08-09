@@ -118,7 +118,7 @@ export function TransitionControl({
           </div>
         </>
       ) : (
-        <GapNotice what="Status cannot be changed from here yet." tracker="D-059">
+        <GapNotice what="Status cannot be changed from here yet." tracker="D-061">
           <span>{unavailable}</span>
         </GapNotice>
       )}

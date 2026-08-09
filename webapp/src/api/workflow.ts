@@ -24,9 +24,10 @@
  * refused *in the UI* with the reason named — rather than sent, rejected with a
  * code the user cannot act on, and rolled back.
  *
- * Recorded as **D-059** in `docs/14-EXECUTION-TRACKER.md`. It is a missing
- * endpoint, not an open design question, so nothing here invents a shape:
- * the fields below are `casual_task_persistence::workflow::load`'s two rows.
+ * The missing endpoint is **C-007**'s remaining half in
+ * `docs/14-EXECUTION-TRACKER.md`; what the board does in the meantime is
+ * **D-061**. Nothing here invents a shape: the fields below are what
+ * `casual_task_persistence::workflow::load` already returns.
  */
 import { request } from './http'
 import { ApiError } from './problem'

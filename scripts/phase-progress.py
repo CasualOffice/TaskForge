@@ -99,7 +99,10 @@ def render_landed() -> str:
     bullets = [f"- **{name}** ({item}) — `{status}`" for item, name, status in items]
     gated = sum(1 for _, _, s in items if s == "Gated")
     lead = (
-        f"**Phase 1 is under way, and all of it is engine.** {len(items)} items "
+        # Was "and all of it is engine", which stopped being true the moment
+        # C-018 landed a web client. A sentence generated into the README is
+        # still a claim, and this one had a shelf life.
+        f"**Phase 1 is under way.** {len(items)} items "
         f"started, {gated} gated:"
     )
     return lead + "\n\n" + "\n".join(bullets)

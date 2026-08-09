@@ -8,7 +8,7 @@
  * derived from its status in the same statement so the two cannot disagree.
  * Statuses are workspace-authored, and today a browser cannot read them at all:
  * `GET /api/v1/workflows/{id}` is specified in `docs/05` and not served
- * (**D-059**). Columns keyed on the closed set are therefore the only grouping
+ * (**D-061**). Columns keyed on the closed set are therefore the only grouping
  * that is correct for every workspace *and* stable when the endpoint lands —
  * status columns become a refinement, not a rewrite.
  *
@@ -129,7 +129,7 @@ export function BoardView(): ReactElement {
 
       {canMove ? null : (
         <div className="board__notice">
-          <GapNotice what="Cards cannot be moved yet." tracker="D-059">
+          <GapNotice what="Cards cannot be moved yet." tracker="D-061">
             <span>{unavailable}</span>
           </GapNotice>
         </div>
