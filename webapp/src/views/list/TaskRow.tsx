@@ -12,14 +12,17 @@
  * many `<tbody>` elements, so a group is a body with a header row rather than a
  * second implementation of a row.
  *
- * # Two buttons, not a clickable row
+ * # Two links, not a clickable row
  *
  * A `<tr>` with an `onClick` is not reachable by keyboard and announces nothing.
- * The identifier and the title are buttons; everything else is text.
+ * The identifier and the title are anchors to the task's own route, so ⌘-click
+ * and middle-click open a tab; a plain click opens the peek instead and keeps
+ * the reader's place. `task/TaskLink.tsx` owns that rule for every surface.
  */
 import type { ReactElement } from 'react'
 
 import type { Task } from '../../api/tasks'
+import { TaskLink } from '../../task/TaskLink'
 import { formatRelative, isOverdue } from '../../tasks/present'
 import { PriorityBadge, TypeBadge } from '../../tasks/TaskCard'
 
@@ -39,18 +42,14 @@ export function TaskRow({
         <TypeBadge type={task.type} />
       </td>
       <td className="list__cell list__cell--key">
-        <button type="button" className="list__open" onClick={() => onOpen(task.id)}>
+        <TaskLink taskId={task.id} className="list__open" onPeek={onOpen}>
           <span className="key">{task.key}</span>
-        </button>
+        </TaskLink>
       </td>
       <td className="list__cell list__cell--title">
-        <button
-          type="button"
-          className="list__open list__open--title"
-          onClick={() => onOpen(task.id)}
-        >
+        <TaskLink taskId={task.id} className="list__open list__open--title" onPeek={onOpen}>
           {task.title}
-        </button>
+        </TaskLink>
       </td>
       <td className="list__cell">
         {/* `NONE` renders as nothing — see `tasks/TaskCard.tsx`. A pill reading

@@ -32,6 +32,7 @@ import type { TaskQuery } from '../api/tasks'
 import { TaskPeek } from '../task/TaskPeek'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
 import { ErrorNotice, GapNotice } from '../shell/notice'
+import { TaskLink } from '../task/TaskLink'
 import { useWorkspaceId } from '../shell/session'
 import { useTaskFeed } from '../tasks/feed'
 import { formatRelative, isOverdue } from '../tasks/present'
@@ -141,7 +142,7 @@ export function MyWorkView(): ReactElement {
         <ul className="mywork__list">
           {feed.rows.map((task) => (
             <li key={task.id}>
-              <button type="button" className="mywork__row" onClick={() => openTask(task.id)}>
+              <TaskLink taskId={task.id} className="mywork__row" onPeek={openTask}>
                 <TypeBadge type={task.type} />
                 <span className="key">{task.key}</span>
                 <span className="mywork__title">{task.title}</span>
@@ -156,7 +157,7 @@ export function MyWorkView(): ReactElement {
                     </time>
                   )}
                 </span>
-              </button>
+              </TaskLink>
             </li>
           ))}
         </ul>

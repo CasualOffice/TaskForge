@@ -600,3 +600,32 @@
   color: var(--tf-text-muted, var(--color-text-muted));
   font-size: 12px;
 }
+
+/* A metadata value never wraps: the column is sized for its longest value, and
+ * a date broken across two lines is the same "read it in pieces" failure the
+ * detail surface exists to remove. A list of names that genuinely exceeds the
+ * column is clipped with an ellipsis and readable in full from the control. */
+.meta2__button,
+.meta2__value > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.meta2__button {
+  display: inline-block;
+  line-height: 22px;
+}
+.meta2 .pop {
+  max-width: 100%;
+}
+/* Anchors that behave as the surrounding text: the row already reads as a row,
+ * and an underlined blue title in every list row is noise. The link nature is
+ * carried by hover, focus and the status bar, which is what a reader checks
+ * before ⌘-clicking. */
+.list__open,
+.card__title,
+.mywork__row {
+  color: inherit;
+  text-decoration: none;
+}

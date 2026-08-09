@@ -25,6 +25,7 @@
 import type { ReactElement } from 'react'
 
 import type { Task } from '../api/tasks'
+import { TaskLink } from '../task/TaskLink'
 import { formatRelative, isOverdue, priorityLabel, typeLabel } from './present'
 
 /** The longest description snippet a card carries before it stops being a card. */
@@ -48,9 +49,12 @@ export function TaskCard({
         {handle}
       </div>
 
-      <button type="button" className="card__title" onClick={() => onOpen(task.id)}>
+      {/* An anchor, so ⌘-click opens the task in a tab from the board — the
+          gesture people use to work on three cards at once. A plain click keeps
+          the board where it is and opens the peek. */}
+      <TaskLink taskId={task.id} className="card__title" onPeek={onOpen}>
         {task.title}
-      </button>
+      </TaskLink>
 
       {task.description === null || task.description.trim() === '' ? null : (
         <p className="card__snippet">{snippet(task.description)}</p>
