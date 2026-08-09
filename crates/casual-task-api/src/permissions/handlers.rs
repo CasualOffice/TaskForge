@@ -12,16 +12,16 @@
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use casual_task_app::explain::Reach;
 use casual_task_app::ResourceFacts;
+use casual_task_app::explain::Reach;
 use casual_task_model::{Permission, ProjectId, TeamId, UserId, permission};
 use casual_task_persistence::{project, task};
 
+use super::subject::Subject;
 use super::wire::{
     ContributingGrantView, EffectivePermissionView, EffectiveQuery, EffectiveView, ExplainRequest,
     ExplainView, ResourceRef,
 };
-use super::subject::Subject;
 use crate::context::Context;
 use crate::error::{ApiError, codes};
 use crate::middleware::WorkspaceMember;
@@ -136,7 +136,9 @@ async fn facts_for(
     };
     if let Some(row) = task_row {
         facts.reporter = Some(UserId::from_uuid(row.reporter_id));
-        facts.environment = row.environment_id.map(casual_task_model::EnvironmentId::from_uuid);
+        facts.environment = row
+            .environment_id
+            .map(casual_task_model::EnvironmentId::from_uuid);
         facts.assignees = task::assignees(scoped, row.id)
             .await
             .map_err(|error| {
@@ -278,7 +280,10 @@ mod tests {
 
     #[test]
     fn reach_names_are_distinct_and_stable() {
-        assert_ne!(reach_name(Reach::Unconditional), reach_name(Reach::Conditional));
+        assert_ne!(
+            reach_name(Reach::Unconditional),
+            reach_name(Reach::Conditional)
+        );
         assert_eq!(reach_name(Reach::Unconditional), "unconditional");
         assert_eq!(reach_name(Reach::Conditional), "conditional");
     }

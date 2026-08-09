@@ -261,7 +261,9 @@ impl Authority {
     /// The actor's effective permission set at workspace scope.
     #[must_use]
     pub fn effective_in_workspace(&self) -> Vec<Effective> {
-        self.effective_in(&casual_task_authz::ResourceScopes::workspace(self.workspace))
+        self.effective_in(&casual_task_authz::ResourceScopes::workspace(
+            self.workspace,
+        ))
     }
 
     /// The actor's effective permission set in `project`.
@@ -287,22 +289,17 @@ impl Authority {
     ) -> Explanation {
         let decision =
             casual_task_authz::allows(&self.actor, permission, scopes, facts, &self.grants);
-        let contributing = casual_task_authz::explain(
-            &self.actor,
-            permission,
-            scopes,
-            facts,
-            &self.grants,
-        )
-        .into_iter()
-        .map(|c| ContributingGrant {
-            scope_type: scope_type_name(c.grant.scope),
-            scope_id: scope_id(c.grant.scope),
-            permission,
-            constraints: c.grant.constraints.iter().map(constraint_name).collect(),
-            constraints_satisfied: c.constraints_satisfied,
-        })
-        .collect();
+        let contributing =
+            casual_task_authz::explain(&self.actor, permission, scopes, facts, &self.grants)
+                .into_iter()
+                .map(|c| ContributingGrant {
+                    scope_type: scope_type_name(c.grant.scope),
+                    scope_id: scope_id(c.grant.scope),
+                    permission,
+                    constraints: c.grant.constraints.iter().map(constraint_name).collect(),
+                    constraints_satisfied: c.constraints_satisfied,
+                })
+                .collect();
         Explanation::new(&decision, contributing)
     }
 
@@ -548,8 +545,7 @@ mod tests {
     fn an_explanation_never_names_a_grant_from_another_workspace() {
         // `applicable` filters on workspace before anything else, and this
         // asserts the explanation inherits that rather than re-deriving it.
-        let (actor, workspace, elsewhere) =
-            (UserId::new(), WorkspaceId::new(), WorkspaceId::new());
+        let (actor, workspace, elsewhere) = (UserId::new(), WorkspaceId::new(), WorkspaceId::new());
         let authority = Authority::resolved(
             actor,
             workspace,

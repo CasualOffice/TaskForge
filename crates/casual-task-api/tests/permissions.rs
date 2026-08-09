@@ -44,6 +44,11 @@ struct Caller {
 
 fn app(pool: sqlx::PgPool) -> axum::Router {
     router(AppState {
+        storage: Arc::new(casual_task_infra::FilesystemStore::new(
+            std::env::temp_dir().join("tf-test-objects"),
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )),
         broadcast: casual_task_api::sse::local_hub(),
         pool,
         metrics: Arc::new(Recorder::new()),
@@ -98,7 +103,12 @@ async fn sign_up(app: &axum::Router, pool: &sqlx::PgPool, email: &str) -> Result
     })
 }
 
-fn request(caller: &Caller, workspace: Uuid, method: &str, uri: &str) -> axum::http::request::Builder {
+fn request(
+    caller: &Caller,
+    workspace: Uuid,
+    method: &str,
+    uri: &str,
+) -> axum::http::request::Builder {
     Request::builder()
         .method(method)
         .uri(uri)
@@ -234,7 +244,13 @@ async fn a_grant_can_contribute_and_still_not_allow() -> Result<()> {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
     // At workspace scope there is no project to hide, and the answer lands.
-    let response = explain(&app, &caller, workspace, json!({ "permission": "task.close" })).await?;
+    let response = explain(
+        &app,
+        &caller,
+        workspace,
+        json!({ "permission": "task.close" }),
+    )
+    .await?;
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await?;
     assert_eq!(body["allowed"], false);
@@ -256,12 +272,21 @@ async fn holding_nothing_says_no_grant_rather_than_naming_one() -> Result<()> {
     let caller = sign_up(&app, &db.pool, "member@example.com").await?;
     let workspace = workspace_with(&db.pool, caller.user_id, "acme").await?;
 
-    let response = explain(&app, &caller, workspace, json!({ "permission": "task.close" })).await?;
+    let response = explain(
+        &app,
+        &caller,
+        workspace,
+        json!({ "permission": "task.close" }),
+    )
+    .await?;
     assert_eq!(response.status(), StatusCode::OK);
     let body = json_body(response).await?;
     assert_eq!(body["allowed"], false);
     assert_eq!(body["deny_reason"], "no_grant");
-    assert_eq!(body["contributing_grants"].as_array().map(Vec::len), Some(0));
+    assert_eq!(
+        body["contributing_grants"].as_array().map(Vec::len),
+        Some(0)
+    );
     Ok(())
 }
 
@@ -353,7 +378,13 @@ async fn a_permission_key_this_build_does_not_know_is_refused() -> Result<()> {
     let caller = sign_up(&app, &db.pool, "member@example.com").await?;
     let workspace = workspace_with(&db.pool, caller.user_id, "acme").await?;
 
-    let response = explain(&app, &caller, workspace, json!({ "permission": "task.clsoe" })).await?;
+    let response = explain(
+        &app,
+        &caller,
+        workspace,
+        json!({ "permission": "task.clsoe" }),
+    )
+    .await?;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = json_body(response).await?;
     assert_eq!(body["error"]["code"], "TF-VAL-0005");

@@ -14,8 +14,8 @@
 
 use casual_task_app::authority::{Authority, StoredGrant};
 use casual_task_model::{TeamId, UserId, permission};
-use casual_task_persistence::{authz, workspace};
 use casual_task_persistence::scoped::Scoped;
+use casual_task_persistence::{authz, workspace};
 use uuid::Uuid;
 
 use crate::context::Context;

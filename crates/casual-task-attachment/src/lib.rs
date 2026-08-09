@@ -12,7 +12,7 @@
 //! The pipeline's two decisions that need no I/O live here, and they are the
 //! two that must not be made anywhere else:
 //!
-//! - [`sniff`] — what a file **is**, from its bytes. It takes no declared type,
+//! - [`mod@sniff`] — what a file **is**, from its bytes. It takes no declared type,
 //!   so it cannot be called with the client's.
 //! - [`policy`] — whether an upload is allowed at all, and the object key,
 //!   which is built from UUIDs so a filename cannot reach it.

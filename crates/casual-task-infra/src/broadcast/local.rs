@@ -30,7 +30,7 @@ use super::{Broadcast, LiveEvent, Subscription, Topic};
 /// # Why 64, and what happens at 65
 ///
 /// `docs/24` §D-040 requires the number *and* the policy. The policy is
-/// [`Subscription::Lagged`]: the subscription ends, the HTTP stream closes, and
+/// [`Received::Lagged`](super::Received::Lagged): the subscription ends, the HTTP stream closes, and
 /// the client reconnects with `Last-Event-ID` — which is a recovery path
 /// `docs/05` already specifies, so a disconnect costs a round trip and not a
 /// correctness hole.
