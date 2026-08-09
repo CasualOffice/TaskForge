@@ -43,6 +43,22 @@ pub(crate) async fn visible(
         .ok_or_else(|| ApiError::missing(codes::TASK_NOT_FOUND, request_id))
 }
 
+/// The stored `task_type` as the model's enum.
+///
+/// `None` for anything unrecognised rather than a default: a type constraint is
+/// satisfied only by a type it lists, so an unknown value denies. A `TASK`
+/// default would silently *grant* against a value nobody understood.
+fn task_type_of(stored: &str) -> Option<casual_task_model::TaskType> {
+    match stored {
+        "TASK" => Some(casual_task_model::TaskType::Task),
+        "BUG" => Some(casual_task_model::TaskType::Bug),
+        "FEATURE" => Some(casual_task_model::TaskType::Feature),
+        "INCIDENT" => Some(casual_task_model::TaskType::Incident),
+        "REQUEST" => Some(casual_task_model::TaskType::Request),
+        _ => None,
+    }
+}
+
 /// The constraint inputs for a decision about **this task**.
 ///
 /// `Context::facts_in_project` is the project-level form and leaves the
@@ -76,6 +92,11 @@ pub(crate) async fn facts_for(
         environment: row
             .environment_id
             .map(casual_task_model::EnvironmentId::from_uuid),
+        // The task's own type, so a grant narrowed to `TaskTypeIn` decides
+        // against what this task *is* rather than against nothing. Parsed
+        // leniently: an unrecognised value leaves it unset, which satisfies no
+        // type constraint — the safe direction (`docs/45` §Permissions).
+        task_type: task_type_of(&row.task_type),
         actor_is_guest: ctx.is_guest,
     })
 }

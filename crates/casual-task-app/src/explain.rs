@@ -98,6 +98,7 @@ pub fn constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::ReporterIsActor => "reporter_is_actor",
         Constraint::IsProjectMember => "is_project_member",
         Constraint::EnvironmentIn(_) => "environment_in",
+        Constraint::TaskTypeIn(_) => "task_type_in",
         Constraint::NotExternal => "not_external",
     }
 }

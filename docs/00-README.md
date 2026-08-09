@@ -98,6 +98,7 @@ should be read before writing any code:
 | 40 | [Identity, Auth & Session](40-IDENTITY-AUTH-AND-SESSION.md) | Sessions, SSO, MFA, tokens |
 | 42 | [Frontend Architecture](42-FRONTEND-ARCHITECTURE.md) | The thin client and its budget |
 | 44 | [Product Research and Surface Briefs](44-PRODUCT-RESEARCH-AND-SURFACE-BRIEFS.md) | Who uses this, at what moment, and therefore why each screen exists |
+| 45 | [Development Lifecycle and Custody](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md) | Two clocks, the chain of custody, and what the process forces into the model |
 | 46 | [Observability & Operations](46-OBSERVABILITY-AND-OPERATIONS.md) | Signals, alerts, runbooks, SLOs |
 | 48 | [Deployment Profiles](48-DEPLOYMENT-PROFILES.md) | Single node → scaled, one security model |
 

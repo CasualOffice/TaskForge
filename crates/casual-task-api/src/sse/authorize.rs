@@ -120,6 +120,10 @@ pub async fn may_subscribe(
         reporter: Some(ctx.actor),
         actor_is_project_member: member,
         environment: None,
+        // Unset in both readings below, and deliberately: a type constraint
+        // narrows *creation*, and a stream carries tasks of every type. Naming
+        // one here would make the favourable reading favour that type alone.
+        task_type: None,
         actor_is_guest: ctx.is_guest,
     };
     if !ctx
@@ -148,6 +152,7 @@ pub async fn may_subscribe(
         reporter: None,
         actor_is_project_member: member,
         environment: None,
+        task_type: None,
         actor_is_guest: ctx.is_guest,
     };
     if !ctx
