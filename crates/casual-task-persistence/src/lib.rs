@@ -19,6 +19,7 @@ pub mod authz;
 pub mod comment;
 pub mod compile;
 pub mod dispatch;
+pub mod export;
 pub mod health;
 pub mod idempotency;
 pub mod identity;

@@ -166,6 +166,15 @@ pub mod codes {
 
     /// Version conflict.
     pub const VERSION_CONFLICT: Code = Code::new("TF-CNC-0001");
+    /// The export exists and is not finished. Distinct from `404`: "not yours"
+    /// and "not yet" are different facts, and only one of them is worth
+    /// retrying (docs/38 §Export is a job, not a request).
+    ///
+    /// `CNC` and not a new `EXP` area: docs/20 declares a closed set of areas,
+    /// and `the_area_of_every_code_is_one_the_registry_declares` refuses a code
+    /// outside it. A not-yet-ready artefact is a state conflict, which is what
+    /// this area already means.
+    pub const EXPORT_NOT_READY: Code = Code::new("TF-CNC-0004");
     /// `If-Match` required.
     pub const IF_MATCH_REQUIRED: Code = Code::new("TF-CNC-0002");
     /// Malformed `If-Match`.
@@ -246,6 +255,7 @@ pub mod codes {
         TRANSITION_FIELDS_MISSING,
         BLOCKED_BY_DEPENDENCIES,
         VERSION_CONFLICT,
+        EXPORT_NOT_READY,
         IF_MATCH_REQUIRED,
         IF_MATCH_MALFORMED,
         IDEMPOTENCY_IN_PROGRESS,

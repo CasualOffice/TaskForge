@@ -89,6 +89,28 @@ pub trait ObjectStore: Send + Sync + std::fmt::Debug {
     /// Remove an object. Idempotent — removing an absent object succeeds,
     /// because the sweeper and the infected path both re-run.
     fn delete<'a>(&'a self, key: &'a str) -> Fut<'a, ()>;
+
+    /// Append `chunk` to the object at `key`, creating it if absent.
+    ///
+    /// # Why the trait needed a write at all
+    ///
+    /// Every other method here serves the attachment pipeline (`docs/28`),
+    /// where the *client* uploads through a presigned URL and the server never
+    /// touches the bytes. An export inverts that: the server generates the
+    /// artefact, and `docs/38` requires it to stream "straight to object
+    /// storage" so the API and worker processes never hold the result set.
+    ///
+    /// Append rather than `put(key, whole_body)` for exactly that reason. A
+    /// single-shot put would mean building a 200,000-row file in memory first,
+    /// which is the bound this method exists to avoid.
+    ///
+    /// **The cost, stated:** S3 has no append. A future S3 backend implements
+    /// this as multipart upload, which imposes a 5 MiB minimum on every part
+    /// but the last — so it will have to buffer to that size internally rather
+    /// than issuing one request per call. That is a backend concern and it is
+    /// written down here so the next implementer meets it in the contract
+    /// rather than in production.
+    fn append<'a>(&'a self, key: &'a str, chunk: &'a [u8]) -> Fut<'a, ()>;
 }
 
 /// The filesystem backend (`TF_STORAGE_BACKEND=fs`).
@@ -233,6 +255,37 @@ impl ObjectStore for FilesystemStore {
         })
     }
 
+    fn append<'a>(&'a self, key: &'a str, chunk: &'a [u8]) -> Fut<'a, ()> {
+        Box::pin(async move {
+            use tokio::io::AsyncWriteExt;
+            let path = self.path_of(key)?;
+            // The key is validated by `path_of`, but its parent directories are
+            // this backend's own layout and may not exist yet. Created here
+            // rather than at job start so a caller cannot forget.
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|error| StorageError::Backend(error.to_string()))?;
+            }
+            let mut file = tokio::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .await
+                .map_err(|error| StorageError::Backend(error.to_string()))?;
+            file.write_all(chunk)
+                .await
+                .map_err(|error| StorageError::Backend(error.to_string()))?;
+            // Flushed per chunk, not per file: a worker killed mid-export must
+            // leave a partial artefact that `head` reports honestly, rather
+            // than a file whose size depends on what the OS happened to flush.
+            file.flush()
+                .await
+                .map_err(|error| StorageError::Backend(error.to_string()))?;
+            Ok(())
+        })
+    }
+
     fn read_prefix<'a>(&'a self, key: &'a str, len: usize) -> Fut<'a, Vec<u8>> {
         Box::pin(async move {
             use tokio::io::AsyncReadExt;
@@ -351,6 +404,48 @@ mod tests {
             declarations, 0,
             "ObjectStore grew a {needle} — uploads must go directly to storage, \
              or a 2 GB upload costs 2 GB of API memory"
+        );
+    }
+}
+
+#[cfg(test)]
+mod append_tests {
+    use super::*;
+
+    fn store() -> FilesystemStore {
+        let root = std::env::temp_dir().join(format!("tf-append-{}", uuid::Uuid::now_v7()));
+        FilesystemStore::new(
+            root,
+            "https://files.example.test".to_owned(),
+            "test-object-signing-secret".to_owned(),
+        )
+    }
+
+    #[tokio::test]
+    async fn appending_builds_a_file_without_holding_it_in_memory() {
+        // The property an export depends on: the artefact grows a batch at a
+        // time, so the process never holds the whole result set.
+        let store = store();
+        let key = format!("{}/export.csv", uuid::Uuid::now_v7());
+        store.append(&key, b"one\n").await.expect("first chunk");
+        store.append(&key, b"two\n").await.expect("second chunk");
+
+        let head = store.head(&key).await.expect("the object exists");
+        assert_eq!(head.byte_size, 8, "the chunks did not accumulate");
+        let bytes = store.read_prefix(&key, 64).await.expect("readable");
+        assert_eq!(String::from_utf8_lossy(&bytes), "one\ntwo\n");
+    }
+
+    #[tokio::test]
+    async fn a_key_that_escapes_its_prefix_is_refused() {
+        // The same guard the read paths have. A write is where it matters most:
+        // a key that climbed out of the root would let an export overwrite
+        // anything the process can write.
+        let store = store();
+        let escaped = store.append("../../etc/passwd", b"x").await;
+        assert!(
+            matches!(escaped, Err(StorageError::InvalidKey)),
+            "a traversing key was accepted for writing"
         );
     }
 }

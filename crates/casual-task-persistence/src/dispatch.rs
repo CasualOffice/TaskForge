@@ -143,7 +143,11 @@ impl<'t> Dispatcher<'t> {
         Ok(role.dispatcher(conn))
     }
 
-    fn conn(&mut self) -> &mut PgConnection {
+    /// `pub(crate)` for `crate::export`, which claims and updates export jobs
+    /// across tenants for the same reason `dispatch` does: a background runner
+    /// cannot know the set of workspace ids in advance. Still not public — the
+    /// bypass stays inside the crate that owns the SQL.
+    pub(crate) fn conn(&mut self) -> &mut PgConnection {
         self.conn
     }
 }

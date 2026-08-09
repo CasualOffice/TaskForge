@@ -20,6 +20,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 sqlx = { workspace = true }
 uuid = { workspace = true }
 serde_json = { workspace = true }
+time = { workspace = true }
 
 [dev-dependencies]
 casual-task-model = { workspace = true }

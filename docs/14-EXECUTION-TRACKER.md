@@ -361,6 +361,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-017 | Extension point registry (core panels only) | `Built` |
 | C-018 | Web shell, board, list, My Work, drawer, palette | `Building` |
 | C-019 | Bundle + a11y gates wired | `Built` |
+| C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
 | C-020 | Rate limiting at the edge | `Building` |
 
 - **D-050** was opened by a failing gate rather than by reading anything.

@@ -154,6 +154,7 @@ other.
 | `TF-CNC-0001` | Version conflict | 409 |
 | `TF-CNC-0002` | `If-Match` required | 428 |
 | `TF-CNC-0003` | Malformed `If-Match` | 400 |
+| `TF-CNC-0004` | Export not ready for download | 409 |
 | `TF-IDM-0001` | Request with this idempotency key is in progress | 409 |
 | `TF-IDM-0002` | Idempotency key reused with a different body | 422 |
 | `TF-IDM-0003` | Idempotency key required | 400 |

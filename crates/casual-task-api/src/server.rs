@@ -254,6 +254,17 @@ pub fn router(state: AppState) -> Router {
         // else. A stream that escaped those would be an unmetered, unlimited,
         // unidentified connection.
         .route("/api/v1/stream", get(crate::sse::stream))
+        // C-021 — export. Registered here with every other route, above the
+        // layers, for the reason this function's docs give.
+        .route(
+            "/api/v1/exports",
+            axum::routing::post(crate::exports::create),
+        )
+        .route("/api/v1/exports/{id}", get(crate::exports::read))
+        .route(
+            "/api/v1/exports/{id}/download",
+            get(crate::exports::download),
+        )
         // C-002 — workspaces, membership, teams. Registered HERE, above the
         // layers, for the reason this function's docs give: a route appended to
         // the returned Router escapes the CSRF guard and the request id.
@@ -514,6 +525,9 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/auth/logout",
     "/api/v1/auth/session",
     "/api/v1/stream",
+    "/api/v1/exports",
+    "/api/v1/exports/{id}",
+    "/api/v1/exports/{id}/download",
     "/api/v1/auth/password-reset",
     "/api/v1/auth/password-reset/confirm",
     // The route TEMPLATE, never the resolved path — `{id}` is one series, and
@@ -625,6 +639,9 @@ mod tests {
             "/api/v1/auth/logout",
             "/api/v1/auth/session",
             "/api/v1/stream",
+            "/api/v1/exports",
+            "/api/v1/exports/{id}",
+            "/api/v1/exports/{id}/download",
             "/api/v1/auth/password-reset",
             "/api/v1/auth/password-reset/confirm",
             "/api/v1/projects",
