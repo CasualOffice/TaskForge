@@ -31,6 +31,7 @@ import { useTaskFeed } from '../tasks/feed'
 import { filterFromSearch } from '../tasks/query'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
 import { CreateTask } from './CreateTask'
+import { PageHeader } from '../shell/PageHeader'
 import { WorkToolbar } from './filters/WorkToolbar'
 import { TaskGroup } from './list/TaskGroup'
 import { TaskRow } from './list/TaskRow'
@@ -81,25 +82,13 @@ export function TaskListView(): ReactElement {
   }, [feed, lastVisible])
 
   return (
-    <section className="view" aria-labelledby="list-heading">
-      <WorkToolbar
-        sort={sort}
-        onSort={setSort}
-        group={group}
-        onGroup={setGroup}
-        workflow={workflow}
-      >
-        <CreateTask projectId={search.project} />
-      </WorkToolbar>
-      <div className="view__bar view__bar--sub">
-        <h1 id="list-heading" className="view__title">
-          Tasks
-        </h1>
-        <span className="view__count">
-          {feed.rows.length}
-          {feed.hasMore ? '+' : ''} shown
-        </span>
-      </div>
+    <section className="view" aria-labelledby="page-title">
+      <PageHeader
+        title="List"
+        count={`${feed.rows.length}${feed.hasMore ? '+' : ''} shown`}
+        actions={<CreateTask projectId={search.project} />}
+      />
+      <WorkToolbar sort={sort} onSort={setSort} group={group} onGroup={setGroup} workflow={workflow} />
 
       <div className="view__body" ref={scrollRef}>
         {feed.error !== null && feed.error !== undefined ? (

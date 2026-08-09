@@ -43,24 +43,31 @@ export function TaskCard({
 }): ReactElement {
   return (
     <article className="card">
-      <div className="card__head">
-        <TypeBadge type={task.type} />
-        <span className="key">{task.key}</span>
+      {/* The title first.
+          A card is read by its summary; the key and the type are how you refer
+          to it *after* you have found it. Leading with a grey uppercase TASK
+          chip meant every card in a column opened with the same word, and the
+          eye had to step over it to reach the one line that differed. */}
+      <div className="card__top">
+        {/* An anchor, so ⌘-click opens the task in a tab from the board — the
+            gesture people use to work on three cards at once. A plain click
+            keeps the board where it is and opens the peek. */}
+        <TaskLink taskId={task.id} className="card__title" onPeek={onOpen}>
+          {task.title}
+        </TaskLink>
         {handle}
       </div>
-
-      {/* An anchor, so ⌘-click opens the task in a tab from the board — the
-          gesture people use to work on three cards at once. A plain click keeps
-          the board where it is and opens the peek. */}
-      <TaskLink taskId={task.id} className="card__title" onPeek={onOpen}>
-        {task.title}
-      </TaskLink>
 
       {task.description === null || task.description.trim() === '' ? null : (
         <p className="card__snippet">{snippet(task.description)}</p>
       )}
 
-      <TaskMeta task={task} />
+      <div className="card__foot">
+        <TypeBadge type={task.type} />
+        <span className="key">{task.key}</span>
+        <span className="card__grow" />
+        <TaskMeta task={task} />
+      </div>
     </article>
   )
 }
@@ -78,7 +85,7 @@ export function TaskMeta({ task }: { task: Task }): ReactElement | null {
   if (!showPriority && task.due_at === null) return null
 
   return (
-    <div className="card__foot">
+    <div className="card__signals">
       {showPriority ? <PriorityBadge priority={task.priority} /> : null}
       {task.due_at === null ? null : (
         <span className={overdue ? 'card__due card__due--late' : 'card__due'}>

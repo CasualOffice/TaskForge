@@ -140,6 +140,25 @@ const PAIRS: readonly Pair[] = [
   ['--tf-focus', '--tf-surface', 3, 'focus ring on a surface'],
   ['--tf-focus', '--tf-surface-subtle', 3, 'focus ring on a subtle surface'],
 
+  // The border that identifies a control (WCAG 1.4.11). These two lived in
+  // KNOWN_CONFLICTS because §5 fixed `--tf-border-strong` at #d4d4d8, which is
+  // 1.48:1 on white — the foundation contradicting itself. The redesign amended
+  // the token, which is what that block said would move them here.
+  ['--tf-border-strong', '--tf-bg', 3, 'control border on the canvas'],
+  ['--tf-border-strong', '--tf-surface-subtle', 3, 'control border on a subtle surface'],
+
+  // The interactive accent, as a filled control's ground under white ink, and
+  // as a boundary. This is the pair the orange accent could never clear.
+  ['--tf-accent-fg', '--tf-accent', 4.5, 'a primary control label on its ground'],
+  ['--tf-accent', '--tf-bg', 3, 'the accent as a boundary on the canvas'],
+  ['--tf-accent', '--tf-accent-subtle', 4.5, 'accent text on its tint'],
+
+  // The third ground the redesign introduced carries the same text as the
+  // other two, so it is held to the same thresholds.
+  ['--tf-text', '--tf-surface-sunken', 4.5, 'body text on the sunken surface'],
+  ['--tf-text-secondary', '--tf-surface-sunken', 4.5, 'secondary text on the sunken surface'],
+  ['--tf-text-muted', '--tf-surface-sunken', 4.5, 'muted text on the sunken surface'],
+
   // VISUAL-IDENTITY §7 lists the four approved mark placements. Orange on
   // white and orange on graphite are two of them; the mark is a non-text
   // graphic, so 3:1 applies (§7 "non-text UI state/boundaries").
@@ -169,10 +188,7 @@ const PAIRS: readonly Pair[] = [
  *
  * Raised for a foundation decision; see the report accompanying this branch.
  */
-const KNOWN_CONFLICTS: readonly Pair[] = [
-  ['--tf-border-strong', '--tf-bg', 3, 'control border on the canvas'],
-  ['--tf-border-strong', '--tf-surface-subtle', 3, 'control border on a subtle surface'],
-]
+const KNOWN_CONFLICTS: readonly Pair[] = []
 
 describe.each([
   ['light', LIGHT],

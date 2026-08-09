@@ -19,9 +19,15 @@
  */
 import { useEffect, useState, type ReactElement } from 'react'
 import { Link, Outlet } from '@tanstack/react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { keys } from '../api/keys'
+import { readMe } from '../api/me'
+import { listProjects } from '../api/projects'
 import { logout } from '../api/session'
+import { Popover } from './Popover'
+import { useAppSearch, useUpdateSearch } from './navigation'
+import { useWorkspaceId } from './session'
 import { CommandPalette } from '../palette/CommandPalette'
 import { SignIn } from './SignIn'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -50,22 +56,20 @@ export function AppFrame(): ReactElement {
       </a>
 
       <header className="shell__top">
-        {/* The mark lives here, with the wordmark, rather than at the head of
-            the rail: a product's identity belongs on the bar that spans the
-            window, and the rail is for destinations. It is the same file the
-            favicon uses, so the two cannot drift into two different marks. */}
+        {/* The mark lives here, with the wordmark: a product's identity belongs
+            on the bar that spans the window. It is the same file the favicon
+            uses, so the two cannot drift into two different marks. */}
         <Link to="/my-work" className="shell__brand" aria-label="TaskForge — My Work">
           <img src="/brand/taskforge-mark.svg" alt="" width={22} height={22} />
           <span className="shell__wordmark">TaskForge</span>
         </Link>
-        <WorkspaceSwitcher />
-        <span className="shell__spacer" />
         <SearchButton />
+        <span className="shell__spacer" />
         <ThemeToggle />
-        <SignOutButton onSignedOut={forget} />
+        <AccountMenu onSignedOut={forget} />
       </header>
 
-      <ProductRail />
+      <Sidebar />
 
 
       <main className="shell__main" id="main">
@@ -84,57 +88,115 @@ export function AppFrame(): ReactElement {
 }
 
 /**
- * The product rail.
+ * The sidebar: where you are, and where else you can go.
  *
- * `design/LAYOUT-AND-INTERACTION-GUIDELINES.md` §2 sizes it at 52–60 px and §3
- * keeps it to "a small set of permanent destinations". It replaced a 232 px
- * text sidebar, which spent a fifth of a 1280 px viewport on four words and
- * pushed the board into a narrower column than the content needed — §1.8 now
- * makes that a fault directly: "use the width available".
+ * # Why this replaced a 60 px icon rail
  *
- * # Why the label is still there
+ * The rail fitted a glyph with a two-word label stacked under it, and the
+ * result read as a strip of tiny icons — the pattern every product this one is
+ * measured against replaced years ago. At 240 px a destination is a row: icon
+ * beside label, sections with headings, and room for the *project* navigation
+ * that an icon rail had nowhere to put.
  *
- * An icon-only rail is a memory test. Each destination keeps a visible label
- * under its glyph — the foundation §3 warns against "tiny navigation icons",
- * and §7 requires an accessible name on an icon-only control anyway, so the
- * choice is between a label everyone can read and one only a screen reader
- * gets. 56 px is enough for both at `--tf-meta`.
+ * # Projects are navigation, not a filter
  *
- * # Search is in the header, not here
+ * A project used to be reachable only through a dropdown on the toolbar, so
+ * "open the Platform board" meant landing on a board and then narrowing it.
+ * Here a project is a place: choosing one sets the scope every view already
+ * reads from the URL, and the views under it are that project's views. The
+ * scope still lives in `?project=`, so a link is still a link and nothing about
+ * the query grammar changed — what changed is that there is now a door.
  *
- * §3 names Search a permanent destination *and* makes `Cmd/Ctrl+K` "a primary
- * interaction surface for create, jump, assign, transition, search". There is
- * one search in the product and it lives in the palette. It sits in the header
- * as a labelled button rather than in this rail: the rail is for *places*, and
- * search is not one — it is the way you get to a place. The same section's
- * warning that "command palette capability must not justify hiding essential
- * discoverable actions" is answered by that button, which names the action and
- * its shortcut, rather than by a rail entry that opened an overlay.
+ * # Why the workspace switcher sits at the top
+ *
+ * It is the outermost scope, and everything below it is inside that scope.
+ * Putting it in the header, beside the product mark, said the opposite: that
+ * the workspace is a property of the application rather than the container for
+ * the navigation under it.
  */
-function ProductRail(): ReactElement {
+function Sidebar(): ReactElement {
+  const search = useAppSearch()
+  const update = useUpdateSearch()
+  const workspaceId = useWorkspaceId()
+
+  const projects = useQuery({
+    queryKey: keys.projects(workspaceId),
+    queryFn: ({ signal }) => listProjects(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+
+  const all = projects.data?.data ?? []
+  const current = all.find((project) => project.id === search.project)
+
   return (
-    <nav className="rail" aria-label="Primary">
-      <ul className="rail__group">
-        <RailLink to="/my-work" label="My Work" icon={<IconMyWork />} />
-        <RailLink to="/" label="Tasks" icon={<IconTasks />} exact />
-        <RailLink to="/board" label="Board" icon={<IconBoard />} />
-        <RailLink to="/reports" label="Reports" icon={<IconReports />} />
+    <nav className="side" aria-label="Primary">
+      <div className="side__scope">
+        <WorkspaceSwitcher />
+      </div>
+
+      <ul className="side__group">
+        <SideLink to="/my-work" label="My work" icon={<IconMyWork />} />
+        <SideLink to="/" label="All tasks" icon={<IconTasks />} exact />
+        <SideLink to="/board" label="Board" icon={<IconBoard />} />
+        <SideLink to="/reports" label="Reports" icon={<IconReports />} />
       </ul>
 
-      {/* Settings sits at the foot, apart from the work destinations above it:
-          it is where you go to change the product rather than to use it, and the
-          separation is what keeps the group above readable as one list. It is a
-          permanent entry rather than a command because the module comment's own
-          rule — new capability adds a command — is about *capabilities*, and
-          "where do I change my password" is a destination people look for. */}
-      <ul className="rail__group rail__group--foot">
-        <RailLink to="/settings" label="Settings" icon={<IconSettings />} />
+      {all.length === 0 ? null : (
+        <>
+          <h2 className="side__heading" id="side-projects">
+            Projects
+          </h2>
+          <ul className="side__group" aria-labelledby="side-projects">
+            {all.slice(0, PROJECTS_SHOWN).map((project) => (
+              <li key={project.id}>
+                <button
+                  type="button"
+                  className="side__link"
+                  // `aria-current` and not a class alone: the styling says
+                  // "this one" to sighted users and the attribute says it to
+                  // everyone else (WCAG 2.2 §2.4.8).
+                  aria-current={project.id === search.project ? 'true' : undefined}
+                  onClick={() => update({ project: project.id })}
+                >
+                  <span className="side__key" aria-hidden="true">
+                    {project.key}
+                  </span>
+                  <span className="side__label">{project.name}</span>
+                </button>
+              </li>
+            ))}
+            {current === undefined ? null : (
+              <li>
+                <button
+                  type="button"
+                  className="side__link side__link--quiet"
+                  onClick={() => update({ project: undefined })}
+                >
+                  <span className="side__label">Clear project scope</span>
+                </button>
+              </li>
+            )}
+          </ul>
+          {all.length > PROJECTS_SHOWN ? (
+            <p className="side__more">
+              {all.length - PROJECTS_SHOWN} more — use search to reach them
+            </p>
+          ) : null}
+        </>
+      )}
+
+      <ul className="side__group side__group--foot">
+        <SideLink to="/settings" label="Settings" icon={<IconSettings />} />
       </ul>
     </nav>
   )
 }
 
-function RailLink({
+/** Enough to recognise the workspace, not so many that the sidebar scrolls. */
+const PROJECTS_SHOWN = 8
+
+function SideLink({
   to,
   label,
   icon,
@@ -147,70 +209,177 @@ function RailLink({
 }): ReactElement {
   return (
     <li>
-      {/* `activeProps` sets `aria-current`, not just a class: the styling says
-          "this one" to sighted users and the attribute says it to everyone
-          else (WCAG 2.2 §2.4.8). */}
       <Link
         to={to}
-        className="rail__link"
+        className="side__link"
         activeOptions={{ exact }}
         activeProps={{ 'aria-current': 'page' }}
       >
-        <span className="rail__icon" aria-hidden="true">
+        <span className="side__icon" aria-hidden="true">
           {icon}
         </span>
-        <span className="rail__label">{label}</span>
+        <span className="side__label">{label}</span>
       </Link>
     </li>
   )
 }
 
-/**
- * Opens the command palette, from the header.
- *
- * # Why it is a button and not the shortcut hint it replaced
- *
- * The rail used to carry a Search entry, because §3 warns that "command palette
- * capability must not justify hiding essential discoverable actions" — and the
- * thing beside it was a `⌘K` chip marked `aria-hidden`, which is decoration: a
- * pointer user could not press it and a screen-reader user never heard it. Now
- * that search has left the rail, this is the affordance that keeps it
- * discoverable, and it names the shortcut instead of only drawing it.
- *
- * It dispatches the shortcut rather than lifting the palette's open state: that
- * state belongs to `CommandPalette`, which owns the keyboard contract. The
- * synthetic event reaches the same `window` listener a real keypress does, so
- * there is exactly one code path into the palette.
- */
 function SearchButton(): ReactElement {
   return (
     <button
       type="button"
-      className="button button--quiet shell__search"
+      className="shell__search"
       onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
     >
       <span className="shell__search-icon" aria-hidden="true">
         <IconSearch />
       </span>
-      Search
+      {/* Shaped like the field it opens. A button that looks like a button
+          says "something will happen"; one shaped like a search box says what.
+          It is still a button, so it is one tab stop and one Enter. */}
+      <span className="shell__search-text">Search tasks, projects and people</span>
       <kbd aria-hidden="true">⌘K</kbd>
     </button>
   )
 }
 
-/* The rail's glyphs.
+function ThemeToggle(): ReactElement {
+  const [choice, setChoice] = useState<ThemeChoice>(() => storedChoice())
+
+  useEffect(() => {
+    apply(choice)
+  }, [choice])
+
+  const label = choice === 'system' ? 'System theme' : choice === 'light' ? 'Light theme' : 'Dark theme'
+
+  return (
+    <button
+      type="button"
+      className="button button--quiet"
+      onClick={() => setChoice(nextChoice(choice))}
+      // The button's own text is an icon-free word, but the *state* is what a
+      // screen reader needs and "Theme" alone would not carry it.
+      aria-label={`${label}. Activate to change.`}
+    >
+      {label}
+    </button>
+  )
+}
+
+/**
+ * The account control.
+ *
+ * An avatar with the person's initials rather than the word "Sign out" sitting
+ * permanently in the bar: signing out is the least frequent thing anyone does
+ * here, and giving it the most prominent position was a tell that nothing else
+ * had claimed one. The initials also answer "who am I signed in as", which the
+ * header could not previously say at all.
+ */
+function AccountMenu({ onSignedOut }: { onSignedOut: () => void }): ReactElement {
+  const client = useQueryClient()
+  const me = useQuery({ queryKey: keys.me(), queryFn: ({ signal }) => readMe(signal) })
+  const signOut = useMutation({
+    mutationFn: logout,
+    // `onSettled`, not `onSuccess`: if the request failed the credential may
+    // still be gone, and leaving a cache full of tenant data behind a possibly
+    // dead session is the wrong way to be wrong.
+    onSettled: () => {
+      onSignedOut()
+      client.clear()
+    },
+  })
+
+  const name = me.data?.display_name ?? ''
+
+  return (
+    <Popover
+      label={<Avatar name={name} />}
+      ariaLabel={name === '' ? 'Your account' : `Your account: ${name}`}
+      align="end"
+      triggerClass="shell__account"
+    >
+      {(close) => (
+        <div>
+          <p className="pop__section">
+            <strong>{name === '' ? 'Signed in' : name}</strong>
+            {me.data?.email === null || me.data?.email === undefined ? null : (
+              <>
+                <br />
+                {me.data.email}
+              </>
+            )}
+          </p>
+          <ul className="pop__list">
+            <li>
+              <Link to="/settings/profile" className="pop__item" onClick={close}>
+                Your profile
+              </Link>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="pop__item"
+                disabled={signOut.isPending}
+                onClick={() => signOut.mutate()}
+              >
+                Sign out
+              </button>
+            </li>
+          </ul>
+        </div>
+      )}
+    </Popover>
+  )
+}
+
+/**
+ * Initials on a tinted disc.
+ *
+ * Derived from the name rather than fetched: there is no avatar image in the
+ * product yet, and a grey circle with nothing in it identifies nobody. The hue
+ * is a hash of the name, so the same person is the same colour on every
+ * surface — which is the only property that makes an avatar useful at a glance.
+ */
+export function Avatar({ name, size = 24 }: { name: string; size?: number }): ReactElement {
+  const initials = name
+    .split(/\s+/)
+    .filter((part) => part !== '')
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+  let hash = 0
+  for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) % 360
+  return (
+    <span
+      className="avatar"
+      style={{
+        width: size,
+        height: size,
+        // `oklch` keeps every hue at the same lightness and chroma, so no
+        // person's disc is darker than another's and the ink stays legible.
+        background: `oklch(0.72 0.11 ${hash})`,
+        fontSize: Math.round(size * 0.42),
+      }}
+      aria-hidden="true"
+    >
+      {initials === '' ? '?' : initials}
+    </span>
+  )
+}
+
+/* The navigation glyphs.
  *
  * Inline, and drawn here rather than pulled from an icon package: ADR-024
- * budgets the initial shell, and five paths are cheaper than any library's
- * entry point. `stroke="currentColor"` so a destination's colour is decided by
- * the link's state in CSS, not by five copies of a hex value.
+ * budgets the initial shell, and six paths are cheaper than any library's entry
+ * point. `stroke="currentColor"` so a destination's colour is decided by the
+ * link's state in CSS, not by six copies of a hex value.
  *
- * 20 px is the foundation §3 navigation size; the 32 px target around it comes
- * from `.rail__link`, because §3 also says not to make the glyph the size of
- * its interaction target. */
+ * 18 px inside a 32 px row: the foundation §3 keeps the glyph and its
+ * interaction target on separate scales.
+ */
 const GLYPH = {
-  width: 20,
-  height: 20,
+  width: 18,
+  height: 18,
   viewBox: '0 0 20 20',
   fill: 'none',
   stroke: 'currentColor',
@@ -272,53 +441,5 @@ function IconSettings(): ReactElement {
       <circle cx="10" cy="10" r="2.6" />
       <path d="M10 3v1.8M10 15.2V17M17 10h-1.8M4.8 10H3M14.9 5.1l-1.3 1.3M6.4 13.6l-1.3 1.3M14.9 14.9l-1.3-1.3M6.4 6.4 5.1 5.1" />
     </svg>
-  )
-}
-
-function ThemeToggle(): ReactElement {
-  const [choice, setChoice] = useState<ThemeChoice>(() => storedChoice())
-
-  useEffect(() => {
-    apply(choice)
-  }, [choice])
-
-  const label = choice === 'system' ? 'System theme' : choice === 'light' ? 'Light theme' : 'Dark theme'
-
-  return (
-    <button
-      type="button"
-      className="button button--quiet"
-      onClick={() => setChoice(nextChoice(choice))}
-      // The button's own text is an icon-free word, but the *state* is what a
-      // screen reader needs and "Theme" alone would not carry it.
-      aria-label={`${label}. Activate to change.`}
-    >
-      {label}
-    </button>
-  )
-}
-
-function SignOutButton({ onSignedOut }: { onSignedOut: () => void }): ReactElement {
-  const client = useQueryClient()
-  const signOut = useMutation({
-    mutationFn: logout,
-    // `onSettled`, not `onSuccess`: if the request failed the credential may
-    // still be gone, and leaving a cache full of tenant data behind a possibly
-    // dead session is the wrong way to be wrong.
-    onSettled: () => {
-      onSignedOut()
-      client.clear()
-    },
-  })
-
-  return (
-    <button
-      type="button"
-      className="button button--quiet"
-      onClick={() => signOut.mutate()}
-      disabled={signOut.isPending}
-    >
-      Sign out
-    </button>
   )
 }

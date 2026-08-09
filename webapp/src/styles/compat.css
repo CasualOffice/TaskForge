@@ -23,22 +23,24 @@
  */
 
 :root {
-  /* Interactive accent. VISUAL-IDENTITY §4 makes forge orange the product's
-   * "brand mark/accent", so it carries primary affordances — but the *ink* on
-   * a filled control is `--tf-brand-strong`, because white on #d8610b is
-   * 3.2:1 and fails §7's 4.5:1 for control labels. The bright orange stays for
-   * marks and borders, where 3:1 applies. */
-  --color-accent: var(--tf-brand-strong);
-  --color-accent-hover: #8f3900;
-  --color-accent-active: #7a3100;
-  --color-accent-fg: #ffffff;
-  --color-accent-soft: var(--tf-brand-subtle);
-  --color-text-on-accent: #ffffff;
+  /* Interactive accent — blue, and distinct from the mark.
+   *
+   * The two used to be one value, so every primary button was forge orange
+   * darkened to #a94400 to get a legible white label. Splitting them means the
+   * mark stays the orange `design/favicon.svg` draws, and the accent is a blue
+   * that takes white ink at 5.07:1 without being darkened into mud. It also
+   * stops "brand" and "this control is primary" being the same signal. */
+  --color-accent: var(--tf-accent);
+  --color-accent-hover: var(--tf-accent-hover);
+  --color-accent-active: var(--tf-accent-pressed);
+  --color-accent-fg: var(--tf-accent-fg);
+  --color-accent-soft: var(--tf-accent-subtle);
+  --color-text-on-accent: var(--tf-accent-fg);
 
   --color-bg: var(--tf-bg);
   --color-surface: var(--tf-surface);
   --color-surface-alt: var(--tf-surface-subtle);
-  --color-surface-strip: var(--tf-surface-subtle);
+  --color-surface-strip: var(--tf-surface-sunken);
   --color-surface-raised: var(--tf-surface);
 
   --color-border: var(--tf-border);
