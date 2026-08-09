@@ -246,6 +246,38 @@ POST /api/v1/tasks/bulk
 - Above 100, the client is directed to the async job endpoint, which returns a
   job id and reports progress.
 
+The answer is `207` whatever the mix, all-success included: a client that must
+parse per-task results anyway should not first branch on the status line.
+
+```http
+207 Multi-Status
+{
+  "results": [
+    { "task_id": "...", "status": 200, "task": { … },
+      "undo": { "to_status_id": "<where it was>", "if_match": 8 } },
+    { "task_id": "...", "status": 409,
+      "error": { "code": "TF-CNC-0001", "message": "…", "request_id": "…" } }
+  ],
+  "succeeded": 1,
+  "failed": 1
+}
+```
+
+- `status` is what the same operation would have returned on its own endpoint,
+  and `error` is byte-for-byte the object that response carries — one renderer,
+  not two.
+- `undo` is present on every success, because a `207` where six of forty refused
+  cannot be reversed by one inverse call. It is the status the task came *from*
+  and the version it now holds: `POST` it back to
+  `/tasks/{id}/transitions` to reverse that one task.
+- **Malformed envelope → `400`; anything task-shaped → a row.** Unknown
+  operation, no tasks, a repeated task, a version for a task not in `task_ids`,
+  or over the limit are `400` — there is no row to report them on and the client
+  could have known before sending. A missing `if_match` entry is that one task's
+  `428`, not the batch's.
+- `if_match` is a map rather than a header: forty tasks are at forty versions,
+  and a single header could only be a wildcard.
+
 ## Rate limiting
 
 Per actor, per workspace, token bucket ([21](21-API-LIMITS-AND-QUOTAS.md)).

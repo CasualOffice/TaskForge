@@ -20,6 +20,7 @@
 //! handlers, which is how one endpoint ends up more permissive than the one
 //! beside it.
 
+pub mod bulk;
 pub mod crud;
 pub mod guard;
 pub mod relations;
@@ -28,6 +29,7 @@ pub mod tags;
 pub mod validate;
 pub mod wire;
 
+pub use bulk::bulk;
 pub use crud::{create, delete, list, read, update};
 pub use relations::{assign, tag, transition, unassign};
 pub use subtasks::list as subtasks_of;

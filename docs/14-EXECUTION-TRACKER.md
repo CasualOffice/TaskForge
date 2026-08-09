@@ -1607,10 +1607,57 @@ to the *task*, so the permission is `task.update` rather than `tag.manage`.
 
 **Not in C-008 yet:** dependencies (`POST /tasks/{id}/dependencies`, which needs
 the cycle check under an advisory lock from
-[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)), bulk operations, and the filter grammar
+[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)) and the filter grammar
 on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
+
+**Bulk transitions are in** (`POST /api/v1/tasks/bulk`, [05](05-API-SPEC.md)
+§Bulk operations). Selection on a board is unbuildable without it: forty cards
+dragged to Done is forty conditional requests, and the client has no way to
+report what happened to them as one outcome.
+
+**Partial success is the contract, so `207` is unconditional.** `docs/05`:
+"Bulk operations across 100 tasks with individual permission and workflow rules
+will legitimately partially fail, and all-or-nothing would make the feature
+useless." The response is `207 Multi-Status` whatever the mix — all-success and
+all-failure included — because a client that must parse per-task results anyway
+should not first have to branch on the status line to find out whether it has
+any.
+
+**Each task is its own transaction, and the test asserts it from the
+database.** A handler that answered `207` with correct counts and rolled the lot
+back would pass every status-code assertion, so the partial-success test reads
+`task.status` and the three history tables afterwards: the tasks that succeeded
+moved and wrote `activity` + `audit` + `outbox`; the one that refused wrote
+none.
+
+**The rules are `apply_transition`, not a copy of them.** The single-task
+handler was split into an HTTP wrapper and one function holding `docs/23`'s
+validation order; bulk owns the transaction and calls that function. A second
+implementation of the order would be a second thing to keep correct, and the
+order is a *specification* — the first failure is the one a user sees.
+
+**Every success carries the call that reverses it.** A `207` across forty tasks
+where six refused cannot be undone by one inverse call, so each result carries
+`undo` — the status the task came *from*, and the version it now holds. A test
+replays those without remembering anything about the before-state, which is
+exactly what a client has. `Transitioned::from_status_id` exists for this: the
+moved row no longer knows where it was.
+
+**The envelope is refused whole; anything task-shaped is a row.** An unknown
+operation, no tasks, a repeated task, a version for a task that was never named,
+or more than the 100 of [21](21-API-LIMITS-AND-QUOTAS.md) (`TF-LIM-0003`) are
+`400`, because there is nothing to report per task and the client could have
+known before sending. Not found, no permission, stale, blocked, no such
+transition — anything that can be true of one task and false of the next — is a
+row in the `207`. A missing `if_match` entry is a per-task `428` rather than a
+`400`: it is one task's problem, and refusing the batch would punish the other
+thirty-nine.
+
+**Above the limit the client is told to split.** `docs/05` directs it to the
+async job endpoint, which is C-024 and does not exist; the refusal names the
+limit rather than pointing at a URL that would 404.
 
 **Still to come before C-008 is `Gated`:** the derived-state property test
 [23](23-WORKFLOW-AND-STATE-MACHINE.md) §Acceptance gates names — a property test
