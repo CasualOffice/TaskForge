@@ -24,17 +24,15 @@
  *
  * # Two views are declared and withheld
  *
- * `My Work · Upcoming` and `My Work · Blocked` are transcribed and marked
- * unavailable, because the server answers `TF-SYS-0001` for what they need:
- * `between` with symbolic bounds is not resolved
- * (`casual-task-search/src/resolve.rs` handles `Value::Symbol` and falls through
- * `Value::Range`), and `is_blocked` compiles to a column the schema does not
- * have (`compile.rs` emits `d.blocked_task_id`; `migrations/0005_tasks.sql`
- * defines `from_task_id` / `to_task_id`).
+ * `My Work · Blocked` is transcribed and marked unavailable, because
+ * `is_blocked` compiles to a column the schema does not have (`compile.rs`
+ * emits `d.blocked_task_id`; `migrations/0005_tasks.sql` defines
+ * `from_task_id` / `to_task_id`).
  *
- * They are kept here rather than deleted so that the day those land, a view
- * appears by removing one field — and so the list of what TaskForge *means* to
- * ship does not quietly shrink to what it currently can.
+ * `My Work · Upcoming` was withheld for the same reason until `resolve.rs`
+ * learned to descend into a `between` clause's bounds; it is live now, which is
+ * what keeping it here rather than deleting it was for. The list of what
+ * TaskForge *means* to ship does not quietly shrink to what it currently can.
  */
 import type { AppSearch } from '../router'
 
@@ -70,9 +68,6 @@ export const BUILTIN_VIEWS: readonly BuiltinView[] = [
     mine: true,
     // assignee=@me AND due_at between @tomorrow..+14d
     search: { assignee: '@me', due: '@tomorrow..+14d' },
-    unavailable:
-      'The server returns TF-SYS-0001 for a date range with symbolic bounds — ' +
-      'resolve.rs does not descend into a between clause.',
   },
   {
     id: 'my-blocked',

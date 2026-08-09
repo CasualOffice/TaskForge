@@ -36,6 +36,7 @@ import { useTaskFeed } from '../../tasks/feed'
 import { filterFromSearch } from '../../tasks/query'
 import type { Group } from './grouping'
 import { TaskRow } from './TaskRow'
+import './list.css'
 
 export function TaskGroup({
   workspaceId,
