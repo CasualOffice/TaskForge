@@ -93,7 +93,7 @@ pub async fn downloadable(
 /// Refuse anything the scanner has not cleared.
 ///
 /// `docs/28` step 4 makes `CLEAN` the only verdict that produces a visible
-/// file, and D-061 makes "no scanner configured" fail closed — an attachment
+/// file, and D-062 makes "no scanner configured" fail closed — an attachment
 /// stays `PENDING` forever and is never downloadable, rather than being served
 /// unscanned.
 ///
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn an_unknown_verdict_fails_closed() {
-        // D-061's shape, one level down: the default when the system does not
+        // D-062's shape, one level down: the default when the system does not
         // know is "do not serve".
         let error = scanned_clean(&row("WHO_KNOWS"), "r").expect_err("unknown");
         assert_eq!(error.status(), StatusCode::UNPROCESSABLE_ENTITY);

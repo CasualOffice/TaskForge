@@ -231,6 +231,29 @@ than a clean abandon.
    database slowdown into a full outage by queueing every request onto a saturated
    server.
 
+## The attachment scan default (D-062 — proposed, needs countersign)
+
+An attachment is not visible until a scan clears it
+([28](28-ATTACHMENT-PIPELINE.md) §The invariant). What happens when a deployment
+has **no scanner** was never stated: `docs/28` says "ClamAV by default,
+pluggable" and [48](48-DEPLOYMENT-PROFILES.md) lists `scan` as a worker job with
+no configuration key.
+
+**Proposed: fail closed.** No scanner ⇒ `scan_status` stays `PENDING` ⇒ the file
+is never downloadable, and the download endpoint answers `409 TF-ATT-0007`
+("still being scanned") rather than `404`, so the person who uploaded it is told
+to wait instead of that their file vanished.
+
+**The cost, stated.** A single-node deployment that has not configured a scanner
+can upload files and cannot download them. That is a visible, diagnosable
+failure. The alternative — treating "no scanner" as "clean" — makes the
+invariant above false while every test and every document continues to assert
+it, which is the failure mode that cannot be diagnosed at all.
+
+This is **not settled**: it trades a working default against a true one, which
+is a product decision. It is implemented fail-closed because that is the safe
+direction to be wrong in while it is decided.
+
 ## Acceptance gates
 
 - **Lost-update test** — two concurrent `PATCH`es with the same `If-Match`; exactly
