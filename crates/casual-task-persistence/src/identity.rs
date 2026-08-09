@@ -327,6 +327,32 @@ pub async fn record_auth_event(
 // Migration 0019 gives it the same `SECURITY DEFINER` seam the credential
 // lookup already had.
 
+/// The address on an account, or `None` if it has none.
+///
+/// `NULL` once the account is anonymized (ADR-026), which is why this is an
+/// `Option` rather than a `String`: an anonymized account has no address, and
+/// must therefore **fail** an invitation's address comparison rather than match
+/// an empty string nobody was invited at.
+///
+/// Unscoped, like everything else keyed on a person — `user_account` is the one
+/// table without a `workspace_id`.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn email_of(
+    conn: &mut sqlx::PgConnection,
+    user_id: Uuid,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT email::text FROM user_account WHERE id = $1 AND is_tombstone = false",
+    )
+    .bind(user_id)
+    .fetch_optional(conn)
+    .await
+    .map(Option::flatten)
+}
+
 /// How long a password-reset token is valid. `docs/40` §Local authentication:
 /// "Reset tokens: single-use, **1 h**, hashed at rest, invalidated by password
 /// change."

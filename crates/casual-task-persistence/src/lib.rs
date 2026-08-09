@@ -19,6 +19,7 @@ pub mod dispatch;
 pub mod health;
 pub mod idempotency;
 pub mod identity;
+pub mod invitation;
 pub mod project;
 pub mod scoped;
 pub mod task;
