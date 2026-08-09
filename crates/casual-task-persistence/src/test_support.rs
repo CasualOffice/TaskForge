@@ -758,6 +758,43 @@ pub async fn add_blocker(
     Ok(())
 }
 
+/// Rebuild one task's search document, as the projection consumer would.
+///
+/// The consumer itself lives in `casual-task-worker` and is exercised by its
+/// own test. This is for the API tests, whose subject is the *query* path: they
+/// need a populated `task_search` and should not have to run a dispatch loop to
+/// get one.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn index_task(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    task_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let scope = casual_task_model::WorkspaceScope::for_job(
+        casual_task_model::WorkspaceId::from_uuid(workspace_id),
+    );
+    let mut tx = pool.begin().await?;
+    let mut scoped = crate::Scoped::apply(&mut tx, &scope).await?;
+    let indexed = crate::search::refresh(&mut scoped, task_id).await?;
+    tx.commit().await?;
+    Ok(indexed)
+}
+
+/// How many rows the search projection holds for a workspace.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn indexed_count(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT count(*) FROM task_search WHERE workspace_id = $1")
+        .bind(workspace_id)
+        .fetch_one(pool)
+        .await
+}
+
 /// Age every outstanding claim past [`crate::dispatch::CLAIM_EXPIRY`].
 ///
 /// Simulates the passage of time so a test does not have to spend it. Testing
