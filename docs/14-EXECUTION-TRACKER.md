@@ -355,7 +355,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-014 | Cursor pagination | `Building` |
 | C-015 | SSE + fan-out | `Building` |
 | C-016 | Notifications (in-app + email) | `Building` |
-| C-017 | Extension point registry (core panels only) | Accepted |
+| C-017 | Extension point registry (core panels only) | `Built` |
 | C-018 | Web shell, board, list, My Work, drawer, palette | Accepted |
 | C-019 | Bundle + a11y gates wired | Accepted |
 | C-020 | Rate limiting at the edge | `Building` |
@@ -1598,6 +1598,53 @@ means would be the second one. `<` on a date is `before`, on `priority` it is
 `lt`, and the field's own type decides. `status`, `assignee`, `priority`,
 `state`, `type`, dates and tags all reach the compiler now; `project_id` is kept
 as an alias for the grammar's `project` because it shipped in C-006.
+
+**C-017 is `Built`.** The extension point registry ships in Phase 1 for the
+reason [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) opens with: a seam only
+plugins use is a seam nobody has tested, "and we find that out in Phase 1, not
+Phase 3". So the core's own drawer panels, card badges, project tabs, palette
+commands and settings sections are registered as ordinary `Provider::Core`
+contributions and travel the same path a vendor's will. A test asserts every
+frontend point has at least one core contribution, so a point that nothing
+exercises fails the build rather than waiting for the first third party to find
+it.
+
+**The closed set is checked against the design record in both directions.**
+Adding a row to either of [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md)'s two
+tables is an ADR trigger (ADR-009), and a table that drifts from the code is
+worse than no table — it is a contract two teams read differently. The tables
+are parsed at test time: a variant with no documented row fails, and a
+documented row with no variant fails. The surface (backend or frontend) is read
+from *which* table a point is in rather than restated in code, so a point that
+moves between them cannot keep the old surface.
+
+**What it deliberately does not ship is the payload.** A panel's load URL, an
+action's handler — none of it. Phase 1 has no third party to learn the shape
+from, and a compatibility contract guessed a phase early is worse than one
+written a phase late. What is fixed now is the part later phases cannot change:
+who contributed, to which point, under what name, and what the host does when
+the contribution fails.
+
+**ADR-017's fail-open default is a type, not a convention.** `Bounds::for_point`
+is the only constructor, so no call site can pick its own timeout and drift from
+the 500 ms the document fixes; opting a plugin into fail-closed is spelled
+`failing_closed_at_the_cost_of_blocking_work`, because the cost belongs at the
+call site and not in a comment. A test asserts every point defaults to open —
+if that ever inverts, one broken integration stops every team.
+
+**Registration is build-once-then-frozen.** `RegistryBuilder::build` consumes
+the builder, so there is no path from a live `Registry` back to a mutable one: a
+contribution cannot appear halfway through a render, and nothing holds a `&mut`
+across an `await`. Per point the registry is bounded at 64, and the overflow
+policy is named per [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) §D-040 — the
+newcomer is refused, because dropping an existing contribution to make room
+silently disables a feature a workspace was relying on. A duplicate key is
+refused for the same reason rather than overwriting.
+
+**Still to come before C-017 is `Gated`:** the frontend half. C-018 renders the
+drawer's panels and the palette's entries *from* this registry rather than from
+a hard-coded list; until it does, the core exercises the contract in Rust only,
+which proves the shape but not the rendering.
 
 ### D-043: not closed, and the honest answer
 

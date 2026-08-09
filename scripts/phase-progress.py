@@ -190,7 +190,12 @@ def main() -> int:
         print("README.md updated")
         return 0
 
-    print(block)
+    # No flag: preview what --write would splice in, without touching the file.
+    # This printed an undefined name until now — the branch nothing in CI takes,
+    # which is exactly the branch that reaches a person debugging by hand.
+    print(render())
+    print()
+    print(render_landed())
     return 0
 
 
