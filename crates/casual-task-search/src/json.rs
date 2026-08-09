@@ -17,14 +17,14 @@
 //! **A symbol and a literal are both strings.** `"@me"` and `"WR-125"` are
 //! indistinguishable in JSON, and getting it wrong is not cosmetic — a symbol
 //! left unresolved reaches the database as the four characters `"@me"`, which is
-//! the failure [`crate::resolve`]'s own documentation calls out. Both surfaces
-//! therefore classify through [`filter::is_symbolic`], so `@me` means the same
+//! the failure [`crate::resolve`](mod@crate::resolve)'s own documentation calls out. Both surfaces
+//! therefore classify through [`crate::filter::is_symbolic`], so `@me` means the same
 //! thing whichever door it came through.
 //!
 //! **A list and a range are both arrays.** `["ACTIVE","PLANNED"]` and
 //! `["@today","+7d"]` have the same JSON shape. The *operator* disambiguates
 //! them: `between` takes a range and everything else takes a list. That is not a
-//! convention invented here — it is what [`filter::Field::operators`] already
+//! convention invented here — it is what [`crate::filter::Field::operators`] already
 //! permits, so a value shaped one way under an operator that wants the other is
 //! refused rather than guessed at.
 //!

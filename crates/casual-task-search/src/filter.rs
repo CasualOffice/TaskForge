@@ -148,7 +148,7 @@ impl Operator {
 /// Whether a raw value is a symbol rather than a literal.
 ///
 /// `@name`, or a signed relative offset (`+7d`, `-3mo`). The sign is required on
-/// the relative form — [`crate::resolve`] demands it too, so an unsigned `7d`
+/// the relative form — [`crate::resolve`](mod@crate::resolve) demands it too, so an unsigned `7d`
 /// stays a literal and fails as the malformed date it is rather than resolving
 /// to something the user did not write.
 ///
