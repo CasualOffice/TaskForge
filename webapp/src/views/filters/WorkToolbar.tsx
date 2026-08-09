@@ -44,6 +44,7 @@ import { useQuery } from '@tanstack/react-query'
 import { keys } from '../../api/keys'
 import { listProjects } from '../../api/projects'
 import { PRIORITIES, SORT_KEYS, TASK_TYPES, type Sort, type SortKey } from '../../api/tasks'
+import type { Workflow } from '../../api/workflow'
 import { directory, listMembers } from '../../api/workspaces'
 import { useAppSearch, useUpdateSearch } from '../../shell/navigation'
 import { useWorkspaceId } from '../../shell/session'
@@ -56,6 +57,7 @@ import { describeFilters } from './describe'
 import { FilterMenu, FilterSelect, type FilterOption } from './FilterMenu'
 import { MoreFilters } from './MoreFilters'
 import { ViewsMenu } from './ViewsMenu'
+import { GROUP_KEYS, GROUP_LABELS, groupUnavailable, type GroupKey } from '../list/grouping'
 
 /** Long enough that a typist does not fire a request per letter, short enough to feel live. */
 const DEBOUNCE_MS = 250
@@ -76,11 +78,19 @@ const SORT_LABELS: Readonly<Record<SortKey, string>> = {
 export function WorkToolbar({
   sort,
   onSort,
+  group,
+  onGroup,
+  workflow: groupWorkflow,
   children,
 }: {
   /** Absent on the board, which is ordered by board rank and by nothing else. */
   sort?: Sort
   onSort?: (next: Sort) => void
+  /** Absent on the board, whose columns already are the grouping. */
+  group?: GroupKey | undefined
+  onGroup?: (next: GroupKey | undefined) => void
+  /** Needed to name the status groups, and to say why they are unavailable. */
+  workflow?: Workflow | undefined
   /** The create control, which the ordering puts last. */
   children?: ReactNode
 }): ReactElement {
@@ -249,6 +259,37 @@ export function WorkToolbar({
 
         <MoreFilters search={search} onChange={update} />
       </div>
+
+      {/* ── Group ──────────────────────────────────────────────────────── */}
+      {onGroup === undefined ? null : (
+        <>
+          <label className="visually-hidden" htmlFor="toolbar-group">
+            Group by
+          </label>
+          <select
+            id="toolbar-group"
+            className={`select toolbar__sort${group === undefined ? '' : ' filter__select--on'}`}
+            value={group ?? ''}
+            onChange={(event) =>
+              onGroup(event.target.value === '' ? undefined : (event.target.value as GroupKey))
+            }
+          >
+            <option value="">No grouping</option>
+            {GROUP_KEYS.map((key) => {
+              // A key whose values cannot be enumerated yet is offered disabled
+              // with the reason, rather than silently absent — a missing option
+              // reads as a capability the product lacks.
+              const why = groupUnavailable(key, groupWorkflow)
+              return (
+                <option key={key} value={key} disabled={why !== undefined}>
+                  {`Group by ${GROUP_LABELS[key].toLowerCase()}`}
+                  {why === undefined ? '' : ' — needs a project'}
+                </option>
+              )
+            })}
+          </select>
+        </>
+      )}
 
       {/* ── Sort ───────────────────────────────────────────────────────── */}
       {sort === undefined || onSort === undefined ? null : (

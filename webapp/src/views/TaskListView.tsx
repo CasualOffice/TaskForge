@@ -19,20 +19,22 @@
  * of divs would need four ARIA attributes per row to say the same thing, and the
  * fourth is the one that gets forgotten.
  */
-import { useEffect, useMemo, useRef, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
-import type { Sort, SortKey, Task, TaskQuery } from '../api/tasks'
+import type { Sort, SortKey, TaskQuery } from '../api/tasks'
 import { ErrorNotice } from '../shell/notice'
 import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { useWorkspaceId } from '../shell/session'
 import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskFeed } from '../tasks/feed'
-import { formatRelative, isOverdue } from '../tasks/present'
-import { PriorityBadge, TypeBadge } from '../tasks/TaskCard'
 import { filterFromSearch } from '../tasks/query'
+import { useProjectWorkflow } from '../tasks/useWorkflow'
 import { CreateTask } from './CreateTask'
 import { WorkToolbar } from './filters/WorkToolbar'
+import { TaskGroup } from './list/TaskGroup'
+import { TaskRow } from './list/TaskRow'
+import { groupsFor, type GroupKey } from './list/grouping'
 import { TaskDrawer } from '../drawer/TaskDrawer'
 import { useSortPreference } from './sorting'
 
@@ -45,6 +47,11 @@ export function TaskListView(): ReactElement {
   const search = useAppSearch()
   const openTask = useOpenTask()
   const [sort, setSort] = useSortPreference()
+  const [group, setGroup] = useState<GroupKey | undefined>(undefined)
+  const { workflow } = useProjectWorkflow(search.project)
+  // Empty unless grouping is on. Each group runs its own keyset-paged query —
+  // see `list/grouping.ts` for why the page is never grouped in the browser.
+  const groups = group === undefined ? [] : groupsFor(group, workflow)
 
   // Every filter the toolbar set, translated once in `tasks/query.ts` so the
   // list, the board and My Work cannot disagree about what the address means.
@@ -75,7 +82,13 @@ export function TaskListView(): ReactElement {
 
   return (
     <section className="view" aria-labelledby="list-heading">
-      <WorkToolbar sort={sort} onSort={setSort}>
+      <WorkToolbar
+        sort={sort}
+        onSort={setSort}
+        group={group}
+        onGroup={setGroup}
+        workflow={workflow}
+      >
         <CreateTask projectId={search.project} />
       </WorkToolbar>
       <div className="view__bar view__bar--sub">
@@ -110,24 +123,46 @@ export function TaskListView(): ReactElement {
               <SortableHeader label="Updated" column="updated_at" sort={sort} onSort={setSort} />
             </tr>
           </thead>
-          <tbody
-            className="list__body"
-            style={{ height: virtualizer.getTotalSize(), position: 'relative', display: 'block' }}
-          >
-            {items.map((item) => {
-              const task = feed.rows[item.index]
-              if (task === undefined) return null
-              return (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  top={item.start}
-                  height={item.size}
-                  onOpen={openTask}
-                />
-              )
-            })}
-          </tbody>
+          {groups.length > 0 ? (
+            // One `<tbody>` per group, each with its own query and cursor. The
+            // columns, the sort and the rows are the table's own — grouping is a
+            // structural feature of it, not a second list beside it.
+            groups.map((entry) => (
+              <TaskGroup
+                key={entry.id}
+                workspaceId={workspaceId}
+                group={entry}
+                search={search}
+                sort={sort}
+                onOpen={openTask}
+              />
+            ))
+          ) : (
+            <tbody
+              className="list__body"
+              style={{ height: virtualizer.getTotalSize(), position: 'relative', display: 'block' }}
+            >
+              {items.map((item) => {
+                const task = feed.rows[item.index]
+                if (task === undefined) return null
+                return (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    onOpen={openTask}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: item.size,
+                      transform: `translateY(${item.start}px)`,
+                    }}
+                  />
+                )
+              })}
+            </tbody>
+          )}
         </table>
 
         {feed.isPending ? <p className="empty">Loading tasks…</p> : null}
@@ -145,55 +180,6 @@ export function TaskListView(): ReactElement {
 
       {search.task === undefined ? null : <TaskDrawer taskId={search.task} />}
     </section>
-  )
-}
-
-function TaskRow({
-  task,
-  top,
-  height,
-  onOpen,
-}: {
-  task: Task
-  top: number
-  height: number
-  onOpen: (id: string) => void
-}): ReactElement {
-  return (
-    <tr
-      className="list__row"
-      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height, transform: `translateY(${top}px)` }}
-    >
-      <td className="list__cell list__cell--type">
-        <TypeBadge type={task.type} />
-      </td>
-      <td className="list__cell list__cell--key">
-        {/* A button, not a row-level click handler: a clickable `<tr>` is not
-            reachable by keyboard and announces nothing. */}
-        <button type="button" className="list__open" onClick={() => onOpen(task.id)}>
-          <span className="key">{task.key}</span>
-        </button>
-      </td>
-      <td className="list__cell list__cell--title">
-        <button type="button" className="list__open list__open--title" onClick={() => onOpen(task.id)}>
-          {task.title}
-        </button>
-      </td>
-      <td className="list__cell">
-        {/* `NONE` renders as nothing — see `tasks/TaskCard.tsx`. A pill reading
-            "None" on most rows occupies the position where a signal would be,
-            so the eye stops checking it and misses the URGENT. */}
-        {task.priority === 'NONE' ? null : <PriorityBadge priority={task.priority} />}
-      </td>
-      <td className={`list__cell${isOverdue(task) ? ' list__cell--overdue' : ''}`}>
-        {task.due_at === null ? (
-          '—'
-        ) : (
-          <time dateTime={task.due_at}>{formatRelative(task.due_at)}</time>
-        )}
-      </td>
-      <td className="list__cell">{formatRelative(task.updated_at)}</td>
-    </tr>
   )
 }
 
