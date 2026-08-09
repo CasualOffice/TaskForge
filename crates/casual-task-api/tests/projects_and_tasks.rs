@@ -758,9 +758,14 @@ async fn the_page_size_and_the_query_parameters_are_bounded() -> Result<()> {
         assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
         assert_eq!(body["error"]["code"], "TF-QRY-0007");
     }
+    // TF-QRY-0001, not the generic TF-VAL-0002: since C-012 the list endpoint
+    // reads unrecognised query parameters as filter fields, so a typo'd `limit`
+    // genuinely *is* an unknown filter field, and that code's docs URL points at
+    // the grammar the client needs. The property docs/05 requires is unchanged —
+    // the typo is refused rather than silently ignored.
     let (status, body, _) = caller.get("/api/v1/tasks?limt=10").await?;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert_eq!(body["error"]["code"], "TF-VAL-0002");
+    assert_eq!(body["error"]["code"], "TF-QRY-0001");
 
     let (status, body, _) = caller.get("/api/v1/tasks?cursor=!!!nonsense!!!").await?;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
