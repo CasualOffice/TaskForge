@@ -24,13 +24,14 @@
 //! a gap notice past it, the 100 ms coalescing window, the 30 s heartbeat, and
 //! revalidation on `authz_epoch` change.
 //!
-//! **What is not proven end to end:** no test drives `GET /api/v1/stream` over
-//! HTTP and reads frames off the body. Each mechanism is asserted where it lives
-//! — authorization in [`authorize`], replay and fan-out in
-//! `casual_task_infra::broadcast`, coalescing in [`coalesce`], revocation in
-//! [`revalidate`] against a real database — but their *assembly* in [`endpoint`]
-//! is covered by construction rather than by assertion. That is why `docs/14`
-//! records C-015 as `Built` and not `Gated`, in the same words.
+//! Each mechanism is asserted where it lives — authorization in [`authorize`],
+//! replay and fan-out in `casual_task_infra::broadcast`, coalescing in
+//! [`coalesce`], revocation in [`revalidate`] — and their **assembly** is
+//! asserted from outside, in `tests/sse_stream.rs`, which opens a real stream
+//! and reads frames off the body. That last one is what makes the ordering
+//! claims testable at all: that a replayed backlog precedes live frames, and
+//! that a burst collapses to one frame on the wire rather than merely in a
+//! buffer.
 
 pub mod authorize;
 pub mod coalesce;

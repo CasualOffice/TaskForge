@@ -354,7 +354,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | `Built` |
 | C-014 | Cursor pagination | `Building` |
-| C-015 | SSE + fan-out | `Built` |
+| C-015 | SSE + fan-out | **Gated** |
 | C-016 | Notifications (in-app + email) | `Building` |
 | C-017 | Extension point registry (core panels only) | `Built` |
 | C-018 | Web shell, board, list, My Work, drawer, palette | `Building` |
@@ -1132,8 +1132,9 @@ The step's own comment argued for "every ignored test in the crate, not one
 named file"; the same argument applies a level up, and the C-011 gate lives in a
 different crate.
 
-Still missing before `Gated`: the six consumers themselves (C-013, C-015,
-C-016), the sweep's scheduling under a leader lease, and metric *emission* —
+Still missing before `Gated`: five of the six consumers (C-013, C-016 and the
+Phase 3 pair — `sse_fanout` landed with C-015), the sweep's scheduling under a
+leader lease, and metric *emission* —
 the registry declares the series and `dispatch` computes the readings, but
 nothing exports them yet (F-009 is `Built`, not `Gated`).
 
@@ -1273,7 +1274,7 @@ published numbers. The second is that `client_ip` is duplicated from
 `casual-task-api/src/auth.rs`, where it is private; the copy is marked as
 temporary in both directions and the follow-up is to delete the one in `auth.rs`.
 
-**C-015 is `Building`.** Two people on the same board now see each other's
+**C-015 is `Gated`.** Two people on the same board now see each other's
 changes. The path is the one [25](25-EVENTS-OUTBOX-AND-AUDIT.md) was built for:
 `UnitOfWork::record` writes the event, the dispatcher claims it, and
 `sse_fanout` — the first of the six consumers to exist — publishes it to an
@@ -1362,21 +1363,33 @@ A drag emits one event type repeatedly, so the case that document is about is
 fully covered. Flagged rather than settled silently — if the intent was to
 collapse across types, one line changes it.
 
-**C-015 is `Built`, not `Gated`, and here is exactly what stops it.** No test
-drives `GET /api/v1/stream` over HTTP and reads frames off the response body.
-Every mechanism is asserted where it lives — the permission filter in
-`sse::authorize`, fan-out and replay in `casual-task-infra`, the window in
-`sse::coalesce`, revocation against a real database in `tests/sse_revocation.rs`
-— and CI runs all of it, including the Docker-backed suites. What is unproven is
-their *assembly*: that the handler emits the gap notice before any live frame,
-that a replayed backlog precedes live events, and that a second workspace's
-subscriber receives nothing through the endpoint rather than merely through the
-hub.
+**C-015 is `Gated`.** The gap this row declared — nothing drove
+`GET /api/v1/stream` over HTTP and read frames off the body — is closed by
+`crates/casual-task-api/tests/sse_stream.rs`, which CI runs with every other
+Docker-backed suite. It asserts the *assembly* the per-mechanism tests could not
+see:
 
-Closing it needs a fixture that creates a workspace, a role granting `task.read`,
-a project and a workflow, then reads an SSE body incrementally. That is test
-scaffolding, not a design question, and it is the single item between `Built` and
-`Gated` for this row.
+- a subscriber receives a live frame, carrying the event's own id as `id:` —
+  which is what a client sends back as `Last-Event-ID`;
+- a forty-event drag on one task arrives as **one** frame with the final
+  payload, and no second frame follows;
+- a reconnect with `Last-Event-ID` replays exactly what was missed, in order,
+  **before** any live frame, and the stream then keeps delivering;
+- a stream is fed its own project and nothing else — asserted against both a
+  same-project-different-workspace topic and a same-workspace-different-project
+  one, which is the pair a comparison that dropped either half would leak
+  through.
+
+Each of those is a bounded wait on bytes rather than a status code, because the
+interesting half of "one frame" is the frame that must **not** arrive. Two of the
+four carry a counterweight publish afterwards, so an assertion about silence
+cannot pass against a stream that is simply dead.
+
+The fixture shares **one** `AppState` between the router and the publisher. Every
+other test file in this crate builds a router per caller, which here would mean
+publishing into a hub nobody is subscribed to and asserting that no frames
+arrive — a false pass, and the reason that choice is commented at the fixture
+rather than left to be re-derived.
 
 **C-001 is unblocked.** ADR-032 is Accepted, which is what this document's
 `Accepted` requires — "design final **and** its ADRs Accepted". It carries two
