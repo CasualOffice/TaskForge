@@ -17,7 +17,19 @@
 #     important as — the database role not being a superuser (migration 0012).
 
 # ---------------------------------------------------------------------------
-# Stage 1 — dependency cache
+# Stage 1 — browser application
+# ---------------------------------------------------------------------------
+FROM node:24-bookworm-slim AS web-builder
+WORKDIR /build/webapp
+
+RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
+COPY webapp/package.json webapp/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY webapp ./
+RUN pnpm build
+
+# ---------------------------------------------------------------------------
+# Stage 2 — Rust dependency cache
 # ---------------------------------------------------------------------------
 FROM rust:1.96-slim-bookworm AS planner
 WORKDIR /build
@@ -46,7 +58,7 @@ RUN set -eux; \
     cargo build --release --locked --bin casual-task-api --bin casual-task-worker
 
 # ---------------------------------------------------------------------------
-# Stage 2 — build
+# Stage 3 — Rust build
 # ---------------------------------------------------------------------------
 FROM planner AS builder
 WORKDIR /build
@@ -62,13 +74,14 @@ RUN find crates tools -name '*.rs' -exec touch {} + \
  && strip target/release/casual-task-api target/release/casual-task-worker
 
 # ---------------------------------------------------------------------------
-# Stage 3 — runtime
+# Stage 4 — runtime
 # ---------------------------------------------------------------------------
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 
 # Migrations ship IN the image so the version of the schema and the version of
 # the code that expects it can never disagree (docs/48 §Migrations on deploy).
 COPY --from=builder /build/migrations /app/migrations
+COPY --from=web-builder /build/webapp/dist /app/webapp
 COPY --from=builder /build/target/release/casual-task-api    /usr/local/bin/taskforge-api
 COPY --from=builder /build/target/release/casual-task-worker /usr/local/bin/taskforge-worker
 
@@ -76,6 +89,7 @@ COPY --from=builder /build/target/release/casual-task-worker /usr/local/bin/task
 # cannot silently promote the process to root.
 USER 65532:65532
 WORKDIR /app
+ENV TF_WEB_ROOT=/app/webapp
 
 EXPOSE 8080
 

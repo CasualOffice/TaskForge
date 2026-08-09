@@ -576,7 +576,7 @@ justification:
 
 | Column | Why JSONB is correct |
 | --- | --- |
-| `workspace.settings` | Sparse, admin-only, never queried by field |
+| `workspace.settings` | Sparse, admin-only, never queried by field. `appearance.primary_color` is canonical `#RRGGBB`, defaults at the API to `#2563EB`, and is validated for 4.5:1 contrast against white ([54](54-PREMIUM-WEBAPP-DESIGN-SYSTEM.md)). |
 | `saved_view.filter` / `.sort` | A typed grammar with recursive shape ([27](27-FILTER-AND-SAVED-VIEW-DSL.md)); validated on write |
 | `automation_rule.*` | Same — a rule tree, never queried by field |
 | `*_event.changes` / `payload` | Heterogeneous by definition; read whole |

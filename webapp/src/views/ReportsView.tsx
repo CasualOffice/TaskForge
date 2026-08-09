@@ -11,23 +11,30 @@
  * that rather than rendering an empty chart.
  */
 import type { ReactElement } from 'react'
+import { Link } from '@tanstack/react-router'
 
-import { GapNotice } from '../shell/notice'
+import { EmptyState } from '../shell/EmptyState'
+import { ReportsIllustration } from '../shell/illustrations'
 
 export default function ReportsView(): ReactElement {
   return (
-    <section className="view" aria-labelledby="reports-heading">
-      <div className="view__bar">
-        <h1 id="reports-heading" className="view__title">
-          Reports
-        </h1>
-      </div>
-      <div className="view__body reports">
-        {/* One line, in the reader's language. The reason this route exists
-            before its contents do — it is a lazy chunk from the first commit, so
-            splitting it later is not a budget regression disguised as a refactor
-            — is an engineering fact and belongs in this comment, not on screen. */}
-        <GapNotice what="Reports are not built yet." />
+    <section className="view reports-page" aria-labelledby="reports-heading">
+      <header className="work-page-header">
+        <div>
+          <p className="work-page-header__eyebrow">Insights</p>
+          <h1 id="reports-heading">Reports</h1>
+          <p>Turn saved views into focused measures without crowding daily work.</p>
+        </div>
+      </header>
+      <div className="view__body reports-page__body">
+        <div className="reports-page__empty">
+          <EmptyState
+            illustration={<ReportsIllustration />}
+            title="Reporting is being prepared."
+            detail="Your work remains available in Tasks and My Work while this capability is completed."
+            actions={<Link to="/" className="button button--primary">Review tasks</Link>}
+          />
+        </div>
       </div>
     </section>
   )

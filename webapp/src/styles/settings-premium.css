@@ -1,0 +1,213 @@
+/* Premium treatment for the administration route. The upstream settings file
+ * owns structure; this layer aligns its visual language with the application
+ * shell while keeping scrolling inside the route surface. */
+
+.settings {
+  gap: 0;
+  background: var(--tf-bg);
+}
+
+.settings__nav {
+  padding: var(--tf-space-6) var(--tf-space-4);
+  border-right: 1px solid var(--tf-border);
+  background: var(--tf-surface);
+  scrollbar-width: thin;
+}
+
+.settings__title {
+  margin: 0 0 var(--tf-space-5);
+  padding-inline: var(--tf-space-2);
+  color: var(--tf-text);
+  font: var(--tf-surface-title);
+  letter-spacing: -0.02em;
+}
+
+.settings__list {
+  gap: var(--tf-space-1);
+}
+
+.settings__link {
+  gap: 1px;
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--tf-radius-control);
+  transition:
+    border-color var(--tf-motion-hover) var(--tf-ease),
+    background var(--tf-motion-hover) var(--tf-ease),
+    color var(--tf-motion-hover) var(--tf-ease);
+}
+
+.settings__link:hover {
+  border-color: var(--tf-border);
+  background: var(--tf-bg);
+}
+
+.settings__link[aria-current='page'] {
+  border-color: color-mix(in srgb, var(--tf-primary) 22%, var(--tf-border));
+  background: color-mix(in srgb, var(--tf-primary) 8%, var(--tf-bg));
+  color: var(--tf-primary);
+}
+
+.settings__link-label {
+  font: var(--tf-control-text);
+}
+
+.settings__link-detail {
+  overflow: hidden;
+  color: var(--tf-text-muted);
+  font: var(--tf-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings__panel {
+  width: 100%;
+  max-width: none;
+  padding: var(--tf-space-8) clamp(var(--tf-space-5), 4vw, var(--tf-space-12));
+  background: var(--tf-bg);
+  scrollbar-width: thin;
+}
+
+.settings__section {
+  width: min(100%, 58rem);
+  margin: 0 0 var(--tf-space-4);
+  padding: var(--tf-space-5);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-card);
+  background: var(--tf-bg);
+}
+
+.settings__section:last-child {
+  border: 1px solid var(--tf-border);
+}
+
+.settings__section-head {
+  margin-bottom: var(--tf-space-5);
+}
+
+.settings__section-title {
+  color: var(--tf-text);
+  font: var(--tf-section-title);
+}
+
+.settings__section-desc {
+  color: var(--tf-text-secondary);
+  font: var(--tf-body);
+}
+
+.settings__row {
+  min-height: var(--tf-control-touch);
+  padding: var(--tf-space-2) 0;
+  border-color: var(--tf-border);
+}
+
+.settings__row-main {
+  color: var(--tf-text);
+  font: var(--tf-card-title);
+}
+
+.settings__row-meta {
+  color: var(--tf-text-muted);
+  font: var(--tf-meta);
+}
+
+.settings__nested {
+  border-color: color-mix(in srgb, var(--tf-primary) 28%, var(--tf-border));
+}
+
+.settings__permission-group {
+  padding: var(--tf-space-4);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-control);
+  background: var(--tf-surface);
+}
+
+.settings__permission {
+  min-height: var(--tf-control-comfortable);
+  padding: var(--tf-space-1) 0;
+}
+
+.settings__permission-key,
+.settings__permission-help {
+  font: var(--tf-meta);
+}
+
+.settings__matrix-scroll {
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-control);
+  scrollbar-width: thin;
+}
+
+.settings__matrix {
+  width: 100%;
+  background: var(--tf-bg);
+}
+
+.settings__matrix th,
+.settings__matrix td {
+  height: var(--tf-control-comfortable);
+  padding: var(--tf-space-1) var(--tf-space-2);
+  border-color: var(--tf-border);
+}
+
+.settings__matrix th {
+  background: var(--tf-surface);
+  color: var(--tf-text-secondary);
+  font: var(--tf-meta);
+}
+
+@media (max-width: 720px) {
+  .settings {
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .settings__nav {
+    display: flex;
+    align-items: center;
+    gap: var(--tf-space-3);
+    padding: var(--tf-space-2) var(--tf-space-3);
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--tf-border);
+  }
+
+  .settings__title {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    font: var(--tf-section-title);
+  }
+
+  .settings__list {
+    width: max-content;
+    flex-direction: row;
+  }
+
+  .settings__link {
+    min-height: var(--tf-control-comfortable);
+    justify-content: center;
+    padding: var(--tf-space-2) var(--tf-space-3);
+    white-space: nowrap;
+  }
+
+  .settings__link-detail {
+    display: none;
+  }
+
+  .settings__panel {
+    height: 100%;
+    padding: var(--tf-space-4);
+    overflow-y: auto;
+  }
+
+  .settings__section {
+    padding: var(--tf-space-4);
+  }
+
+  .settings__section-head {
+    flex-direction: column;
+  }
+}

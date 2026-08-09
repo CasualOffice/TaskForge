@@ -50,6 +50,35 @@ resolves to an `AuthContext { actor, workspace, scope }`, which is the only way 
 Workspace is determined by the path or an `X-Workspace-Id` header, and is
 validated against membership on every request — never trusted from the client.
 
+### Workspaces and appearance
+
+```
+GET    /api/v1/workspaces                  list memberships
+POST   /api/v1/workspaces                  create
+GET    /api/v1/workspaces/{id}             read (returns ETag)
+PATCH  /api/v1/workspaces/{id}             update name/appearance (If-Match)
+```
+
+The list and read representations include the aggregate `version` and a typed
+appearance object:
+
+```json
+{
+  "id": "0192…",
+  "name": "Platform",
+  "slug": "platform",
+  "version": 4,
+  "appearance": { "primary_color": "#2563EB" },
+  "created_at": "2026-08-09T08:00:00Z"
+}
+```
+
+`PATCH` accepts `name`, `appearance`, or both. An empty body is
+`400 TF-VAL-0003`. Appearance contains only `primary_color`, canonical
+`#RRGGBB`; unknown keys are refused. The colour must clear 4.5:1 against white
+or the whole patch is `400 TF-VAL-0004`. Updating either field requires
+`workspace.manage` and follows the aggregate concurrency contract.
+
 ## Core endpoints
 
 ### Tasks

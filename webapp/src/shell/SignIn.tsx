@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { login } from '../api/session'
 import { ErrorNotice } from './notice'
+import { SignInIllustration } from './illustrations'
 
 export function SignIn(): ReactElement {
   const client = useQueryClient()
@@ -41,50 +42,82 @@ export function SignIn(): ReactElement {
 
   return (
     <main className="signin">
-      <form className="signin__card" onSubmit={submit} aria-labelledby="signin-heading">
-        <h1 id="signin-heading" className="signin__title">
-          TaskForge
-        </h1>
-        <p className="field__hint">Sign in to continue.</p>
-
-        <div className="field">
-          <label className="field__label" htmlFor="signin-email">
-            Email
-          </label>
-          <input
-            id="signin-email"
-            className="input"
-            type="email"
-            name="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
+      <section className="signin__story" aria-labelledby="signin-story-heading">
+        <div className="signin__brand">
+          <img src="/brand/taskforge-mark.svg" alt="" width={34} height={34} />
+          <h1>TaskForge</h1>
         </div>
-
-        <div className="field">
-          <label className="field__label" htmlFor="signin-password">
-            Password
-          </label>
-          <input
-            id="signin-password"
-            className="input"
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
+        <div className="signin__story-copy">
+          <p className="signin__eyebrow">Clarity for every moving part</p>
+          <h2 id="signin-story-heading">Move work forward without losing context.</h2>
+          <p className="signin__story-detail">
+            Plan, discuss, and deliver from one focused workspace built for teams that value momentum.
+          </p>
+          <ul className="signin__benefits">
+            <li>See ownership and progress at a glance</li>
+            <li>Keep decisions connected to the work</li>
+            <li>Navigate quickly with keyboard-first actions</li>
+          </ul>
         </div>
+        <SignInIllustration />
+      </section>
 
-        {attempt.isError ? <ErrorNotice error={attempt.error} /> : null}
+      <section className="signin__access" aria-label="Account access">
+        <form
+          className="signin__card"
+          onSubmit={submit}
+          aria-labelledby="signin-heading"
+          aria-busy={attempt.isPending}
+        >
+          <div className="signin__form-heading">
+            <p className="signin__kicker">Welcome back</p>
+            <h2 id="signin-heading" className="signin__title">Sign in to your workspace</h2>
+            <p>Enter your account details to continue.</p>
+          </div>
 
-        <button className="button button--primary signin__submit" type="submit" disabled={attempt.isPending}>
-          {attempt.isPending ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+          <div className="field">
+            <label className="field__label" htmlFor="signin-email">Email</label>
+            <input
+              id="signin-email"
+              className="input signin__input"
+              type="email"
+              name="email"
+              autoComplete="username"
+              inputMode="email"
+              placeholder="you@company.com"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label className="field__label" htmlFor="signin-password">Password</label>
+            <input
+              id="signin-password"
+              className="input signin__input"
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
+
+          {attempt.isError ? <ErrorNotice error={attempt.error} /> : null}
+
+          <button
+            className="button button--primary signin__submit"
+            type="submit"
+            disabled={attempt.isPending}
+          >
+            {attempt.isPending ? 'Signing in…' : 'Sign in'}
+          </button>
+          <p className="signin__privacy">Your session is protected and stays private to this device.</p>
+        </form>
+      </section>
     </main>
   )
 }

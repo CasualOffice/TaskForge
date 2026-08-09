@@ -31,7 +31,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 
 import type { TaskQuery } from '../../api/tasks'
 import { FILTER_KEYS, type AppSearch } from '../../router'
-import { EmptyState } from '../../shell/EmptyState'
+import { EmptyState, Skeleton } from '../../shell/EmptyState'
 import { ErrorNotice } from '../../shell/notice'
 import { useTaskFeed } from '../../tasks/feed'
 import { filterFromSearch } from '../../tasks/query'
@@ -132,7 +132,7 @@ export function BoardColumn({
 
       <div className="column__body" ref={scrollRef}>
         {feed.error != null ? <ErrorNotice error={feed.error} /> : null}
-        {feed.isPending ? <p className="field__hint">Loading…</p> : null}
+        {feed.isPending ? <Skeleton rows={3} label={`Loading ${column.title} tasks`} /> : null}
         {!feed.isPending && feed.rows.length === 0 && feed.error == null ? (
           // LAYOUT §10: operational, not decorative. A column reading "Nothing
           // here." is indistinguishable from one whose query failed, and it

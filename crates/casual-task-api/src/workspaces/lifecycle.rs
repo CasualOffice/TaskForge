@@ -1,4 +1,4 @@
-//! Creating, listing, reading and renaming a workspace.
+//! Creating, listing, reading and updating a workspace.
 //!
 //! `create` is the one endpoint in the product that mints authority — it grants
 //! the creator Owner in the same transaction (D-054). That is why it lives
@@ -8,11 +8,12 @@
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use casual_task_model::{AuthContext, WorkspaceId};
+use casual_task_model::{AuthContext, WorkspaceId, permission};
 use casual_task_persistence::workspace as repo;
 use casual_task_persistence::{Change, Scoped, UnitOfWork};
 
 use super::*;
+use crate::context::Context;
 use crate::error::{ApiError, codes};
 use crate::json::ValidJson;
 use crate::middleware::{Authenticated, WorkspaceMember};
@@ -222,7 +223,7 @@ pub async fn read(
     ))
 }
 
-/// `PATCH /api/v1/workspaces/{workspace_id}` — rename.
+/// `PATCH /api/v1/workspaces/{workspace_id}` — update name and/or appearance.
 ///
 /// `If-Match` is required (`docs/05` §Concurrency): a client that forgets it
 /// gets `428`, not a silently applied unconditional write.
@@ -231,28 +232,52 @@ pub async fn read(
 ///
 /// [`ApiError`] 428 without `If-Match`, 409 against a stale version, 404 if the
 /// workspace is gone, 400 for a bad name, or a database failure.
-pub async fn rename(
+pub async fn update(
     State(state): State<AppState>,
     member: WorkspaceMember,
     request_id: RequestId,
     headers: HeaderMap,
-    ValidJson(body): ValidJson<RenameWorkspace>,
+    ValidJson(body): ValidJson<UpdateWorkspace>,
 ) -> Result<Response, ApiError> {
     let request_id = request_id.0;
     let expected = if_match(&headers, &request_id)?;
-    let name = valid_name(&body.name, &request_id)?;
+    let name = body
+        .name
+        .as_deref()
+        .map(|value| valid_name(value, &request_id))
+        .transpose()?;
+    let primary_color = body
+        .appearance
+        .as_ref()
+        .map(|appearance| valid_primary_color(&appearance.primary_color, &request_id))
+        .transpose()?;
+    if name.is_none() && primary_color.is_none() {
+        return Err(ApiError::bad_request(
+            codes::MISSING_FIELD,
+            "Provide name, appearance, or both",
+            &request_id,
+        )
+        .with_details(serde_json::json!({ "required_any": ["name", "appearance"] })));
+    }
 
     let mut tx = begin(&state, &request_id).await?;
     let mut scoped = scope_of(&mut tx, &member, &request_id).await?;
+    let context = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    crate::unit::authorized(
+        context
+            .authority
+            .may_in_workspace(permission::WORKSPACE_MANAGE),
+        &request_id,
+    )?;
 
     let before = repo::read(&mut scoped)
         .await
         .map_err(|error| internal(&error, "reading the workspace", &request_id))?
         .ok_or_else(|| ApiError::not_found(&request_id))?;
 
-    let Some(after) = repo::rename(&mut scoped, name, expected)
+    let Some(after) = repo::update(&mut scoped, name, primary_color.as_deref(), expected)
         .await
-        .map_err(|error| internal(&error, "renaming the workspace", &request_id))?
+        .map_err(|error| internal(&error, "updating the workspace", &request_id))?
     else {
         // It was there a statement ago, so this is a version conflict rather
         // than a disappearance. `docs/24` requires the loser to be told which
@@ -268,6 +293,22 @@ pub async fn rename(
         })));
     };
 
+    let before_primary = workspace_body(&before).appearance.primary_color;
+    let after_primary = workspace_body(&after).appearance.primary_color;
+    let mut activity = serde_json::Map::new();
+    if name.is_some() {
+        activity.insert(
+            "name".to_owned(),
+            serde_json::json!({ "from": before.name, "to": after.name }),
+        );
+    }
+    if primary_color.is_some() {
+        activity.insert(
+            "appearance.primary_color".to_owned(),
+            serde_json::json!({ "from": before_primary, "to": after_primary }),
+        );
+    }
+
     let who = provenance_member(&member, &request_id, &headers);
     UnitOfWork::record(
         &mut scoped,
@@ -275,19 +316,28 @@ pub async fn rename(
             aggregate_type: "workspace".to_owned(),
             aggregate_id: after.id,
             project_id: None,
-            event_type: "workspace.renamed".to_owned(),
-            activity_changes: serde_json::json!({ "name": { "from": before.name, "to": after.name } }),
+            event_type: "workspace.updated".to_owned(),
+            activity_changes: serde_json::Value::Object(activity.clone()),
             audit_changes: serde_json::json!({
-                "before": { "name": before.name },
-                "after": { "name": after.name },
+                "before": {
+                    "name": before.name,
+                    "appearance": { "primary_color": before_primary },
+                },
+                "after": {
+                    "name": after.name,
+                    "appearance": { "primary_color": after_primary },
+                },
             }),
-            payload: serde_json::json!({ "workspace_id": after.id, "name": after.name }),
+            payload: serde_json::json!({
+                "workspace_id": after.id,
+                "changed_fields": activity.keys().collect::<Vec<_>>(),
+            }),
             schema_version: SCHEMA_VERSION,
         },
         &who,
     )
     .await
-    .map_err(|error| internal(&error, "recording the rename", &request_id))?;
+    .map_err(|error| internal(&error, "recording the workspace update", &request_id))?;
 
     commit(tx, &request_id).await?;
     Ok(with_etag(

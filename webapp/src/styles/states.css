@@ -1,0 +1,195 @@
+/* Shell lifecycle, empty-state artwork, and workspace appearance controls.
+ * These change when operational states do, independently of work views. */
+
+.boot-state,
+.auth-state {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 50% 36%, color-mix(in srgb, var(--tf-primary) 7%, transparent), transparent 34rem),
+    var(--tf-bg);
+}
+
+.boot-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--tf-space-3);
+  color: var(--tf-text-secondary);
+  font: var(--tf-control-text);
+}
+
+.auth-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--tf-space-6);
+}
+
+.auth-state__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  align-self: flex-start;
+  color: var(--tf-text);
+  font: var(--tf-card-title);
+}
+
+.auth-state > .empty-state {
+  margin: auto;
+  align-items: center;
+  text-align: center;
+}
+
+.empty-state__illustration {
+  width: clamp(120px, 17vw, 180px);
+  color: var(--tf-text-secondary);
+  margin-bottom: var(--tf-space-2);
+}
+
+.empty-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.empty-illustration__wash {
+  fill: color-mix(in srgb, var(--tf-primary) 8%, var(--tf-surface));
+}
+
+.empty-illustration__paper {
+  fill: var(--tf-surface);
+  stroke: var(--tf-border-strong);
+  stroke-width: 1.5;
+}
+
+path.empty-illustration__paper {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.empty-illustration__line,
+.empty-illustration__spark {
+  stroke: var(--tf-text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.empty-illustration__primary {
+  fill: var(--tf-primary);
+}
+
+.empty-illustration__primary-stroke {
+  stroke: var(--tf-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.empty-illustration__check {
+  fill: none;
+  stroke: var(--tf-on-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.appearance-panel {
+  width: min(300px, calc(100vw - 32px));
+  padding: var(--tf-space-4);
+  display: grid;
+  gap: var(--tf-space-4);
+}
+
+.appearance-panel__title,
+.appearance-panel__hint {
+  margin: 0;
+}
+
+.appearance-panel__title {
+  color: var(--tf-text);
+  font: var(--tf-card-title);
+}
+
+.appearance-panel__hint {
+  margin-top: var(--tf-space-1);
+  color: var(--tf-text-secondary);
+  font: var(--tf-meta);
+}
+
+.appearance-panel__swatches {
+  display: flex;
+  gap: var(--tf-space-2);
+}
+
+.appearance-panel__swatch {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 3px solid var(--tf-surface);
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: 0 0 0 1px var(--tf-border-strong);
+  cursor: pointer;
+}
+
+.appearance-panel__swatch[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--tf-focus);
+}
+
+.appearance-panel__picker {
+  min-height: var(--tf-control-comfortable);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+  color: var(--tf-text-secondary);
+  font: var(--tf-control-text);
+}
+
+.appearance-panel__picker input {
+  width: 48px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--tf-border-strong);
+  border-radius: var(--tf-radius-control);
+  background: var(--tf-surface);
+}
+
+.appearance-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--tf-space-2);
+}
+
+@media (max-width: 767px) {
+  .auth-state {
+    padding: var(--tf-space-4);
+  }
+
+  .empty-state__illustration {
+    width: clamp(96px, 36vw, 140px);
+  }
+
+  .top-action {
+    min-width: var(--tf-control-touch);
+    min-height: var(--tf-control-touch);
+  }
+}
+
+@media (forced-colors: active) {
+  .empty-illustration__wash,
+  .empty-illustration__primary {
+    fill: Canvas;
+    stroke: CanvasText;
+    stroke-width: 2;
+  }
+
+  .empty-illustration__check,
+  .empty-illustration__primary-stroke,
+  .empty-illustration__line,
+  .empty-illustration__spark,
+  .empty-illustration__paper {
+    stroke: CanvasText;
+  }
+}

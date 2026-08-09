@@ -102,6 +102,7 @@ TF_SECRET_KEY                required — CSRF token binding (ADR-032). NOT cook
                              the session cookie is opaque and unsigned
 TF_STORAGE_BACKEND           fs | s3            (default fs)
 TF_STORAGE_PATH              ./data/attachments
+TF_WEB_ROOT                  unset outside the production image; `/app/webapp` in the image
 TF_S3_*                      endpoint, bucket, region, credentials
 TF_ATTACHMENT_ORIGIN         required in prod — the separate user-content origin
 TF_REDIS_URL                 optional; required with >1 api instance

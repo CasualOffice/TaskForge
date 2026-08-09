@@ -21,6 +21,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactElement,
@@ -31,6 +32,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { keys } from '../api/keys'
 import { readSession, type SessionView } from '../api/session'
 import { listWorkspaces, type Workspace } from '../api/workspaces'
+import { applyWorkspacePrimary } from './appearance'
 
 /** Where the chosen workspace survives a reload. */
 const STORED_WORKSPACE = 'taskforge.workspace'
@@ -39,9 +41,15 @@ interface SessionState {
   /** `null` once the session query has answered and nobody is signed in. */
   readonly actor: SessionView | null
   readonly loading: boolean
+  /** The credential was not rejected; its status could not be checked. */
+  readonly sessionUnavailable: boolean
+  /** The actor is signed in; their workspace directory could not be loaded. */
+  readonly workspacesUnavailable: boolean
   readonly workspaces: readonly Workspace[]
   readonly workspace: Workspace | undefined
   readonly chooseWorkspace: (id: string) => void
+  readonly retrySession: () => void
+  readonly retryWorkspaces: () => void
   /** Drops every cached tenant row. Called after logout, never speculatively. */
   readonly forget: () => void
 }
@@ -73,6 +81,10 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     enabled: signedIn,
     staleTime: 60_000,
   })
+  const refetchSession = session.refetch
+  const refetchWorkspaces = workspaces.refetch
+  const retrySession = useCallback(() => void refetchSession(), [refetchSession])
+  const retryWorkspaces = useCallback(() => void refetchWorkspaces(), [refetchWorkspaces])
 
   const available = useMemo(() => workspaces.data?.data ?? [], [workspaces.data])
 
@@ -84,6 +96,36 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     () => available.find((candidate) => candidate.id === chosen) ?? available[0],
     [available, chosen],
   )
+
+  // A stale stored tenant is a preference, never authority. Once the current
+  // list answers, replace an unavailable choice and share the correction with
+  // the next tab/reload.
+  useEffect(() => {
+    if (!workspaces.isSuccess) return
+    if (workspace === undefined) {
+      localStorage.removeItem(STORED_WORKSPACE)
+      if (chosen !== null) setChosen(null)
+      return
+    }
+    if (chosen !== workspace.id) {
+      setChosen(workspace.id)
+      localStorage.setItem(STORED_WORKSPACE, workspace.id)
+    }
+  }, [chosen, workspace, workspaces.isSuccess])
+
+  useEffect(() => {
+    applyWorkspacePrimary(workspace?.appearance?.primary_color)
+  }, [workspace?.appearance?.primary_color])
+
+  // A workspace switch in another tab updates presentation context without
+  // sharing any credential or tenant response body through browser storage.
+  useEffect(() => {
+    function onStorage(event: StorageEvent): void {
+      if (event.key === STORED_WORKSPACE) setChosen(event.newValue)
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const chooseWorkspace = useCallback(
     (id: string) => {
@@ -107,19 +149,27 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     () => ({
       actor: session.data ?? null,
       loading: session.isPending || (signedIn && workspaces.isPending),
+      sessionUnavailable: session.isError,
+      workspacesUnavailable: signedIn && workspaces.isError,
       workspaces: available,
       workspace,
       chooseWorkspace,
+      retrySession,
+      retryWorkspaces,
       forget,
     }),
     [
       session.data,
       session.isPending,
+      session.isError,
       signedIn,
       workspaces.isPending,
+      workspaces.isError,
       available,
       workspace,
       chooseWorkspace,
+      retrySession,
+      retryWorkspaces,
       forget,
     ],
   )

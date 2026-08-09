@@ -48,19 +48,15 @@ info 5.23:1, success 5.96:1, warning 5.37:1, danger 6.51:1, extension 7.63:1.
 The gain is that a tinted surface is now a supported way to carry status, not
 that a broken palette was repaired.
 
-## The one open item
+## Control-boundary contrast amendment
 
-`--tf-border` measures **1.34:1** on the canvas and §7 requires **3:1** for
-control boundaries. Fine for a decorative hairline; not fine for the edge of a
-control. The intent is that a control's boundary is carried by the E1 ring in §6
-rather than by that token — but until a control-boundary token exists that
-measures 3:1, §7 is not satisfiable as written.
-
-Recorded in `DESIGN-FOUNDATION.md` §5 rather than resolved here, because it is a
-decision about the palette and not about this file.
+`--tf-border` remains the 1.34:1 decorative hairline. The 2026-08-09 amendment
+adds `--tf-border-strong` for control boundaries; it clears 3:1 against canvas
+and subtle surfaces in light and dark presentation. The contrast suite now
+holds those pairs as blocking tests rather than a known exception.
 
 ## Status
 
-The design is accepted. **The client is not built to it yet** — the web client
-is paused while the backend is brought to a mergeable state, and
+The design is accepted. The client foundation, responsive states, and
+workspace appearance path are `Building` under C-025 and C-026;
 `docs/13-PARITY-CHECKLIST.md` scores what actually exists.

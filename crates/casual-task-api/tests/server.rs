@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::body::{Body, to_bytes};
-use axum::http::{Request, StatusCode};
-use casual_task_api::server::{AppState, REQUEST_ID_HEADER, router};
+use axum::http::{Request, StatusCode, header};
+use casual_task_api::server::{AppState, REQUEST_ID_HEADER, router, router_with_web};
 use casual_task_observability::recorder::Recorder;
 use tower::ServiceExt;
 
@@ -100,6 +100,76 @@ async fn body_string(response: axum::response::Response) -> String {
         .await
         .expect("body");
     String::from_utf8(bytes.to_vec()).expect("utf-8")
+}
+
+#[tokio::test]
+async fn browser_routes_fall_back_without_hiding_missing_assets_or_api_paths() {
+    let (state, _) = unreachable_database();
+    let root = std::env::temp_dir().join(format!("tf-web-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(root.join("assets")).expect("asset directory");
+    std::fs::create_dir_all(root.join("brand")).expect("brand directory");
+    std::fs::write(root.join("index.html"), "<main>TaskForge shell</main>").expect("index");
+    std::fs::write(root.join("assets/app-123.js"), "export {};").expect("asset");
+    std::fs::write(root.join("brand/mark.svg"), "<svg/>").expect("brand");
+    std::fs::write(root.join("favicon.svg"), "<svg/>").expect("favicon");
+    let app = router_with_web(state, &root).expect("valid web root");
+
+    let navigate = |uri: &'static str| {
+        Request::builder()
+            .uri(uri)
+            .header(header::ACCEPT, "text/html,application/xhtml+xml")
+            .body(Body::empty())
+            .expect("request")
+    };
+
+    for route in ["/board", "/my-work", "/tasks/0192"] {
+        let response = app
+            .clone()
+            .oneshot(navigate(route))
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK, "{route}");
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL),
+            Some(&"no-cache".parse().expect("header"))
+        );
+        assert!(body_string(response).await.contains("TaskForge shell"));
+    }
+
+    let asset = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/assets/app-123.js")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("asset response");
+    assert_eq!(asset.status(), StatusCode::OK);
+    assert!(
+        asset
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.contains("immutable"))
+    );
+
+    for missing in [
+        "/assets/missing.js",
+        "/missing.js",
+        "/api/v1/missing",
+        "/health/missing",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(navigate(missing))
+            .await
+            .expect("missing response");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{missing}");
+    }
+
+    std::fs::remove_dir_all(root).expect("remove test web root");
 }
 
 #[tokio::test]

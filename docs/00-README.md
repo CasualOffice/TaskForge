@@ -106,6 +106,8 @@ should be read before writing any code:
 | --- | --- | --- |
 | 50 | [Runbooks](50-RUNBOOKS.md) | Symptom → diagnosis → action, per incident |
 | 52 | [Deployment Guide](52-DEPLOYMENT-GUIDE.md) | How to actually run it: image, compose, upgrade, backup |
+| 54 | [Premium Webapp Design System](54-PREMIUM-WEBAPP-DESIGN-SYSTEM.md) | White-canvas UI, configurable accent, responsive rules, empty states |
+| 56 | [SPA Session and Route Restoration](56-SPA-SESSION-AND-ROUTE-RESTORATION.md) | Refresh-safe auth, URL restoration, and production history fallback |
 
 ## Status
 

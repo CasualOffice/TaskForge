@@ -13,6 +13,7 @@
  * own file so the surfaces being built in parallel are not one merge
  * conflict. */
 @import './patterns.css';
+@import './states.css';
 /* Administration. Structure only — see the file's own comment on why it carries
  * no decoration. */
 @import './settings.css';
@@ -202,7 +203,7 @@ body {
  * move to the comfortable/touch tier. The rail becomes a bottom bar — the
  * thumb reaches the bottom of a phone, not the left edge — and grows to the
  * 44 px touch target the foundation §2 requires. */
-@media (max-width: 720px) {
+@media (max-width: 767px) {
   .shell {
     grid-template-columns: 1fr;
     grid-template-rows: var(--tf-global-bar-h) 1fr auto;
@@ -516,33 +517,6 @@ kbd {
   overflow: auto;
 }
 
-/* ── Sign in ─────────────────────────────────────────────────────────────── */
-
-.signin {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  padding: var(--space-4);
-}
-.signin__card {
-  width: min(360px, 100%);
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-raised);
-}
-.signin__title {
-  margin: 0;
-  font-size: var(--text-xl);
-  letter-spacing: -0.02em;
-}
-.signin__submit {
-  width: 100%;
-  justify-content: center;
-  margin-top: var(--space-3);
-}
-
 .workspace__select {
   width: auto;
   max-width: 220px;
@@ -780,51 +754,6 @@ kbd {
   font-weight: 600;
 }
 
-/* ── My Work ─────────────────────────────────────────────────────────────── */
-
-.mywork {
-  padding: var(--space-3) var(--space-4);
-}
-.lenses {
-  display: flex;
-  gap: var(--space-1);
-}
-.mywork__list {
-  list-style: none;
-  margin: var(--space-3) 0 0;
-  padding: 0;
-}
-.mywork__row {
-  display: grid;
-  grid-template-columns: 88px 88px minmax(0, 1fr) 92px 140px;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-2) var(--space-2);
-  border: 0;
-  border-bottom: 1px solid var(--color-divider);
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.mywork__row:hover {
-  background: var(--color-hover);
-}
-.mywork__title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mywork__due {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-.mywork__due--late {
-  color: var(--color-danger);
-  font-weight: 600;
-}
 .reports {
   padding: var(--space-4);
 }
@@ -1278,13 +1207,6 @@ kbd {
   gap: var(--space-2);
   justify-content: center;
   margin-top: var(--space-3);
-}
-/* A gap is a footnote. Above the content it would outrank the content, which is
- * the mistake the board's old "choose a project" banner made. */
-.mywork__footnote {
-  margin-top: var(--space-6);
-  opacity: 0.75;
-  font-size: var(--text-xs);
 }
 /* Status names are authored by the workspace — "In Progress", not "IN PROGRESS".
  * Shouting someone's own words back at them is not a style choice. */

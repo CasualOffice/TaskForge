@@ -122,6 +122,11 @@ answerable ([46](46-OBSERVABILITY-AND-OPERATIONS.md)).
 versions are delivered during a deprecation window, so a plugin pinned to v1
 keeps working.
 
+`workspace.updated` schema version 1 carries `workspace_id` and a bounded
+`changed_fields` list containing `name` and/or `appearance.primary_color`
+([54](54-PREMIUM-WEBAPP-DESIGN-SYSTEM.md)). Display values belong in activity
+and audit; the fan-out payload names what cache representation changed.
+
 **Payloads carry IDs and changed fields, never whole entities.** A subscriber
 that wants the task fetches it with its own token — which means the event cannot
 leak fields the subscriber is not allowed to see.

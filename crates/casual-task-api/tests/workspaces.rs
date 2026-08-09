@@ -418,6 +418,97 @@ async fn a_rename_is_conditional_on_the_version_the_caller_read() -> Result<()> 
 
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
+async fn workspace_appearance_is_typed_accessible_conditional_and_atomic() -> Result<()> {
+    let db = schema_harness::TestDatabase::start().await?;
+    let app = app(db.pool.clone());
+    let owner = sign_up(&app, &db.pool, "appearance-owner@example.test").await?;
+    let member = sign_up(&app, &db.pool, "appearance-member@example.test").await?;
+    let (workspace, etag) = create_workspace(&app, &owner, "appearance").await?;
+    let uri = format!("/api/v1/workspaces/{workspace}");
+
+    let added = send(
+        &app,
+        request(
+            &owner,
+            "POST",
+            &format!("/api/v1/workspaces/{workspace}/members"),
+        )
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "user_id": member.user_id }).to_string()))?,
+    )
+    .await?;
+    assert_eq!(added.status(), StatusCode::CREATED);
+
+    let unauthorized = send(
+        &app,
+        request(&member, "PATCH", &uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::IF_MATCH, &etag)
+            .body(Body::from(
+                json!({ "appearance": { "primary_color": "#1D4ED8" } }).to_string(),
+            ))?,
+    )
+    .await?;
+    assert_eq!(unauthorized.status(), StatusCode::FORBIDDEN);
+
+    let too_light = send(
+        &app,
+        request(&owner, "PATCH", &uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::IF_MATCH, &etag)
+            .body(Body::from(
+                json!({ "appearance": { "primary_color": "#FFFF00" } }).to_string(),
+            ))?,
+    )
+    .await?;
+    assert_eq!(too_light.status(), StatusCode::BAD_REQUEST);
+    let refusal = json_body(too_light).await?;
+    assert_eq!(refusal["error"]["code"], "TF-VAL-0004");
+    assert_eq!(
+        refusal["error"]["details"]["field"],
+        "appearance.primary_color"
+    );
+
+    let updated = send(
+        &app,
+        request(&owner, "PATCH", &uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::IF_MATCH, &etag)
+            .body(Body::from(
+                json!({ "appearance": { "primary_color": "#1d4ed8" } }).to_string(),
+            ))?,
+    )
+    .await?;
+    assert_eq!(updated.status(), StatusCode::OK);
+    let next_etag = updated
+        .headers()
+        .get(header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .context("appearance ETag")?
+        .to_owned();
+    assert_ne!(next_etag, etag);
+    let body = json_body(updated).await?;
+    assert_eq!(body["appearance"]["primary_color"], "#1D4ED8");
+    assert!(body["version"].is_number());
+
+    let history = test_support::history(&db.pool, workspace).await?;
+    assert_eq!(
+        history.activity.last().map(String::as_str),
+        Some("workspace.updated")
+    );
+    assert_eq!(
+        history.audit.last().map(String::as_str),
+        Some("workspace.updated")
+    );
+    assert_eq!(
+        history.outbox.last().map(String::as_str),
+        Some("workspace.updated")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
 async fn every_mutation_writes_its_history_in_the_same_transaction() -> Result<()> {
     // ADR-006, docs/25: the domain change, its activity row, its audit row and
     // its outbox event commit together or not at all. A membership change with

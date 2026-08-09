@@ -1,0 +1,249 @@
+/* Fixed authenticated chrome. Route components own any scrolling they need. */
+
+.shell {
+  grid-template-columns: var(--tf-rail-w) minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--tf-bg);
+}
+
+.shell__top {
+  position: relative;
+  z-index: 5;
+  gap: var(--tf-space-4);
+  min-width: 0;
+  padding: 0 var(--tf-space-5);
+  border-bottom: 1px solid var(--tf-border);
+  background: var(--tf-bg);
+}
+
+.shell__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  color: var(--tf-text);
+  text-decoration: none;
+}
+
+.shell__wordmark {
+  padding: 0;
+  font: var(--tf-section-title);
+  letter-spacing: -0.025em;
+}
+
+.workspace__select {
+  min-width: 132px;
+  max-width: 220px;
+  height: var(--tf-control-comfortable);
+  padding-inline: var(--tf-space-3);
+  border-color: var(--tf-border);
+  background: var(--tf-surface);
+  font: var(--tf-control-text);
+}
+
+.workspace__single {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tf-control-default);
+  padding: 0 var(--tf-space-3);
+  border-left: 1px solid var(--tf-border);
+  color: var(--tf-text-secondary);
+  font: var(--tf-control-text);
+}
+
+.shell-search {
+  width: min(300px, 27vw);
+  min-height: var(--tf-control-comfortable);
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: 0 var(--tf-space-2) 0 var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-control);
+  background: var(--tf-surface);
+  color: var(--tf-text-muted);
+  font: var(--tf-control-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.shell-search:hover {
+  border-color: var(--tf-border-strong);
+  background: var(--tf-bg);
+}
+
+.shell-search svg {
+  width: var(--tf-icon-dense);
+  height: var(--tf-icon-dense);
+}
+
+.shell-search > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-search__keys {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.shell-search__keys kbd {
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.shell__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-1);
+}
+
+.shell__actions .button {
+  min-height: var(--tf-control-comfortable);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding-inline: var(--tf-space-3);
+  font: var(--tf-control-text);
+  white-space: nowrap;
+}
+
+.shell__actions svg {
+  width: var(--tf-icon-dense);
+  height: var(--tf-icon-dense);
+}
+
+.top-action__swatch {
+  width: var(--tf-icon-dense);
+  height: var(--tf-icon-dense);
+  border: 2px solid var(--tf-bg);
+  border-radius: 50%;
+  background: var(--tf-primary);
+  box-shadow: 0 0 0 1px var(--tf-border-strong);
+}
+
+.rail {
+  position: static;
+  justify-content: flex-start;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-4) var(--tf-space-1);
+  overflow: hidden;
+  border-right: 1px solid var(--tf-border);
+  background: var(--tf-surface);
+}
+
+.rail__mark {
+  display: none;
+}
+
+.rail__group {
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+
+.rail__group--foot {
+  margin-top: auto;
+}
+
+.rail__link {
+  width: 52px;
+  min-height: 52px;
+  padding: var(--tf-space-1) 0;
+  border: 1px solid transparent;
+  color: var(--tf-text-muted);
+}
+
+.rail__link:hover {
+  border-color: var(--tf-border);
+  background: var(--tf-bg);
+}
+
+.rail__link[aria-current='page'] {
+  border-color: color-mix(in srgb, var(--tf-primary) 20%, var(--tf-border));
+  background: color-mix(in srgb, var(--tf-primary) 8%, var(--tf-bg));
+  color: var(--tf-primary);
+}
+
+.rail__label {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.shell__main {
+  position: relative;
+  background: var(--tf-bg);
+}
+
+@media (max-width: 900px) {
+  .shell__top {
+    padding-inline: var(--tf-space-3);
+  }
+
+  .shell-search {
+    width: var(--tf-control-comfortable);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .shell-search > span,
+  .shell__actions .top-action__label,
+  .shell__actions .signout-button span,
+  .shell__actions .theme-toggle span {
+    display: none;
+  }
+
+  .shell__actions .top-action,
+  .shell__actions .signout-button,
+  .shell__actions .theme-toggle {
+    width: var(--tf-control-comfortable);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr) 60px;
+    grid-template-areas: 'top' 'main' 'rail';
+  }
+
+  .shell__wordmark {
+    display: none;
+  }
+
+  .workspace__single {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rail {
+    padding: var(--tf-space-1) var(--tf-space-2);
+  }
+
+  .rail__group {
+    width: auto;
+    flex: 1 1 auto;
+    justify-content: space-around;
+  }
+
+  .rail__group--foot {
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+
+  /* Search remains available in the top bar on compact screens. Keeping a
+     second copy in the five-slot bottom rail would squeeze every destination. */
+  .rail__search-item {
+    display: none;
+  }
+
+  .rail__link {
+    min-height: 50px;
+  }
+}

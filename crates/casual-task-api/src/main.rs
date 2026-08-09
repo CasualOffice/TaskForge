@@ -321,7 +321,7 @@ async fn run() -> ExitCode {
     // API is gone.
     let _worker = start_embedded_worker(&config, &state).await;
 
-    match casual_task_api::serve(listener, state).await {
+    match casual_task_api::serve(listener, state, config.web_root.as_deref()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!(%error, "server failed");

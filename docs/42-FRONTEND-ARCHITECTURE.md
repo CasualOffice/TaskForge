@@ -113,6 +113,28 @@ customer.
 **Detail opens in a drawer** over the board, preserving scroll position and
 context, with a full-page route retained for deep links and new tabs.
 
+## Visual system and responsive shell
+
+[54](54-PREMIUM-WEBAPP-DESIGN-SYSTEM.md) is the detailed contract. The app uses
+a white primary canvas, fixed semantic/focus/brand roles, and one validated
+workspace primary colour whose default is blue. Dense capability is
+progressively disclosed rather than removed: a narrow toolbar moves secondary
+controls into an overflow menu while the URL retains every filter, sort, group,
+and open-task value.
+
+Full blank slates may use an original bounded SVG illustration and one permitted
+CTA. Compact panels use a glyph. Neither form communicates essential content
+through artwork.
+
+## Session and route restoration
+
+[56](56-SPA-SESSION-AND-ROUTE-RESTORATION.md) defines five separate session
+outcomes. Only a 401 is signed out; network and 5xx failures render recovery in
+place without clearing the requested URL or tenant cache. Production uses
+browser history with a constrained HTML fallback, so refreshing a task or board
+deep link returns the app shell while missing assets and API paths retain their
+real status codes.
+
 ## Optimistic mutation
 
 ```ts

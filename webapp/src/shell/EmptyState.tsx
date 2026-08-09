@@ -18,13 +18,11 @@
  * prompted for the action, and one with no action states the fact plainly
  * rather than padding it.
  *
- * # No illustration
+ * # Two tiers
  *
- * §10: "Avoid decorative illustrations by default." There is no image slot,
- * because a slot is an invitation. The optional `icon` is a 28 px glyph
- * (`--tf-icon-empty`, foundation §3) used to distinguish a *kind* of emptiness
- * — a filter that matched nothing versus a permission that hid everything —
- * not to decorate one.
+ * `docs/54` gives a full blank slate a bounded explanatory illustration and a
+ * compact panel a contextual glyph. The component keeps them separate so a
+ * board column cannot accidentally pull a large scene into dense work.
  */
 import type { ReactElement, ReactNode } from 'react'
 
@@ -33,6 +31,7 @@ export function EmptyState({
   detail,
   actions,
   icon,
+  illustration,
   compact = false,
 }: {
   /** The fact, as a sentence. "No tasks match this view." */
@@ -42,12 +41,19 @@ export function EmptyState({
   /** What to do next. Buttons or links; omitted when there is genuinely nothing. */
   actions?: ReactNode
   icon?: ReactElement
+  /** Original, aria-hidden SVG for a full blank slate. Ignored in compact mode. */
+  illustration?: ReactElement
   /** For a board column or another small container, where the full block would
    *  be taller than the space it sits in. */
   compact?: boolean
 }): ReactElement {
   return (
     <div className={compact ? 'empty-state empty-state--compact' : 'empty-state'}>
+      {!compact && illustration !== undefined ? (
+        <div className="empty-state__illustration" aria-hidden="true">
+          {illustration}
+        </div>
+      ) : null}
       {icon === undefined ? null : (
         <span className="empty-state__icon" aria-hidden="true">
           {icon}

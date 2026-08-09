@@ -18,6 +18,7 @@
 //! bounded. Unbounded would mean one slow request holds the deploy open until
 //! the orchestrator `SIGKILL`s the process mid-write.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,6 +34,8 @@ use casual_task_observability::recorder::Recorder;
 use sqlx::PgPool;
 
 use crate::error::ApiError;
+
+mod web;
 
 /// The header carrying a request id in and out.
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -144,7 +147,21 @@ pub struct AppState {
 /// the request id. `docs/05` says "every unsafe method without a valid token is
 /// rejected", and that holds only while this ordering does.
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    configured_router(state, None)
+}
+
+/// Build the production router and refuse an incomplete web artifact.
+///
+/// # Errors
+///
+/// When `root/index.html` cannot be read. The process refuses at startup rather
+/// than turning every browser navigation into a runtime 404.
+pub fn router_with_web(state: AppState, root: &Path) -> Result<Router, std::io::Error> {
+    Ok(configured_router(state, Some(web::WebAssets::load(root)?)))
+}
+
+fn configured_router(state: AppState, web: Option<web::WebAssets>) -> Router {
+    let routes = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/metrics", get(metrics))
@@ -435,7 +452,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/workspaces/{workspace_id}",
-            get(crate::workspaces::read).patch(crate::workspaces::rename),
+            get(crate::workspaces::read).patch(crate::workspaces::update),
         )
         .route(
             "/api/v1/workspaces/{workspace_id}/members",
@@ -471,7 +488,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/members/{user_id}",
             axum::routing::delete(crate::workspaces::remove_team_member),
-        )
+        );
+
+    // Static routes are added before the common layers for the same reason as
+    // API routes: deep-link and asset responses still receive a request id and
+    // bounded metrics. API-only test routers pass `None` and retain their
+    // existing unmatched-route behavior.
+    let routes = match web {
+        None => routes,
+        Some(web) => web::attach(routes, web),
+    };
+
+    routes
         // CSRF sits over every route, so a route added later cannot be added
         // beside it. docs/05: "every unsafe method without a valid token is
         // rejected" — every, not most.
@@ -769,6 +797,7 @@ fn declared_route(route: &str) -> Option<&'static str> {
 pub async fn serve(
     listener: tokio::net::TcpListener,
     state: AppState,
+    web_root: Option<&str>,
 ) -> Result<(), std::io::Error> {
     // The hub is closed when the signal arrives, BEFORE axum stops accepting.
     // D-041: a live stream must be *closed*, not dropped mid-frame — a client
@@ -777,7 +806,11 @@ pub async fn serve(
     //
     // Held separately from `state` because `router` consumes it.
     let broadcast = Arc::clone(&state.broadcast);
-    axum::serve(listener, router(state))
+    let app = match web_root {
+        Some(root) => router_with_web(state, Path::new(root))?,
+        None => router(state),
+    };
+    axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             let open = broadcast.subscriber_count();

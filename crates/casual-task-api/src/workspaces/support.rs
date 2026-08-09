@@ -312,12 +312,77 @@ pub(crate) fn valid_slug<'a>(slug: &'a str, request_id: &str) -> Result<&'a str,
 }
 
 pub(crate) fn workspace_body(record: &repo::WorkspaceRecord) -> WorkspaceBody {
+    let primary_color = record
+        .settings
+        .pointer("/appearance/primary_color")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| valid_primary_shape(value))
+        .unwrap_or(DEFAULT_PRIMARY)
+        .to_uppercase();
     WorkspaceBody {
         id: record.id,
         name: record.name.clone(),
         slug: record.slug.clone(),
+        version: record.version,
+        appearance: AppearanceBody { primary_color },
         created_at: rfc3339(record.created_at),
     }
+}
+
+pub(crate) const DEFAULT_PRIMARY: &str = "#2563EB";
+
+/// Canonicalize and enforce the white-label contrast bound from ADR-033.
+pub(crate) fn valid_primary_color(value: &str, request_id: &str) -> Result<String, ApiError> {
+    if !valid_primary_shape(value) {
+        return Err(ApiError::bad_request(
+            codes::OUT_OF_RANGE,
+            "appearance.primary_color must use #RRGGBB",
+            request_id,
+        )
+        .with_details(serde_json::json!({
+            "field": "appearance.primary_color",
+            "format": "#RRGGBB",
+        })));
+    }
+
+    let canonical = value.to_uppercase();
+    let ratio = contrast_with_white(&canonical);
+    if ratio < 4.5 {
+        return Err(ApiError::bad_request(
+            codes::OUT_OF_RANGE,
+            "appearance.primary_color must support readable white action text",
+            request_id,
+        )
+        .with_details(serde_json::json!({
+            "field": "appearance.primary_color",
+            "minimum_contrast": 4.5,
+            "measured_contrast": (ratio * 100.0).round() / 100.0,
+        })));
+    }
+    Ok(canonical)
+}
+
+fn valid_primary_shape(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn contrast_with_white(value: &str) -> f64 {
+    fn channel(value: u8) -> f64 {
+        let normalized = f64::from(value) / 255.0;
+        if normalized <= 0.040_45 {
+            normalized / 12.92
+        } else {
+            ((normalized + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    let component = |start: usize| u8::from_str_radix(&value[start..start + 2], 16).unwrap_or(255);
+    let luminance = 0.2126 * channel(component(1))
+        + 0.7152 * channel(component(3))
+        + 0.0722 * channel(component(5));
+    1.05 / (luminance + 0.05)
 }
 
 pub(crate) fn member_body(record: &repo::MemberRecord) -> MemberBody {
@@ -486,5 +551,16 @@ mod tests {
             .expect("valid")
             .to_offset(time::UtcOffset::from_hms(5, 30, 0).expect("valid"));
         assert!(rfc3339(at).ends_with('Z'), "{}", rfc3339(at));
+    }
+
+    #[test]
+    fn primary_colour_is_canonical_and_must_carry_white_text() {
+        assert_eq!(
+            valid_primary_color("#2563eb", "r").expect("accessible blue"),
+            "#2563EB"
+        );
+        assert!(valid_primary_color("#FFFF00", "r").is_err());
+        assert!(valid_primary_color("blue", "r").is_err());
+        assert!(valid_primary_color("#12345", "r").is_err());
     }
 }

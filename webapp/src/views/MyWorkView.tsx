@@ -30,6 +30,8 @@ import { useMemo, type ReactElement } from 'react'
 
 import type { TaskQuery } from '../api/tasks'
 import { TaskPeek } from '../task/TaskPeek'
+import { EmptyState, Skeleton } from '../shell/EmptyState'
+import { BlankSlateIllustration } from '../shell/illustrations'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
 import { ErrorNotice, GapNotice } from '../shell/notice'
 import { TaskLink } from '../task/TaskLink'
@@ -95,47 +97,76 @@ export function MyWorkView(): ReactElement {
   const active = LENSES.find((option) => option.id === lens) ?? LENSES[0]
 
   return (
-    <section className="view" aria-labelledby="mywork-heading">
-      <div className="view__bar">
-        <h1 id="mywork-heading" className="view__title">
-          My Work
-        </h1>
-        <div className="lenses" role="group" aria-label="Which of my tasks">
+    <section className="view my-work-page" aria-labelledby="mywork-heading">
+      <header className="my-work-hero">
+        <div>
+          <p className="my-work-hero__eyebrow">Your focus</p>
+          <h1 id="mywork-heading">My Work</h1>
+          <p className="my-work-hero__detail">
+            The work that needs your attention, ordered around what comes next.
+          </p>
+        </div>
+        <div className="my-work-hero__summary" aria-label={`${feed.rows.length} tasks in this view`}>
+          <strong>{feed.rows.length}{feed.hasMore ? '+' : ''}</strong>
+          <span>{feed.rows.length === 1 ? 'task' : 'tasks'}</span>
+        </div>
+      </header>
+
+      <div className="my-work-lenses" role="group" aria-label="Which of my tasks">
           {LENSES.map((option) => (
             <button
               key={option.id}
               type="button"
-              className={`button${lens === option.id ? ' button--primary' : ' button--quiet'}`}
+              className="my-work-lens"
               aria-pressed={lens === option.id}
               onClick={() => choose(option.id)}
             >
-              {option.label}
+              <span className="my-work-lens__icon" aria-hidden="true">
+                {option.id === 'assigned' ? '✓' : option.id === 'reported' ? '↗' : '!'}
+              </span>
+              <span>
+                <strong>{option.label}</strong>
+                <small>{option.id === 'assigned' ? 'Ready for you' : option.id === 'reported' ? 'Created by you' : 'Past due date'}</small>
+              </span>
             </button>
           ))}
-        </div>
-        <span className="shell__spacer" />
-        <span className="view__count">{feed.rows.length}</span>
       </div>
 
       <div className="view__body mywork">
+        <div className="mywork__section-heading">
+          <div>
+            <p>Current view</p>
+            <h2>{active.label}</h2>
+          </div>
+          <span>{feed.rows.length}{feed.hasMore ? '+' : ''} shown</span>
+        </div>
+
         {feed.error != null ? <ErrorNotice error={feed.error} /> : null}
-        {feed.isPending ? <p className="empty">Loading…</p> : null}
+        {feed.isPending ? (
+          <div className="mywork__loading">
+            <Skeleton rows={6} label="Loading your work" />
+          </div>
+        ) : null}
 
         {!feed.isPending && feed.rows.length === 0 && feed.error == null ? (
-          <div className="empty">
-            <p>{active.empty}</p>
-            <div className="empty__actions">
+          <div className="mywork__empty">
+            <EmptyState
+              illustration={<BlankSlateIllustration />}
+              title={active.empty}
+              detail="Choose another view to keep moving, or create and assign a task from the Tasks page."
+              actions={<div className="empty__actions">
               {LENSES.filter((option) => option.id !== lens).map((option) => (
                 <button
                   key={option.id}
                   type="button"
-                  className="button"
+                  className={option.id === LENSES.find((item) => item.id !== lens)?.id ? 'button button--primary' : 'button button--quiet'}
                   onClick={() => choose(option.id)}
                 >
-                  {option.label}
+                  View {option.label.toLowerCase()}
                 </button>
               ))}
-            </div>
+              </div>}
+            />
           </div>
         ) : null}
 

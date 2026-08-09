@@ -112,11 +112,17 @@ docker run --rm --entrypoint /usr/local/bin/taskforge-api taskforge:local
 | Base | `gcr.io/distroless/cc-debian12:nonroot` |
 | Size | ~49 MB (target < 100 MB, [30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)) |
 | User | `65532:65532`, declared explicitly so a base-image change cannot silently promote it to root |
-| Contains | `taskforge-api`, `taskforge-worker`, `/app/migrations` |
+| Contains | `taskforge-api`, `taskforge-worker`, `/app/migrations`, compiled SPA files at `/app/webapp` |
 
 **Distroless, not `scratch`.** TLS roots, timezone data, and the ability to get
 a debugger into a container during an incident are worth the megabytes
 ([19](19-WORKSPACE-SCAFFOLD-DESIGN.md)).
+
+The image sets `TF_WEB_ROOT=/app/webapp`. Startup refuses when `index.html` is
+missing. Browser deep links such as `/board` and `/tasks/{id}` return that
+document; `/api`, health, metrics, and missing asset paths keep their own status
+codes ([56](56-SPA-SESSION-AND-ROUTE-RESTORATION.md)). An API-only development
+process may leave `TF_WEB_ROOT` unset and use the Vite proxy.
 
 **Migrations ship inside the image** so the schema version and the code version
 that expects it cannot disagree.

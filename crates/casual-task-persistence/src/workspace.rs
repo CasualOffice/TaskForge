@@ -41,8 +41,12 @@ pub struct WorkspaceRecord {
     pub slug: String,
     /// Optimistic concurrency (`docs/24`). Exposed as the `ETag`.
     pub version: i64,
+    /// Sparse, validated workspace configuration (ADR-022, ADR-033).
+    pub settings: serde_json::Value,
     pub created_at: OffsetDateTime,
 }
+
+type WorkspaceRow = (Uuid, String, String, i64, serde_json::Value, OffsetDateTime);
 
 /// One row of `workspace_membership`, with the person it names.
 #[derive(Debug, Clone)]
@@ -115,8 +119,8 @@ pub async fn list_for_user(
     after: Option<Uuid>,
     limit: i64,
 ) -> Result<Vec<WorkspaceRecord>, sqlx::Error> {
-    let rows: Vec<(Uuid, String, String, i64, OffsetDateTime)> = sqlx::query_as(
-        "SELECT w.id, w.name, w.slug, w.version, w.created_at
+    let rows: Vec<WorkspaceRow> = sqlx::query_as(
+        "SELECT w.id, w.name, w.slug, w.version, w.settings, w.created_at
            FROM workspace w
           WHERE w.id IN (SELECT workspace_ids_for_user($1))
             AND ($2::uuid IS NULL OR w.id > $2::uuid)
@@ -184,10 +188,10 @@ pub async fn insert(
     slug: &str,
 ) -> Result<Unowned, sqlx::Error> {
     let id = scoped.workspace_id().as_uuid();
-    let row: (Uuid, String, String, i64, OffsetDateTime) = sqlx::query_as(
+    let row: WorkspaceRow = sqlx::query_as(
         "INSERT INTO workspace (id, name, slug)
          VALUES ($1, $2, $3)
-         RETURNING id, name, slug, version, created_at",
+         RETURNING id, name, slug, version, settings, created_at",
     )
     .bind(id)
     .bind(name)
@@ -204,8 +208,8 @@ pub async fn insert(
 /// Any database error.
 pub async fn read(scoped: &mut Scoped<'_>) -> Result<Option<WorkspaceRecord>, sqlx::Error> {
     let id = scoped.workspace_id().as_uuid();
-    let row: Option<(Uuid, String, String, i64, OffsetDateTime)> = sqlx::query_as(
-        "SELECT id, name, slug, version, created_at
+    let row: Option<WorkspaceRow> = sqlx::query_as(
+        "SELECT id, name, slug, version, settings, created_at
            FROM workspace
           WHERE id = $1 AND deleted_at IS NULL",
     )
@@ -215,7 +219,7 @@ pub async fn read(scoped: &mut Scoped<'_>) -> Result<Option<WorkspaceRecord>, sq
     Ok(row.map(into_workspace))
 }
 
-/// Rename, conditional on `expected_version`.
+/// Update name and/or typed appearance, conditional on `expected_version`.
 ///
 /// `None` means the compare-and-set failed: either the row moved on (`409`) or
 /// it is gone. The caller has already read it, so it can tell those apart —
@@ -225,20 +229,33 @@ pub async fn read(scoped: &mut Scoped<'_>) -> Result<Option<WorkspaceRecord>, sq
 /// # Errors
 ///
 /// Any database error.
-pub async fn rename(
+pub async fn update(
     scoped: &mut Scoped<'_>,
-    name: &str,
+    name: Option<&str>,
+    primary_color: Option<&str>,
     expected_version: i64,
 ) -> Result<Option<WorkspaceRecord>, sqlx::Error> {
     let id = scoped.workspace_id().as_uuid();
-    let row: Option<(Uuid, String, String, i64, OffsetDateTime)> = sqlx::query_as(
+    let row: Option<WorkspaceRow> = sqlx::query_as(
         "UPDATE workspace
-            SET name = $2, version = version + 1
-          WHERE id = $1 AND version = $3 AND deleted_at IS NULL
-      RETURNING id, name, slug, version, created_at",
+            SET name = COALESCE($2, name),
+                settings = CASE
+                  WHEN $3::text IS NULL THEN settings
+                  ELSE jsonb_set(
+                    settings,
+                    '{appearance}',
+                    COALESCE(settings->'appearance', '{}'::jsonb)
+                      || jsonb_build_object('primary_color', $3::text),
+                    true
+                  )
+                END,
+                version = version + 1
+          WHERE id = $1 AND version = $4 AND deleted_at IS NULL
+      RETURNING id, name, slug, version, settings, created_at",
     )
     .bind(id)
     .bind(name)
+    .bind(primary_color)
     .bind(expected_version)
     .fetch_optional(scoped.conn())
     .await?;
@@ -649,13 +666,14 @@ pub async fn delete_team_member(
 }
 
 fn into_workspace(
-    (id, name, slug, version, created_at): (Uuid, String, String, i64, OffsetDateTime),
+    (id, name, slug, version, settings, created_at): WorkspaceRow,
 ) -> WorkspaceRecord {
     WorkspaceRecord {
         id,
         name,
         slug,
         version,
+        settings,
         created_at,
     }
 }

@@ -1,6 +1,8 @@
 # TaskForge Design Foundation
 
-**Status:** v2 — accepted. Supersedes the v1 values below where they differ.  
+**Status:** v2 — accepted; configurable-primary amendment approved 2026-08-09.
+Normative responsive, appearance, and empty-state detail is in
+`docs/54-PREMIUM-WEBAPP-DESIGN-SYSTEM.md`.
 **Scope:** Product UI, shared design primitives, accessibility, density, interaction and layout behavior.  
 **Principle:** TaskForge should be dense, fast, calm, technical and predictable. Branding must never be required to understand the interface.
 
@@ -14,7 +16,8 @@
 6. **Accessible by construction.** WCAG 2.2 AA is a component acceptance criterion, not a release cleanup task.
 7. **Stable geometry.** Loading, optimistic updates and live events should not cause avoidable layout shifts.
 8. **Scrolling is a cost, not a layout tool.** A surface that scrolls to reveal a field has hidden that field. Use the width available and put what a user needs to *decide* something in one view; reserve scrolling for genuine tails — a long thread, a long list, a long description. Nested scroll regions inside a scrolling page are the worst case and are not permitted.
-9. **One accent.** Orange means brand and current position — never warning. At most twice on a screen.
+9. **One action accent.** Workspace primary means action and current position.
+   Orange means TaskForge identity — never action, status, focus, or warning.
 10. **Values look like values.** Identifiers, codes, counts, dates and durations are mono and tabular, always.
 11. **Every state carries a glyph or a word.** Colour is never alone.
 12. **Asymmetric where useful.** Do not force all views into equal columns, equal cards or a universal dashboard grid.
@@ -110,6 +113,12 @@ The UI must work in grayscale before brand color is applied.
   --tf-text-muted: #6e6862;
 
   --tf-border: #e2ded6;
+  --tf-border-strong: #8a8a94;
+
+  --tf-primary: #2563eb;
+  --tf-primary-hover: #1d4ed8;
+  --tf-primary-pressed: #1e40af;
+  --tf-on-primary: #ffffff;
 
   --tf-focus: #2c5ee8;
 
@@ -127,20 +136,20 @@ The UI must work in grayscale before brand color is applied.
 }
 ```
 
-**Orange appears at most twice on a screen:** the current rail destination, and
-the one primary action. `--tf-brand` is a fill; white text needs
-`--tf-brand-strong` or darker behind it.
+**Orange appears at most twice on a screen** and only as TaskForge identity.
+The current destination and primary action use the workspace primary colour.
+Brand and semantic status colours are separate systems; orange never means
+warning.
 
-Brand color and semantic status colors are separate systems. Never use brand
-orange to mean warning.
+The TaskForge orange mark is also separate from the workspace primary action
+colour. A workspace may configure `--tf-primary` through the validated contract
+in `docs/54`; the default is blue and the canvas, focus, semantic and brand roles
+are never derived from it.
 
-### The open item this version does not close
-
-`--tf-border` is **1.34:1** on the canvas, and §7 requires 3:1 for control
-boundaries. That is fine for a decorative hairline and not fine for the edge of
-a control. The intent is that a control's boundary is carried by the E1 ring in
-§6 rather than by this token — but until a control-boundary token exists that
-measures 3:1, the contract in §7 is not satisfiable as written. **Open.**
+`--tf-border` remains a decorative hairline. `--tf-border-strong` is the
+control-boundary token and clears 3:1 against the white and subtle surfaces; its
+pairs are enforced in `tokens.contrast.test.ts`. This closes the open v2 border
+item without darkening every separator.
 
 ## 6. Borders, radius and elevation
 

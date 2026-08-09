@@ -37,6 +37,8 @@ import { TaskRow } from './list/TaskRow'
 import { groupsFor, type GroupKey } from './list/grouping'
 import { TaskPeek } from '../task/TaskPeek'
 import { useSortPreference } from './sorting'
+import { BlankSlateIllustration } from '../shell/illustrations'
+import { EmptyState, Skeleton } from '../shell/EmptyState'
 
 const ROW_HEIGHT = 40
 /** Fetch the next page while this many rows remain, so scrolling never stalls. */
@@ -81,7 +83,18 @@ export function TaskListView(): ReactElement {
   }, [feed, lastVisible])
 
   return (
-    <section className="view" aria-labelledby="list-heading">
+    <section className="view task-list-page" aria-labelledby="list-heading">
+      <header className="work-page-header">
+        <div>
+          <p className="work-page-header__eyebrow">Workspace</p>
+          <h1 id="list-heading">Tasks</h1>
+          <p>Review, filter, and move work without losing the wider context.</p>
+        </div>
+        <div className="work-page-header__count">
+          <strong>{feed.rows.length}{feed.hasMore ? '+' : ''}</strong>
+          <span>shown</span>
+        </div>
+      </header>
       <WorkToolbar
         sort={sort}
         onSort={setSort}
@@ -91,16 +104,6 @@ export function TaskListView(): ReactElement {
       >
         <CreateTask projectId={search.project} />
       </WorkToolbar>
-      <div className="view__bar view__bar--sub">
-        <h1 id="list-heading" className="view__title">
-          Tasks
-        </h1>
-        <span className="view__count">
-          {feed.rows.length}
-          {feed.hasMore ? '+' : ''} shown
-        </span>
-      </div>
-
       <div className="view__body" ref={scrollRef}>
         {feed.error !== null && feed.error !== undefined ? (
           <div className="list__notice">
@@ -165,11 +168,20 @@ export function TaskListView(): ReactElement {
           )}
         </table>
 
-        {feed.isPending ? <p className="empty">Loading tasks…</p> : null}
+        {feed.isPending ? (
+          <div className="task-list-page__loading">
+            <Skeleton rows={8} label="Loading tasks" />
+          </div>
+        ) : null}
         {!feed.isPending && feed.rows.length === 0 && feed.error == null ? (
-          // design/LAYOUT §10: empty states are operational. This is that
-          // document's own example sentence, verbatim.
-          <p className="empty">No tasks match this view. Change the filters or create a task.</p>
+          <div className="task-list-page__empty">
+            <EmptyState
+              illustration={<BlankSlateIllustration />}
+              title="No tasks match this view."
+              detail="Change the filters or create a task in the selected project."
+              actions={<CreateTask projectId={search.project} />}
+            />
+          </div>
         ) : null}
         {feed.isFetchingMore ? (
           <p className="empty" role="status">

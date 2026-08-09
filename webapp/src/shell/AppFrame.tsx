@@ -23,25 +23,59 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { logout } from '../api/session'
 import { CommandPalette } from '../palette/CommandPalette'
+import { AppearanceControl } from './AppearanceControl'
+import { EmptyState } from './EmptyState'
+import { BlankSlateIllustration, RecoveryIllustration } from './illustrations'
 import { SignIn } from './SignIn'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useSession } from './session'
 import { apply, nextChoice, storedChoice, type ThemeChoice } from './theme'
 
 export function AppFrame(): ReactElement {
-  const { actor, loading, workspace, forget } = useSession()
+  const {
+    actor,
+    loading,
+    sessionUnavailable,
+    workspacesUnavailable,
+    workspace,
+    retrySession,
+    retryWorkspaces,
+    forget,
+  } = useSession()
 
   if (loading) {
     // A `role="status"` rather than a spinner: the first thing a screen-reader
     // user should hear is that something is happening, not silence.
+    return <BootState />
+  }
+
+  if (sessionUnavailable) {
     return (
-      <main className="empty" role="status">
-        Loading TaskForge…
-      </main>
+      <AuthState>
+        <EmptyState
+          illustration={<RecoveryIllustration />}
+          title="TaskForge is unavailable"
+          detail="Your session has not been cleared. Check your connection and try again."
+          actions={<button className="button button--primary" onClick={retrySession}>Retry</button>}
+        />
+      </AuthState>
     )
   }
 
   if (actor === null) return <SignIn />
+
+  if (workspacesUnavailable) {
+    return (
+      <AuthState>
+        <EmptyState
+          illustration={<RecoveryIllustration />}
+          title="Workspaces could not be loaded"
+          detail="You are still signed in. Retry to restore your workspace."
+          actions={<button className="button button--primary" onClick={retryWorkspaces}>Retry</button>}
+        />
+      </AuthState>
+    )
+  }
 
   return (
     <div className="shell">
@@ -50,22 +84,30 @@ export function AppFrame(): ReactElement {
       </a>
 
       <header className="shell__top">
-        <span className="shell__wordmark">TaskForge</span>
+        <Link to="/my-work" className="shell__brand" aria-label="TaskForge home">
+          <img src="/brand/taskforge-mark.svg" alt="" width={28} height={28} />
+          <span className="shell__wordmark">TaskForge</span>
+        </Link>
         <WorkspaceSwitcher />
         <span className="shell__spacer" />
-        <PaletteHint />
-        <ThemeToggle />
-        <SignOutButton onSignedOut={forget} />
+        <PaletteButton />
+        <div className="shell__actions">
+          <AppearanceControl />
+          <ThemeToggle />
+          <SignOutButton onSignedOut={forget} />
+        </div>
       </header>
 
       <ProductRail />
 
-
       <main className="shell__main" id="main">
         {workspace === undefined ? (
-          <p className="empty">
-            You are signed in but belong to no workspace yet. Ask an owner for an invitation.
-          </p>
+          <EmptyState
+            illustration={<BlankSlateIllustration />}
+            title="No workspace yet"
+            detail="Ask a workspace owner for an invitation, then retry."
+            actions={<button className="button button--primary" onClick={retryWorkspaces}>Retry</button>}
+          />
         ) : (
           <Outlet />
         )}
@@ -73,6 +115,27 @@ export function AppFrame(): ReactElement {
 
       <CommandPalette />
     </div>
+  )
+}
+
+function BootState(): ReactElement {
+  return (
+    <main className="boot-state" role="status">
+      <img src="/brand/taskforge-mark.svg" alt="" width={36} height={36} />
+      <span>Loading TaskForge…</span>
+    </main>
+  )
+}
+
+function AuthState({ children }: { children: ReactElement }): ReactElement {
+  return (
+    <main className="auth-state">
+      <div className="auth-state__brand">
+        <img src="/brand/taskforge-mark.svg" alt="" width={28} height={28} />
+        <span>TaskForge</span>
+      </div>
+      {children}
+    </main>
   )
 }
 
@@ -175,7 +238,7 @@ function RailLink({
  */
 function RailSearch(): ReactElement {
   return (
-    <li>
+    <li className="rail__search-item">
       <button
         type="button"
         className="rail__link"
@@ -269,12 +332,34 @@ function IconSettings(): ReactElement {
   )
 }
 
-function PaletteHint(): ReactElement {
+function IconTheme(): ReactElement {
   return (
-    <span className="palette-hint" aria-hidden="true">
-      <kbd>⌘</kbd>
-      <kbd>K</kbd>
-    </span>
+    <svg {...GLYPH}>
+      <circle cx="10" cy="10" r="6.5" />
+      <path d="M10 3.5v13a6.5 6.5 0 0 0 0-13Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function IconSignOut(): ReactElement {
+  return (
+    <svg {...GLYPH}>
+      <path d="M8 3.5H4.5v13H8M11.5 6.5 15 10l-3.5 3.5M7.5 10H15" />
+    </svg>
+  )
+}
+
+function PaletteButton(): ReactElement {
+  return (
+    <button
+      type="button"
+      className="shell-search"
+      onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+    >
+      <IconSearch />
+      <span>Search or jump to…</span>
+      <span className="shell-search__keys" aria-hidden="true"><kbd>⌘</kbd><kbd>K</kbd></span>
+    </button>
   )
 }
 
@@ -290,13 +375,14 @@ function ThemeToggle(): ReactElement {
   return (
     <button
       type="button"
-      className="button button--quiet"
+      className="button button--quiet theme-toggle"
       onClick={() => setChoice(nextChoice(choice))}
       // The button's own text is an icon-free word, but the *state* is what a
       // screen reader needs and "Theme" alone would not carry it.
       aria-label={`${label}. Activate to change.`}
     >
-      {label}
+      <IconTheme />
+      <span>{label}</span>
     </button>
   )
 }
@@ -317,11 +403,13 @@ function SignOutButton({ onSignedOut }: { onSignedOut: () => void }): ReactEleme
   return (
     <button
       type="button"
-      className="button button--quiet"
+      className="button button--quiet signout-button"
       onClick={() => signOut.mutate()}
       disabled={signOut.isPending}
+      aria-label={signOut.isPending ? 'Signing out' : 'Sign out'}
     >
-      Sign out
+      <IconSignOut />
+      <span>{signOut.isPending ? 'Signing out…' : 'Sign out'}</span>
     </button>
   )
 }

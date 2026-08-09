@@ -92,6 +92,9 @@ pub struct Config {
     /// claim is `FOR UPDATE SKIP LOCKED`), but they are twice the polling for
     /// no gain.
     pub worker_embedded: bool,
+    /// Compiled browser files. Absent in API-only development and tests; the
+    /// production image sets `/app/webapp` and startup validates it (ADR-034).
+    pub web_root: Option<String>,
 }
 
 /// Object storage selection (`docs/48` §Configuration).
@@ -264,6 +267,9 @@ impl Config {
             // docs/48 §Configuration: "true | false (default true)".
             worker_embedded: get("TF_WORKER_EMBEDDED")
                 .is_none_or(|v| !v.trim().eq_ignore_ascii_case("false")),
+            web_root: get("TF_WEB_ROOT")
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty()),
         })
     }
 }
@@ -385,6 +391,13 @@ mod tests {
         let config = with(&[]).expect("valid");
         assert_eq!(config.bind_addr.port(), 8080);
         assert_eq!(config.pool.max_connections, 32);
+        assert!(config.web_root.is_none());
+    }
+
+    #[test]
+    fn the_web_root_is_explicit_and_trimmed() {
+        let config = with(&[("TF_WEB_ROOT", " /app/webapp ")]).expect("valid");
+        assert_eq!(config.web_root.as_deref(), Some("/app/webapp"));
     }
 
     #[test]

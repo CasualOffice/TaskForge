@@ -72,4 +72,5 @@ export const PERMISSIONS = {
   taskHistoryRead: 'task.history.read',
   taskAttachmentRead: 'task.attachment.read',
   projectCreate: 'project.create',
+  workspaceManage: 'workspace.manage',
 } as const

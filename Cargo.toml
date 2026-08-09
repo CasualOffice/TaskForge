@@ -110,6 +110,7 @@ futures-core = { version = "0.3", default-features = false }
 # named in exactly one crate's manifest.
 axum       = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query", "matched-path"] }
 tower      = { version = "0.5", default-features = false }
+tower-http = { version = "0.6", default-features = false, features = ["fs", "set-header"] }
 # No TLS feature yet, deliberately. `tls-rustls` pulls in webpki-roots, which
 # is CDLA-Permissive-2.0 — a licence `deny.toml` does not allow, and widening
 # that list is a policy decision rather than a build fix (D-050). Nothing

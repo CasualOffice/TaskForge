@@ -23,17 +23,14 @@
  */
 
 :root {
-  /* Interactive accent. VISUAL-IDENTITY §4 makes forge orange the product's
-   * "brand mark/accent", so it carries primary affordances — but the *ink* on
-   * a filled control is `--tf-brand-strong`, because white on #d8610b is
-   * 3.2:1 and fails §7's 4.5:1 for control labels. The bright orange stays for
-   * marks and borders, where 3:1 applies. */
-  --color-accent: var(--tf-brand-strong);
-  --color-accent-hover: #8f3900;
-  --color-accent-active: #7a3100;
-  --color-accent-fg: #ffffff;
-  --color-accent-soft: var(--tf-brand-subtle);
-  --color-text-on-accent: #ffffff;
+  /* Interactive colour is workspace-configurable. Product identity remains
+   * orange; action and selection are blue by default (`docs/54`). */
+  --color-accent: var(--tf-primary);
+  --color-accent-hover: var(--tf-primary-hover);
+  --color-accent-active: var(--tf-primary-pressed);
+  --color-accent-fg: var(--tf-on-primary);
+  --color-accent-soft: color-mix(in srgb, var(--tf-primary) 9%, var(--tf-surface));
+  --color-text-on-accent: var(--tf-on-primary);
 
   --color-bg: var(--tf-bg);
   --color-surface: var(--tf-surface);

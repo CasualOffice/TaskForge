@@ -190,9 +190,12 @@ Empty states are operational.
 
 Example:
 
-> No tasks match this view. Change the filters or create a task.
+> No tasks match this view. Clear the filters or create a task.
 
-Avoid decorative illustrations by default and avoid motivational marketing copy inside authenticated work surfaces.
+Use the two tiers in `docs/54`: a bounded original illustration, title,
+explanation and permitted CTA for a full blank slate; a contextual glyph for a
+compact panel. Illustrations explain a true state and never fill incidental
+space. Avoid motivational marketing copy inside authenticated work surfaces.
 
 ## 11. Interaction performance
 

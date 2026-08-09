@@ -193,6 +193,8 @@ a row in this table. Never neither.
 | OpenAPI diff, event schema diff, plugin contract diff, error registry | Phase 1 | Nothing to diff until `/v1` and the registry exist. |
 | Secret scan, SAST, container scan, enumeration, injection, fuzz | Phase 1 | Tracked with the security work in [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md). |
 | Accessibility (axe, contrast) | **C-019** | Needs a shell to audit. |
+| Frontend reflow, focus order, coarse targets, and visual baselines (Playwright) | **C-025** | jsdom has no layout; these require a real rendering engine at the design note's named widths. |
+| SPA deep-link refresh and asset-fallback exclusions | **C-027** | Requires the production web root and deployable image path. |
 
 ## Future gates
 
@@ -204,3 +206,4 @@ recorded rather than forgotten:
 - Multi-version compatibility matrix once `/v2` exists.
 - Automated GDPR-deletion verification.
 - Load test with realistic concurrent-user mix, not just per-endpoint throughput.
+- Automated illustration asset sub-budget and forced-colour screenshot checks.

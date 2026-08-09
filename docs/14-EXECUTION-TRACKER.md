@@ -98,6 +98,8 @@ The documentation phase. All complete unless noted.
 | D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
 | D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
 | D-065 | **A time-zone database, so an offset can be derived without a client** | [27](27-FILTER-AND-SAVED-VIEW-DSL.md), [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — `user_account.time_zone` stores an IANA name (migration 0030) and evaluation uses the offset the client sends, which a browser computes correctly including daylight saving. A server-side job has no client to ask, so digests and scheduled notifications cannot resolve `@today` for a user until a tz database is a dependency |
+| D-066 | **Premium webapp design system and configurable workspace appearance** | [54](54-PREMIUM-WEBAPP-DESIGN-SYSTEM.md) | **Accepted** — ADR-033; approved 2026-08-09 |
+| D-067 | **SPA delivery, session state, and route restoration** | [56](56-SPA-SESSION-AND-ROUTE-RESTORATION.md) | **Accepted** — ADR-034; approved 2026-08-09 |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
 the concurrency, async, and observability design; **D-044** and **D-045** were
@@ -365,6 +367,9 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-019 | Bundle + a11y gates wired | `Built` |
 | C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
 | C-020 | Rate limiting at the edge | `Building` |
+| C-025 | Premium design-system foundation, responsive shell, empty states | `Building` |
+| C-026 | Workspace appearance API and persistence | `Building` |
+| C-027 | Production SPA delivery and refresh-safe session shell | `Building` |
 
 - **D-050** was opened by a failing gate rather than by reading anything.
   Adding `sqlx` with `tls-rustls` pulled in `webpki-roots` — Mozilla's CA bundle,
@@ -2346,4 +2351,3 @@ first release — it was opened by the threat-model review, which found that
 Eight of the decisions accepted on 2026-08-08 have not yet had their design
 notes rewritten; the note above §Phase 0 says which, and flags the one that is
 actively misleading until it is.
-

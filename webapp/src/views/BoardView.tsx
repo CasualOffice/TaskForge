@@ -173,10 +173,18 @@ export function BoardView(): ReactElement {
   )
 
   return (
-    <section className="view" aria-labelledby="board-heading">
-      <h1 id="board-heading" className="visually-hidden">
-        Board
-      </h1>
+    <section className="view board-page" aria-labelledby="board-heading">
+      <header className="work-page-header">
+        <div>
+          <p className="work-page-header__eyebrow">Flow</p>
+          <h1 id="board-heading">Board</h1>
+          <p>See the workflow, spot blockers, and move work through each stage.</p>
+        </div>
+        <div className="work-page-header__count">
+          <strong>{columns.length}</strong>
+          <span>{columns.length === 1 ? 'column' : 'columns'}</span>
+        </div>
+      </header>
       {/* No sort control: a board is ordered by board rank (ADR-013) and by
           nothing else — offering "sort by due date" would silently disable the
           drag that writes that rank. */}

@@ -18,6 +18,11 @@ import { Announcer } from './shell/announce'
 import { SessionProvider } from './shell/session'
 import { apply, storedChoice } from './shell/theme'
 import './styles/app.css'
+import './styles/signin.css'
+import './styles/my-work.css'
+import './styles/authenticated-shell.css'
+import './styles/workspace-surfaces.css'
+import './styles/settings-premium.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {

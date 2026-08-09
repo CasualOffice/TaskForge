@@ -140,38 +140,19 @@ const PAIRS: readonly Pair[] = [
   ['--tf-focus', '--tf-surface', 3, 'focus ring on a surface'],
   ['--tf-focus', '--tf-surface-subtle', 3, 'focus ring on a subtle surface'],
 
+  // ADR-033: the workspace action colour is accepted only when a white label
+  // clears normal-text contrast. The shipped default is held to the same gate.
+  ['--tf-on-primary', '--tf-primary', 4.5, 'text on a primary action'],
+
+  // Control boundaries identify the component against the white canvas.
+  ['--tf-border-strong', '--tf-bg', 3, 'control border on the canvas'],
+  ['--tf-border-strong', '--tf-surface-subtle', 3, 'control border on a subtle surface'],
+
   // VISUAL-IDENTITY §7 lists the four approved mark placements. Orange on
   // white and orange on graphite are two of them; the mark is a non-text
   // graphic, so 3:1 applies (§7 "non-text UI state/boundaries").
   ['--tf-brand', '--tf-bg', 3, 'brand mark on the canvas'],
   ['--tf-brand', '--tf-surface-subtle', 3, 'brand mark on a subtle surface'],
-]
-
-/**
- * Pairs where the foundation contradicts itself, recorded rather than resolved.
- *
- * §5 fixes `--tf-border-strong: #d4d4d8`. §7 requires "at least 3:1" for
- * "non-text UI state/boundaries ... where WCAG requires it", and WCAG 2.2
- * §1.4.11 requires it of the boundary that identifies a control. #d4d4d8 is
- * **1.48:1** on the §5 white canvas and 2.05:1 on the dark canvas. Both cannot
- * hold at once.
- *
- * Neither side is this file's to change: editing the token would silently
- * override a specified value, and dropping the pair would hide the conflict.
- * So the conflict is asserted — the test fails if the ratio ever *clears* the
- * threshold, which is the signal that the foundation was amended and the pair
- * belongs back in `PAIRS`.
- *
- * The mitigation in the meantime is that no control relies on this border
- * alone: inputs and buttons in `app.css` carry a fill, a label and a
- * `:focus-visible` ring at `--tf-focus`, which does clear 3:1. That satisfies
- * 1.4.11 in substance while the token is out of line with it.
- *
- * Raised for a foundation decision; see the report accompanying this branch.
- */
-const KNOWN_CONFLICTS: readonly Pair[] = [
-  ['--tf-border-strong', '--tf-bg', 3, 'control border on the canvas'],
-  ['--tf-border-strong', '--tf-surface-subtle', 3, 'control border on a subtle surface'],
 ]
 
 describe.each([
@@ -187,18 +168,4 @@ describe.each([
     // Reported to two decimals so a failure names the number to fix.
     expect(Number(ratio.toFixed(2))).toBeGreaterThanOrEqual(min)
   })
-
-  // The other half of the contradiction: if one of these ever clears its
-  // threshold, the foundation has been amended and the pair must move into
-  // `PAIRS`. Asserting the failure is what stops the conflict being forgotten.
-  it.each(KNOWN_CONFLICTS)(
-    '%s on %s still conflicts with the §7 %s:1 rule — %s',
-    (fg, bg, min, _why) => {
-      const ratio = contrast(tokens.get(fg) as string, tokens.get(bg) as string)
-      expect(
-        Number(ratio.toFixed(2)),
-        `${fg} now clears ${min}:1 — move this pair into PAIRS`,
-      ).toBeLessThan(min)
-    },
-  )
 })

@@ -11,7 +11,14 @@ pub struct WorkspaceBody {
     pub id: Uuid,
     pub name: String,
     pub slug: String,
+    pub version: i64,
+    pub appearance: AppearanceBody,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppearanceBody {
+    pub primary_color: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,8 +81,15 @@ pub struct CreateWorkspace {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RenameWorkspace {
-    pub name: String,
+pub struct UpdateWorkspace {
+    pub name: Option<String>,
+    pub appearance: Option<AppearanceInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppearanceInput {
+    pub primary_color: String,
 }
 
 #[derive(Debug, Deserialize)]
