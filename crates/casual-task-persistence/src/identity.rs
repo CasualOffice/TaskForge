@@ -240,11 +240,18 @@ pub async fn revoke_session(conn: &mut sqlx::PgConnection, id: Uuid) -> Result<(
 pub async fn revoke_all_sessions(
     conn: &mut sqlx::PgConnection,
     user_id: Uuid,
+    except: Option<Uuid>,
 ) -> Result<u64, sqlx::Error> {
+    // `except` is the caller's own session. "Sign out everywhere" is done by
+    // someone holding a device they still want to be signed in on — signing
+    // them out too would make the button feel like a mistake every time it was
+    // used correctly. `None` keeps the old behaviour: revoke every one.
     Ok(sqlx::query(
-        "UPDATE session SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+        "UPDATE session SET revoked_at = now()
+          WHERE user_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id <> $2)",
     )
     .bind(user_id)
+    .bind(except)
     .execute(conn)
     .await?
     .rows_affected())
@@ -494,6 +501,167 @@ pub async fn invalidate_reset_tokens(
     .execute(conn)
     .await?
     .rows_affected())
+}
+
+/// The tuple a profile row decodes into.
+type ProfileTuple = (Uuid, Option<String>, String, Option<String>, Option<String>);
+
+/// The tuple a session summary decodes into. Seven columns say nothing about
+/// which is which inline, and clippy is right about that.
+type SessionTuple = (
+    Uuid,
+    String,
+    OffsetDateTime,
+    OffsetDateTime,
+    OffsetDateTime,
+    Option<String>,
+    Option<String>,
+);
+
+/// A person's own account, as they see it.
+#[derive(Debug, Clone)]
+pub struct Profile {
+    pub id: Uuid,
+    pub email: Option<String>,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    /// IANA zone name. `None` means unset, which is **not** UTC — a user who
+    /// has never chosen one is a user whose day boundary we do not know.
+    pub time_zone: Option<String>,
+}
+
+/// Read a person's own account.
+///
+/// Not scoped to a workspace: an account is a person, and a person belongs to
+/// many workspaces (`docs/03`). This is the one read in the product that is
+/// deliberately outside the tenant boundary, which is why it takes a connection
+/// rather than a `Scoped` and answers only about the caller.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn profile(
+    conn: &mut sqlx::PgConnection,
+    user_id: Uuid,
+) -> Result<Option<Profile>, sqlx::Error> {
+    let row: Option<ProfileTuple> = sqlx::query_as(
+        "SELECT id, email::text, display_name, avatar_url, time_zone
+               FROM user_account
+              WHERE id = $1 AND is_tombstone = false",
+    )
+    .bind(user_id)
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.map(|r| Profile {
+        id: r.0,
+        email: r.1,
+        display_name: r.2,
+        avatar_url: r.3,
+        time_zone: r.4,
+    }))
+}
+
+/// Update a person's own account.
+///
+/// `None` leaves a field alone. Email is deliberately absent: changing it is a
+/// verification flow (`docs/40`), not a field edit, and offering it here would
+/// let an account be moved to an address nobody proved they hold.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn update_profile(
+    conn: &mut sqlx::PgConnection,
+    user_id: Uuid,
+    display_name: Option<&str>,
+    time_zone: Option<Option<&str>>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE user_account
+            SET display_name = COALESCE($2, display_name),
+                time_zone = CASE WHEN $3 THEN $4 ELSE time_zone END,
+                updated_at = now()
+          WHERE id = $1",
+    )
+    .bind(user_id)
+    .bind(display_name)
+    .bind(time_zone.is_some())
+    .bind(time_zone.flatten())
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// One of a person's live sessions.
+#[derive(Debug, Clone)]
+pub struct SessionSummary {
+    pub id: Uuid,
+    pub auth_method: String,
+    pub created_at: OffsetDateTime,
+    pub last_seen_at: OffsetDateTime,
+    pub expires_at: OffsetDateTime,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+/// Every live session a person has.
+///
+/// `docs/40`: "Revocation is immediate: delete the row. Admin-visible session
+/// list, with sign out everywhere." A person cannot act on a session they
+/// cannot see, so this is the list that makes revocation usable.
+///
+/// Revoked and expired rows are excluded — a list that showed them would make
+/// "sign out everywhere" look as though it had failed.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn sessions_of(
+    conn: &mut sqlx::PgConnection,
+    user_id: Uuid,
+) -> Result<Vec<SessionSummary>, sqlx::Error> {
+    let rows: Vec<SessionTuple> = sqlx::query_as(
+        "SELECT id, auth_method, created_at, last_seen_at, expires_at,
+                host(ip_address), user_agent
+           FROM session
+          WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+          ORDER BY last_seen_at DESC",
+    )
+    .bind(user_id)
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| SessionSummary {
+            id: r.0,
+            auth_method: r.1,
+            created_at: r.2,
+            last_seen_at: r.3,
+            expires_at: r.4,
+            ip_address: r.5,
+            user_agent: r.6,
+        })
+        .collect())
+}
+
+/// Whether a session belongs to a person.
+///
+/// Checked before revoking by id, so one user cannot end another's session by
+/// guessing a uuid.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn session_belongs_to(
+    conn: &mut sqlx::PgConnection,
+    session_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM session WHERE id = $1 AND user_id = $2)")
+        .bind(session_id)
+        .bind(user_id)
+        .fetch_one(conn)
+        .await
 }
 
 /// Set a new password, and move `changed_at` to now.

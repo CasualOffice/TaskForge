@@ -328,7 +328,7 @@ pub async fn confirm(
     // `set_password` moves `changed_at`, which `live_session` already checks —
     // this is the explicit half, so the sessions are *revoked* rather than
     // merely refused, and a user reading their session list sees them gone.
-    let revoked = identity::revoke_all_sessions(&mut conn, token.user_id)
+    let revoked = identity::revoke_all_sessions(&mut conn, token.user_id, None)
         .await
         .map_err(|error| {
             tracing::error!(%error, "revoking sessions after a password change failed");

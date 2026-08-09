@@ -286,6 +286,22 @@ pub fn router(state: AppState) -> Router {
         // different permission from assigning (D-049) — anyone who could do
         // both could mint a role carrying more than they hold and grant it to
         // themselves.
+        // A person's own account. Outside the tenant boundary by construction —
+        // a person belongs to many workspaces — and every handler answers only
+        // about the caller, which is what makes that safe.
+        .route("/api/v1/me", get(crate::me::read).patch(crate::me::update))
+        .route(
+            "/api/v1/me/password",
+            axum::routing::post(crate::me::change_password),
+        )
+        .route(
+            "/api/v1/me/sessions",
+            get(crate::me::sessions).delete(crate::me::revoke_other_sessions),
+        )
+        .route(
+            "/api/v1/me/sessions/{id}",
+            axum::routing::delete(crate::me::revoke_session),
+        )
         .route(
             "/api/v1/roles",
             get(crate::roles::list).post(crate::roles::create),
@@ -692,6 +708,10 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/environments",
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",
+    "/api/v1/me",
+    "/api/v1/me/password",
+    "/api/v1/me/sessions",
+    "/api/v1/me/sessions/{id}",
     "/api/v1/roles",
     "/api/v1/roles/{id}",
     "/api/v1/role-assignments",

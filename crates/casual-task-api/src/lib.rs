@@ -31,6 +31,7 @@ pub mod etag;
 pub mod exports;
 pub mod invitations;
 pub mod json;
+pub mod me;
 pub mod mfa;
 pub mod middleware;
 pub mod milestones;
