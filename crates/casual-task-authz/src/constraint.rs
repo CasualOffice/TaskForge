@@ -11,7 +11,7 @@
 //! constraint cannot be added by a plugin, or by a crate that merely implements
 //! something.
 
-use casual_task_model::{EnvironmentId, UserId};
+use casual_task_model::{EnvironmentId, TaskType, UserId};
 
 /// A narrowing predicate attached to one grant.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +24,17 @@ pub enum Constraint {
     IsProjectMember,
     /// Satisfied when the task's environment is one of these.
     EnvironmentIn(Vec<EnvironmentId>),
+    /// Satisfied when the task's type is one of these.
+    ///
+    /// The lifecycle's answer to "developers may raise a bug against their own
+    /// work but may not invent a feature" (`docs/45` §Permissions). A grant of
+    /// `task.create` constrained to `[BUG, INCIDENT]` says exactly that.
+    ///
+    /// A constraint rather than a `task.create.bug` key per type: the registry
+    /// is closed, so a key per type multiplies it by the type list and breaks
+    /// the day a workspace adds a type. `EnvironmentIn` set the precedent that
+    /// a member of this closed set may carry values.
+    TaskTypeIn(Vec<TaskType>),
     /// Satisfied when the actor is not a guest.
     NotExternal,
 }
@@ -40,6 +51,13 @@ pub struct ResourceFacts {
     /// project.
     pub actor_is_project_member: bool,
     pub environment: Option<EnvironmentId>,
+    /// The task's type — or, on a create, the type being *proposed*.
+    ///
+    /// The one fact here that can describe a resource which does not exist yet.
+    /// That is not a special case: `docs/04` decides against a *proposed*
+    /// resource on every create, and the type is simply the first proposed
+    /// field any constraint has needed.
+    pub task_type: Option<TaskType>,
     /// Workspace membership type is `GUEST`.
     pub actor_is_guest: bool,
 }
@@ -54,6 +72,10 @@ impl Constraint {
             // An unset environment satisfies nothing: a task tagged to no
             // environment is not "in every environment".
             Self::EnvironmentIn(allowed) => facts.environment.is_some_and(|e| allowed.contains(&e)),
+            // An unknown type satisfies nothing, for the reason above it: a
+            // caller that did not say what it is proposing has not earned a
+            // decision that depends on it.
+            Self::TaskTypeIn(allowed) => facts.task_type.is_some_and(|t| allowed.contains(&t)),
             Self::NotExternal => !facts.actor_is_guest,
         }
     }
@@ -90,6 +112,45 @@ mod tests {
             ..Default::default()
         };
         assert!(Constraint::EnvironmentIn(vec![allowed]).satisfied(actor, &tagged));
+    }
+
+    #[test]
+    fn a_type_constraint_admits_only_the_listed_types() {
+        // The lifecycle rule: a developer may raise a bug and may not invent a
+        // feature. Both halves asserted, because a constraint that admitted
+        // everything would pass a test that only checked the allowed case.
+        let actor = UserId::new();
+        let raising = |task_type: TaskType| ResourceFacts {
+            task_type: Some(task_type),
+            ..Default::default()
+        };
+        let developer = Constraint::TaskTypeIn(vec![TaskType::Bug, TaskType::Incident]);
+
+        assert!(developer.satisfied(actor, &raising(TaskType::Bug)));
+        assert!(developer.satisfied(actor, &raising(TaskType::Incident)));
+        assert!(!developer.satisfied(actor, &raising(TaskType::Feature)));
+        assert!(!developer.satisfied(actor, &raising(TaskType::Task)));
+    }
+
+    #[test]
+    fn an_unstated_type_is_not_a_wildcard() {
+        // A create that did not say what it is proposing must not slip through a
+        // type constraint. Same direction of failure as the environment case.
+        let actor = UserId::new();
+        assert!(
+            !Constraint::TaskTypeIn(vec![TaskType::Bug])
+                .satisfied(actor, &ResourceFacts::default())
+        );
+    }
+
+    #[test]
+    fn an_empty_type_list_allows_nothing() {
+        let actor = UserId::new();
+        let facts = ResourceFacts {
+            task_type: Some(TaskType::Bug),
+            ..Default::default()
+        };
+        assert!(!Constraint::TaskTypeIn(Vec::new()).satisfied(actor, &facts));
     }
 
     #[test]

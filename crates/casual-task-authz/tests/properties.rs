@@ -119,6 +119,14 @@ impl World {
             reporter: None,
             actor_is_project_member: rng.random_bool(0.5),
             environment: Some(self.environment),
+            // Varied like every other fact: the properties below must hold
+            // whatever a resource looks like, and a constant here would leave
+            // the type constraint untested by the generator.
+            task_type: if rng.random_bool(0.5) {
+                Some(casual_task_model::TaskType::Bug)
+            } else {
+                Some(casual_task_model::TaskType::Feature)
+            },
             actor_is_guest: rng.random_bool(0.3),
         }
     }
