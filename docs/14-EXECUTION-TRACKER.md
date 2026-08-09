@@ -1279,7 +1279,7 @@ in-process hub that `GET /api/v1/stream?project_id=` subscribes to.
 Three things are worth reading before the code:
 
 - **The event now carries its project.** Migration
-  [0022](../migrations/0022_outbox_event_project.sql) adds `outbox_event.project_id`.
+  [0023](../migrations/0023_outbox_event_project.sql) adds `outbox_event.project_id`.
   Without it a fan-out consumer cannot answer "who may see this?" — readability
   is decided at the project, and the alternatives were re-reading the aggregate
   (a round trip per event, and wrong for a delete) or trusting a JSON field no

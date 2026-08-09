@@ -99,6 +99,7 @@ fn app(pool: sqlx::PgPool, mailer: Arc<dyn Mailer>) -> axum::Router {
         pool,
         metrics: Arc::new(Recorder::new()),
         secret_key: "a-test-secret-key-long-enough-for-hmac".into(),
+        broadcast: casual_task_api::sse::local_hub(),
         public_url: PUBLIC_URL.into(),
         mailer,
     })
