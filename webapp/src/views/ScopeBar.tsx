@@ -15,7 +15,7 @@
  * decision. Debouncing the picker would add latency to an action that has none
  * to hide.
  */
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
@@ -26,7 +26,7 @@ import { useWorkspaceId } from '../shell/session'
 /** Long enough that a typist does not fire a request per letter, short enough to feel live. */
 const DEBOUNCE_MS = 250
 
-export function ScopeBar({ children }: { children?: ReactElement | null }): ReactElement {
+export function ScopeBar({ children }: { children?: ReactNode }): ReactElement {
   const workspaceId = useWorkspaceId()
   const search = useAppSearch()
   const update = useUpdateSearch()

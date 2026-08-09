@@ -49,6 +49,7 @@ import { useTaskTransition } from '../tasks/mutations'
 import { stateLabel } from '../tasks/present'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
 import { BoardColumn } from './board/BoardColumn'
+import { CreateTask } from './CreateTask'
 import { ScopeBar } from './ScopeBar'
 
 export function BoardView(): ReactElement {
@@ -134,7 +135,9 @@ export function BoardView(): ReactElement {
 
   return (
     <section className="view" aria-labelledby="board-heading">
-      <ScopeBar />
+      <ScopeBar>
+        <CreateTask projectId={search.project} />
+      </ScopeBar>
       <div className="view__bar view__bar--sub">
         <h1 id="board-heading" className="view__title">
           Board

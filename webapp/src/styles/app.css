@@ -912,3 +912,15 @@ kbd {
 .assignees-panel {
   margin-top: var(--space-4);
 }
+
+.create {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 240px;
+}
+.create__title {
+  flex: 1;
+  min-width: 160px;
+}

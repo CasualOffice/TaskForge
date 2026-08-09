@@ -29,6 +29,7 @@ import { useWorkspaceId } from '../shell/session'
 import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskFeed } from '../tasks/feed'
 import { formatRelative, isOverdue, priorityLabel, stateLabel } from '../tasks/present'
+import { CreateTask } from './CreateTask'
 import { ScopeBar } from './ScopeBar'
 import { TaskDrawer } from '../drawer/TaskDrawer'
 import { useSortPreference } from './sorting'
@@ -77,7 +78,9 @@ export function TaskListView(): ReactElement {
 
   return (
     <section className="view" aria-labelledby="list-heading">
-      <ScopeBar />
+      <ScopeBar>
+        <CreateTask projectId={search.project} />
+      </ScopeBar>
       <div className="view__bar view__bar--sub">
         <h1 id="list-heading" className="view__title">
           Tasks
