@@ -428,6 +428,7 @@ async fn a_dependency_is_added_and_reads_back_from_both_ends() -> Result<()> {
     assert_eq!(relations["blocks"][0]["id"], second);
     assert_eq!(relations["blocks"][0]["key"], "WR-2");
     assert_eq!(relations["blocks"][0]["state"], "BACKLOG");
+    assert_eq!(relations["blocks"][0]["restricted"], false);
     assert!(
         relations["blocked_by"]
             .as_array()
@@ -480,6 +481,27 @@ async fn a_dependency_that_would_close_a_loop_is_refused() -> Result<()> {
         .await?;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["error"]["code"], "TF-TSK-0003");
+    // docs/03 / §12: the refusal names the loop. "Invalid dependency" tells the
+    // user nothing they can act on.
+    let cycle = body["error"]["details"]["cycle"]
+        .as_array()
+        .expect("the refusal names the cycle");
+    assert!(
+        cycle.len() >= 3,
+        "the path does not describe a loop: {body}"
+    );
+    assert_eq!(
+        cycle.first(),
+        cycle.last(),
+        "a named cycle must start and end at the same task: {body}"
+    );
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("→"),
+        "the message does not render the path: {body}"
+    );
 
     // And nothing was written: the refusal is the whole statement, not a check
     // followed by an insert.
@@ -695,5 +717,148 @@ async fn adding_a_dependency_writes_its_history_in_the_same_transaction() -> Res
         "the dependency left no history: {page}"
     );
     assert_eq!(entries[0]["changes"]["direction"], "blocks");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_blocker_in_an_invisible_project_shows_as_restricted_not_absent() -> Result<()> {
+    // docs/03: a blocking task "shows as 'restricted' if the viewer cannot see
+    // its project, never as its title".
+    //
+    // Dropping the edge instead would show a task as blocked by nothing — a
+    // card that cannot move with no reason given, which is a worse answer than
+    // "something you cannot see".
+    let db = schema_harness::TestDatabase::start().await?;
+    let author = caller(&db.pool, "author@example.com", "acme", RELATER).await?;
+    let (project, open_task) = a_task(&author).await?;
+    assert!(!project.is_empty());
+
+    // A private project in the same workspace, and a task in it that blocks the
+    // open one. The author can see both; the colleague can see only one.
+    let (status, secret_project, _) = author
+        .post(
+            "/api/v1/projects",
+            &serde_json::json!({ "key": "SEC", "name": "Secret", "visibility": "PRIVATE" }),
+            Some(&key()),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED, "{secret_project}");
+    let secret_id = secret_project["id"].as_str().expect("id").to_owned();
+    let hidden = another_task(&author, &secret_id, "Hidden blocker").await?;
+
+    let (status, body, _) = author
+        .post(
+            &format!("/api/v1/tasks/{hidden}/dependencies"),
+            &serde_json::json!({ "blocks": open_task }),
+            None,
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+
+    let colleague = member_of(&db.pool, "colleague@example.com", author.workspace, RELATER).await?;
+    let (status, relations, _) = colleague
+        .get(&format!("/api/v1/tasks/{open_task}/dependencies"))
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{relations}");
+
+    let blockers = relations["blocked_by"].as_array().expect("array");
+    assert_eq!(
+        blockers.len(),
+        1,
+        "the edge was dropped, so the task appears blocked by nothing: {relations}"
+    );
+    assert_eq!(blockers[0]["restricted"], true);
+    assert!(
+        blockers[0]["title"].is_null(),
+        "a title leaked: {relations}"
+    );
+    assert!(blockers[0]["key"].is_null(), "a key leaked: {relations}");
+    assert!(blockers[0]["id"].is_null(), "an id leaked: {relations}");
+
+    // The author, who can see both, gets the real thing — otherwise this test
+    // passes with an endpoint that restricts everybody.
+    let (_, theirs, _) = author
+        .get(&format!("/api/v1/tasks/{open_task}/dependencies"))
+        .await?;
+    assert_eq!(theirs["blocked_by"][0]["restricted"], false);
+    assert_eq!(theirs["blocked_by"][0]["title"], "Hidden blocker");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_board_knows_a_task_is_blocked_without_asking_per_card() -> Result<()> {
+    // §12: the board disables the drop target rather than letting the card
+    // spring back. That needs blocked-ness in the LIST response — a per-card
+    // fetch on a 200-card board is the N+1 docs/04 §The list problem prevents.
+    let db = schema_harness::TestDatabase::start().await?;
+    let caller = caller(&db.pool, "member@example.com", "acme", RELATER).await?;
+    let (project, a) = a_task(&caller).await?;
+    let b = another_task(&caller, &project, "B").await?;
+
+    // Before: nothing is blocked.
+    let (status, page, _) = caller.get("/api/v1/tasks").await?;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    for row in page["data"].as_array().expect("data") {
+        assert_eq!(row["is_blocked"], false, "{row}");
+    }
+
+    let (status, _, _) = caller
+        .post(
+            &format!("/api/v1/tasks/{a}/dependencies"),
+            &serde_json::json!({ "blocks": b }),
+            None,
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // After: B is blocked, A is not — in the list, with no extra request.
+    let (_, page, _) = caller.get("/api/v1/tasks").await?;
+    let rows = page["data"].as_array().expect("data");
+    let blocked = rows.iter().find(|r| r["id"] == b.as_str()).expect("B");
+    let blocker = rows.iter().find(|r| r["id"] == a.as_str()).expect("A");
+    assert_eq!(blocked["is_blocked"], true, "{blocked}");
+    assert_eq!(blocker["is_blocked"], false, "{blocker}");
+
+    // And on the single read, so the drawer agrees with the board.
+    let (_, single, _) = caller.get(&format!("/api/v1/tasks/{b}")).await?;
+    assert_eq!(single["is_blocked"], true, "{single}");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_task_blocked_by_something_invisible_still_reports_blocked() -> Result<()> {
+    // The two rules meet here: the blocker is withheld from the relations list
+    // AND the task is still blocked. A board that showed it as draggable would
+    // let the user attempt a transition the gate then refuses.
+    let db = schema_harness::TestDatabase::start().await?;
+    let author = caller(&db.pool, "author@example.com", "acme", RELATER).await?;
+    let (_, open_task) = a_task(&author).await?;
+    let (status, secret, _) = author
+        .post(
+            "/api/v1/projects",
+            &serde_json::json!({ "key": "SEC", "name": "Secret", "visibility": "PRIVATE" }),
+            Some(&key()),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED, "{secret}");
+    let hidden = another_task(&author, secret["id"].as_str().expect("id"), "Hidden").await?;
+    let (status, _, _) = author
+        .post(
+            &format!("/api/v1/tasks/{hidden}/dependencies"),
+            &serde_json::json!({ "blocks": open_task }),
+            None,
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let colleague = member_of(&db.pool, "colleague@example.com", author.workspace, RELATER).await?;
+    let (_, single, _) = colleague.get(&format!("/api/v1/tasks/{open_task}")).await?;
+    assert_eq!(
+        single["is_blocked"], true,
+        "a task blocked by something invisible reported as draggable: {single}"
+    );
     Ok(())
 }

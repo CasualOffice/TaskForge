@@ -51,13 +51,21 @@ use crate::unit;
 use crate::wire::Body;
 
 /// One end of a relation.
+///
+/// Every field but `restricted` is nullable, and all of them are null together.
+/// `docs/03`: a blocking task "shows as 'restricted' if the viewer cannot see
+/// its project, never as its title" — so the edge is reported and its identity
+/// is not. Omitting the row instead would show a task as blocked by nothing,
+/// which is a worse answer than "something you cannot see".
 #[derive(Debug, Serialize)]
 pub struct RelationView {
-    pub id: Uuid,
-    /// The human key, `WR-125`.
-    pub key: String,
-    pub title: String,
-    pub state: String,
+    pub id: Option<Uuid>,
+    /// The human key, `WR-125`. `null` when restricted.
+    pub key: Option<String>,
+    pub title: Option<String>,
+    pub state: Option<String>,
+    /// `true` when the other end is in a project this viewer cannot see.
+    pub restricted: bool,
 }
 
 impl From<&RelatedTask> for RelationView {
@@ -67,6 +75,7 @@ impl From<&RelatedTask> for RelationView {
             key: row.key.clone(),
             title: row.title.clone(),
             state: row.state.clone(),
+            restricted: row.restricted,
         }
     }
 }
@@ -206,11 +215,19 @@ pub async fn add(
     let created = dependency::insert(&mut scoped, &ctx.viewer, blocker, blocked)
         .await
         .map_err(|error| match error {
-            DependencyError::WouldCycle => ApiError::unprocessable(
-                codes::DEPENDENCY_CYCLE,
-                "That dependency would create a cycle",
-                &request_id,
-            ),
+            DependencyError::WouldCycle(path) => {
+                // `docs/03` bounds the reachability check; naming the loop is
+                // what makes the refusal actionable. "Invalid dependency" tells
+                // a user nothing they can act on — `ONB-4 → API-2 → ONB-4`
+                // tells them which link to remove.
+                let message = if path.is_empty() {
+                    "That dependency would create a cycle".to_owned()
+                } else {
+                    format!("That dependency would create a cycle: {}", path.join(" → "))
+                };
+                ApiError::unprocessable(codes::DEPENDENCY_CYCLE, message, &request_id)
+                    .with_details(serde_json::json!({ "cycle": path }))
+            }
             // Absent and invisible are one answer (`docs/04`).
             DependencyError::NotVisible => ApiError::missing(codes::TASK_NOT_FOUND, &request_id),
             DependencyError::TooMany => ApiError::unprocessable(

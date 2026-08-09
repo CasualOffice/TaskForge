@@ -1973,16 +1973,43 @@ is stated**: a cycle that closes only at hop 65 is not detected.
 **A live defect found on the way, and fixed.** The filter compiler's
 `is_blocked` clause selected `d.blocked_task_id` — a column `task_dependency`
 has never had; migration 0005 names the two ends `from_task_id` and
-`to_task_id`. Every `is_blocked` filter therefore failed at execution time with
-"column does not exist". Nothing caught it because the C-012 suite asserts the
-compiler's SQL *text* and the `EXPLAIN` catalogue has no probe for that field —
-the same blind spot that hid the cursor cast bug in C-006.
+`to_task_id`. Both `?is_blocked=true` and `?is_blocked=false` returned
+`TF-SYS-0001`, and it held back the built-in **My Work · Blocked** view
+[27](27-FILTER-AND-SAVED-VIEW-DSL.md) ships.
+
+The direction is a domain call, not a guess: [03](03-DOMAIN-MODEL.md) says
+"`from` blocks `to`" and gates a transition on an **incoming** `BLOCKS` edge, so
+a task is blocked when it is the `to` end — which is also the direction
+`task::unresolved_blockers` already read and what `task_dependency_rev_ix` on
+`to_task_id` indexes.
+
+Nothing caught it because the C-012 suite asserts the compiler's SQL *text*,
+which a wrong column name satisfies perfectly, and the `EXPLAIN` catalogue has
+no probe for that field — the same blind spot that hid the cursor cast bug in
+C-006. The test added with the fix reads `migrations/0005` and asserts that
+every `<alias>.<column>` the compiler emits is a column that migration
+declares, so the next wrong name fails in CI rather than in production.
+
+**The design spec's constraints are met.** A restricted edge is **returned**
+with its identity withheld rather than filtered out — [03](03-DOMAIN-MODEL.md):
+a blocking task "shows as 'restricted' if the viewer cannot see its project,
+never as its title", and dropping the row would show a task as blocked by
+nothing. A cycle refusal **names the loop** (`ONB-4 → API-2 → ONB-4`) in both
+the message and `details.cycle`. And blocked-ness is on `TaskView` itself,
+computed in the same query as the row: the board disables a drop target rather
+than letting a card spring back, so it must know before the drag, and asking per
+card would be the N+1 [04](04-RBAC-AND-AUTHORIZATION.md) §The list problem
+exists to prevent. A bulk endpoint was the alternative and was rejected — it is
+a second round trip that can disagree with the first.
 
 **What is not covered:** removing a dependency (`DELETE`) is not implemented, so
 a relation added in the drawer cannot be undone through the API; the activity
 stream has no project-level feed (`activity_project_ix` exists and nothing reads
-it); and `is_blocked` still has no `EXPLAIN` probe, so the fix above is covered
-by an integration test rather than by the plan gate.
+it); `is_blocked` still has no `EXPLAIN` probe, so the fix above is covered by
+unit and integration tests rather than by the plan gate; and the subtask rollup
+and the `task.dependency.override` reason are **not** implemented here — the
+override lives on the transition endpoint (C-007), and its required-reason field
+is a change to that surface rather than to these two.
 
 ## Phases 2–4
 

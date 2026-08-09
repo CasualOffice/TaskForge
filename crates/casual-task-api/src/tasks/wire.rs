@@ -44,6 +44,16 @@ pub struct TaskView {
     pub updated_at: String,
     pub updated_by: Option<Uuid>,
     pub archived_at: Option<String>,
+    /// Whether an unresolved blocker points at this task.
+    ///
+    /// On the task representation rather than behind a per-card fetch: the
+    /// board disables a drop target instead of letting a card spring back on a
+    /// refusal, so it must know before the drag. Asking per card would be 200
+    /// requests on a 200-card board — the N+1 `docs/04` §The list problem
+    /// exists to prevent — and a bulk endpoint would be a second round trip
+    /// that can disagree with the first. It is computed in the same query as
+    /// the row.
+    pub is_blocked: bool,
     pub version: i64,
 }
 
@@ -71,6 +81,7 @@ pub(crate) fn view(row: &TaskRow, project_key: &str) -> TaskView {
         updated_at: wire::timestamp(row.updated_at),
         updated_by: row.updated_by,
         archived_at: row.archived_at.map(wire::timestamp),
+        is_blocked: row.is_blocked,
         version: row.version,
     }
 }

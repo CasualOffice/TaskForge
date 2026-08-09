@@ -46,7 +46,14 @@ pub const MAX_PER_TASK: i64 = 100;
 #[derive(Debug)]
 pub enum DependencyError {
     /// The edge would close a loop — `TF-TSK-0003`.
-    WouldCycle,
+    ///
+    /// Carries the loop it found, as human keys in order
+    /// (`ONB-4 → API-2 → ONB-4`). `docs/03` gives the reachability check a
+    /// bound; naming the path is what makes the refusal actionable — "invalid
+    /// dependency" tells a user nothing they can fix.
+    ///
+    /// Empty when the loop is the one-hop self-edge, which needs no path.
+    WouldCycle(Vec<String>),
     /// One of the two tasks is not visible, or does not exist.
     ///
     /// The two are one answer on purpose (`docs/04`): a caller must not be able
@@ -64,15 +71,29 @@ impl From<sqlx::Error> for DependencyError {
 }
 
 /// One edge, as the drawer renders it.
+///
+/// An edge whose other end the viewer cannot see is **still returned**, with
+/// everything identifying withheld. `docs/03`: a blocking task "shows as
+/// 'restricted' if the viewer cannot see its project, never as its title".
+///
+/// Dropping the row instead would show a task as blocked by nothing — the user
+/// sees a card that cannot move and no reason for it, which is a worse answer
+/// than "something you cannot see".
 #[derive(Debug, Clone)]
 pub struct RelatedTask {
-    pub id: Uuid,
-    /// The human key, `WR-125`.
-    pub key: String,
-    pub title: String,
+    /// `None` when restricted. An id is a handle to a task the viewer may not
+    /// know exists, so it is withheld with the rest.
+    pub id: Option<Uuid>,
+    /// The human key, `WR-125`. `None` when restricted.
+    pub key: Option<String>,
+    /// `None` when restricted.
+    pub title: Option<String>,
     /// One of the five permanent states — the drawer strikes through a
-    /// `COMPLETED` blocker rather than hiding it.
-    pub state: String,
+    /// `COMPLETED` blocker rather than hiding it. `None` when restricted:
+    /// whether somebody else's work is finished is their project's business.
+    pub state: Option<String>,
+    /// Whether this end is hidden from the viewer.
+    pub restricted: bool,
 }
 
 /// Serialize dependency writes within one workspace.
@@ -115,7 +136,7 @@ pub async fn insert(
     // The schema's CHECK refuses this too, but as a constraint violation the
     // caller would have to parse. A loop of length one is still a loop.
     if blocker == blocked {
-        return Err(DependencyError::WouldCycle);
+        return Err(DependencyError::WouldCycle(Vec::new()));
     }
     lock_workspace(scoped).await?;
 
@@ -196,10 +217,82 @@ pub async fn insert(
     .await?;
 
     if already.is_some() {
-        Ok(false)
-    } else {
-        Err(DependencyError::WouldCycle)
+        return Ok(false);
     }
+    Err(DependencyError::WouldCycle(
+        cycle_path(scoped, blocker, blocked).await?,
+    ))
+}
+
+/// The loop the refused edge would have closed, as human keys in order.
+///
+/// Walks the same direction the check does — forwards from `blocked` — keeping
+/// the path taken, and stops at the first route that reaches `blocker`. The
+/// result reads `ONB-4 → API-2 → ONB-4`: the proposed edge's own ends bracket
+/// it, so a reader can see which link to remove.
+///
+/// Best effort by design. This runs only on the refusal path, and a failure to
+/// describe a cycle must not turn a correct refusal into a 500 — so a database
+/// error here yields an empty path and the caller reports the refusal without
+/// one.
+async fn cycle_path(
+    scoped: &mut Scoped<'_>,
+    blocker: Uuid,
+    blocked: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
+    let workspace = scoped.workspace_id().as_uuid();
+    let path: Option<Vec<Uuid>> = sqlx::query_scalar(
+        "WITH RECURSIVE walk(id, path, depth) AS (
+             SELECT $3::uuid, ARRAY[$3::uuid], 0
+           UNION ALL
+             SELECT d.to_task_id, w.path || d.to_task_id, w.depth + 1
+               FROM task_dependency d
+               JOIN walk w ON d.from_task_id = w.id
+              WHERE d.workspace_id = $1
+                AND d.kind = 'BLOCKS'
+                AND w.depth < $4
+                -- Never revisit a node: an existing cycle elsewhere in the
+                -- graph would otherwise make this walk non-terminating, which
+                -- is the failure the depth bound alone does not prevent.
+                AND NOT (d.to_task_id = ANY(w.path))
+         )
+         SELECT path FROM walk WHERE id = $2 ORDER BY depth LIMIT 1",
+    )
+    .bind(workspace)
+    .bind(blocker)
+    .bind(blocked)
+    .bind(MAX_DEPTH)
+    .fetch_optional(scoped.conn())
+    .await?
+    .flatten();
+
+    let Some(mut path) = path else {
+        return Ok(Vec::new());
+    };
+    // Close the loop visually: the proposed edge points from `blocker` back to
+    // `blocked`, so the path ends where it began.
+    path.push(blocked);
+    keys_of(scoped, &path).await
+}
+
+/// Human keys for a list of task ids, in the order given.
+async fn keys_of(scoped: &mut Scoped<'_>, ids: &[Uuid]) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(Uuid, String, i64)> = sqlx::query_as(
+        "SELECT t.id, p.key, t.number
+           FROM task t JOIN project p ON p.id = t.project_id
+          WHERE t.id = ANY($1)",
+    )
+    .bind(ids)
+    .fetch_all(scoped.conn())
+    .await?;
+    Ok(ids
+        .iter()
+        .filter_map(|id| {
+            rows.iter()
+                .find(|(row_id, _, _)| row_id == id)
+                .map(|(_, key, number)| format!("{key}-{number}"))
+        })
+        .collect())
 }
 
 /// Everything blocking `task_id`, visible to the viewer.
@@ -253,8 +346,11 @@ async fn related(
     // other read. A blocker in a project the actor cannot see is omitted rather
     // than named — `docs/29` makes the same argument for notifications, and it
     // is the same leak.
+    // The visibility predicate is SELECTED, not applied as a filter. That is the
+    // whole difference between "restricted" and "absent": docs/03 requires the
+    // edge to survive and its identity to be withheld.
     let sql = format!(
-        "SELECT o.id, p.key, o.number, o.title, o.state::text
+        "SELECT o.id, p.key, o.number, o.title, o.state::text, ({visible}) AS visible
            FROM task_dependency d
            JOIN task o    ON o.id = {theirs}
            JOIN project p ON p.id = o.project_id
@@ -263,11 +359,10 @@ async fn related(
             AND d.kind = 'BLOCKS'
             AND o.deleted_at IS NULL
             AND p.deleted_at IS NULL
-            AND {visible}
           ORDER BY p.key, o.number",
         visible = crate::project::VISIBLE
     );
-    let rows: Vec<(Uuid, String, i64, String, String)> = sqlx::query_as(&sql)
+    let rows: Vec<(Uuid, String, i64, String, String, bool)> = sqlx::query_as(&sql)
         .bind(workspace)
         .bind(&viewer.teams)
         .bind(viewer.actor)
@@ -278,11 +373,28 @@ async fn related(
 
     Ok(rows
         .into_iter()
-        .map(|(id, key, number, title, state)| RelatedTask {
-            id,
-            key: format!("{key}-{number}"),
-            title,
-            state,
+        .map(|(id, key, number, title, state, visible)| {
+            if visible {
+                RelatedTask {
+                    id: Some(id),
+                    key: Some(format!("{key}-{number}")),
+                    title: Some(title),
+                    state: Some(state),
+                    restricted: false,
+                }
+            } else {
+                // Everything identifying is dropped HERE, after the database
+                // returned it, rather than being left to a caller to redact.
+                // A struct that could carry a title alongside `restricted: true`
+                // is a struct somebody eventually serializes.
+                RelatedTask {
+                    id: None,
+                    key: None,
+                    title: None,
+                    state: None,
+                    restricted: true,
+                }
+            }
         })
         .collect())
 }
