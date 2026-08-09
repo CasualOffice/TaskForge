@@ -386,16 +386,18 @@ async fn a_committed_file_is_not_downloadable_until_a_scan_clears_it() -> Result
     // The stored type came from the bytes, not the declaration.
     assert_eq!(body["content_type"], "image/png");
 
-    // Still not downloadable, and still not listed.
+    // Still not downloadable, and still not listed. docs/28 §The invariant
+    // makes this a 404 rather than a "wait": an uncommitted row is invisible to
+    // EVERY read path, and a download is one. The friendlier 409 would mean this
+    // endpoint reads rows the partial index exists to hide.
     let (status, refused) = caller
         .get(&format!("/api/v1/attachments/{id}/download"))
         .await?;
     assert_eq!(
         status,
-        StatusCode::CONFLICT,
+        StatusCode::NOT_FOUND,
         "an unscanned file was served: {refused}"
     );
-    assert_eq!(refused["error"]["code"], "TF-ATT-0007");
 
     let (_, listed) = caller
         .get(&format!("/api/v1/tasks/{task}/attachments"))
@@ -445,18 +447,47 @@ async fn an_infected_file_is_never_served() -> Result<()> {
         )
         .await?;
 
-    for (verdict, code) in [("INFECTED", "TF-ATT-0006"), ("FAILED", "TF-ATT-0010")] {
+    // Neither verdict commits the row, so neither is reachable at all — the
+    // invariant does the work before the verdict check gets a chance to.
+    for verdict in ["INFECTED", "FAILED"] {
         test_support::set_scan_verdict(&db.pool, caller.workspace, id, verdict).await?;
         let (status, body) = caller
             .get(&format!("/api/v1/attachments/{id}/download"))
             .await?;
         assert_eq!(
             status,
-            StatusCode::UNPROCESSABLE_ENTITY,
+            StatusCode::NOT_FOUND,
             "{verdict} was served: {body}"
         );
-        assert_eq!(body["error"]["code"], code);
+        let (_, listed) = caller
+            .get(&format!("/api/v1/tasks/{task}/attachments"))
+            .await?;
+        assert_eq!(
+            listed["data"].as_array().map(Vec::len),
+            Some(0),
+            "{verdict} was listed: {listed}"
+        );
     }
+
+    // And the second gate, on a row that IS committed: a file cleared once and
+    // re-scanned as infected stops being served. This is the only way
+    // `scanned_clean` is reachable, which is why it is asserted here.
+    test_support::set_scan_verdict(&db.pool, caller.workspace, id, "CLEAN").await?;
+    let (status, _) = caller
+        .get(&format!("/api/v1/attachments/{id}/download"))
+        .await?;
+    assert_eq!(status, StatusCode::FOUND, "a clean file was not served");
+
+    test_support::set_scan_verdict(&db.pool, caller.workspace, id, "INFECTED").await?;
+    let (status, body) = caller
+        .get(&format!("/api/v1/attachments/{id}/download"))
+        .await?;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "a re-scan that found malware kept serving the file: {body}"
+    );
+    assert_eq!(body["error"]["code"], "TF-ATT-0006");
     Ok(())
 }
 
