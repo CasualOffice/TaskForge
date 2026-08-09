@@ -1756,6 +1756,17 @@ caller cannot see, and the assertion is that it never appears.
   has no code for it; the operator/value code is the closest true statement, and
   a new one should be registered rather than guessed at here.
 
+**One error code moved, and it is a contract change.** Before the grammar was
+wired, every unknown query parameter on `GET /tasks` went through a generic
+`reject_unknown` and reported `TF-VAL-0002`. The query string of that endpoint is
+now the grammar plus its reserved pagination keys, so an unrecognised key is an
+unknown *filter field* — `TF-QRY-0001`, which is what
+[26](26-SEARCH-INDEXING-AND-QUERY.md) requires for an unlisted field. The status
+stays `400`, so a client switching on status is unaffected; a client switching on
+the code sees a different one. It was caught by a C-006 test that asserted the
+old code, and it is written down here rather than absorbed into that test
+silently.
+
 **One pre-existing defect fixed in passing.** `archived` is `BOOLEAN` in the
 grammar and a nullable timestamp in the schema, and compiled to
 `'true'::timestamptz` — a filter that returned a 500 rather than an answer. It
