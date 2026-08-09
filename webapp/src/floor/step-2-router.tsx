@@ -11,7 +11,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { fetchTasks, type Task } from '../api'
+import { fetchTasks, type Task } from './fixtures/tasks'
 
 function Shell(): ReactElement {
   return (

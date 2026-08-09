@@ -11,7 +11,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { TaskList } from '../routes/TaskList'
+import { TaskList } from './fixtures/TaskList'
 
 function Shell(): ReactElement {
   return (

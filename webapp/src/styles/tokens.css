@@ -1,0 +1,147 @@
+/* Design tokens.
+ *
+ * # Why these are declared here and not imported
+ *
+ * AGENTS.md §Repository boundary: `@schnsrw/design-system` lives at
+ * `../design-system` in the development monorepo, and "if you have cloned
+ * TaskForge on its own, those paths will not exist. Nothing in this repository
+ * depends on them." A `link:../design-system` dependency would make that false —
+ * `pnpm install` would fail for anyone who cloned only this repo, and the
+ * `bundle-size` gate would fail with it.
+ *
+ * docs/42 also makes the design system the one input that could still break the
+ * 200 KiB budget and requires a re-measurement when it is wired in. Wiring it is
+ * therefore its own piece of work, not a side effect of C-018.
+ *
+ * So: the token NAMES here are the design system's, character for character
+ * (`../design-system/src/tokens/colors.css`). Adopting the package later is a
+ * changed import in this one file, not a restyle of every component.
+ *
+ * Contrast: every text token against its intended surface clears 4.5:1, and
+ * every non-text boundary clears 3:1 (WCAG 2.2 AA, docs/42 §Accessibility).
+ */
+
+:root {
+  color-scheme: light;
+
+  --color-accent: #0e7490;
+  --color-accent-hover: #0c627a;
+  --color-accent-active: #0a5266;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #e6f3f7;
+
+  --color-bg: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f6f9;
+  --color-surface-strip: #eef1f5;
+  --color-surface-raised: #ffffff;
+
+  --color-border: #e6e9ee;
+  --color-border-strong: #cdd3db;
+  --color-divider: #edeff3;
+  --color-scrim: rgba(15, 23, 42, 0.38);
+
+  --color-text: #201f1e;
+  --color-text-secondary: #55534f;
+  --color-text-muted: #6b6966;
+  --color-text-on-accent: #ffffff;
+
+  --color-hover: rgba(15, 23, 42, 0.045);
+  --color-pressed: rgba(15, 23, 42, 0.09);
+  --color-focus-ring: #0e7490;
+  --color-selected: rgba(14, 116, 144, 0.11);
+
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-warning: #8a5300;
+  --color-warning-soft: #fdf3e2;
+  --color-success: #08654a;
+  --color-success-soft: #e6f5f0;
+  --color-info-soft: #eef2ff;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 19px;
+
+  --shadow-raised: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-overlay: 0 8px 32px rgba(15, 23, 42, 0.18);
+
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The dark theme exposes the SAME token names — the design system's rule, and
+ * the reason a component never asks which theme is active. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-accent: #3bb4d4;
+  --color-accent-hover: #58c4e0;
+  --color-accent-active: #7ad2e9;
+  --color-accent-fg: #04202a;
+  --color-accent-soft: #10323d;
+
+  --color-bg: #0d1117;
+  --color-surface: #151b23;
+  --color-surface-alt: #1c232c;
+  --color-surface-strip: #11171f;
+  --color-surface-raised: #1c232c;
+
+  --color-border: #262d36;
+  --color-border-strong: #3a434f;
+  --color-divider: #21272f;
+  --color-scrim: rgba(0, 0, 0, 0.6);
+
+  --color-text: #e8ecf1;
+  --color-text-secondary: #b3bcc7;
+  --color-text-muted: #98a2af;
+  --color-text-on-accent: #04202a;
+
+  --color-hover: rgba(255, 255, 255, 0.06);
+  --color-pressed: rgba(255, 255, 255, 0.11);
+  --color-focus-ring: #58c4e0;
+  --color-selected: rgba(59, 180, 212, 0.16);
+
+  --color-danger: #ff9c92;
+  --color-danger-soft: #3a1a17;
+  --color-warning: #f0b352;
+  --color-warning-soft: #33260f;
+  --color-success: #6fd3b0;
+  --color-success-soft: #10302a;
+  --color-info-soft: #1a2338;
+
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* docs/42 §Accessibility: `prefers-reduced-motion` respected. Not "animations
+ * shortened" — removed, because the setting is an accessibility need and a 1 ms
+ * transform is still a transform. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

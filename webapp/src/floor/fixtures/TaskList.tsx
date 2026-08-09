@@ -2,7 +2,7 @@ import { useRef, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
-import { fetchTasks, type Task } from '../api'
+import { fetchTasks, type Task } from './tasks'
 
 /**
  * Exercises TanStack Query and TanStack Virtual together, which is how the real
