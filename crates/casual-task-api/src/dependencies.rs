@@ -311,6 +311,143 @@ pub async fn add(
         .into_response())
 }
 
+/// `DELETE /api/v1/tasks/{id}/dependencies/{other_id}` — remove the edge.
+///
+/// # Why this had to exist
+///
+/// Dependencies were add-only. An edge added by mistake — or one whose blocker
+/// was cancelled — gated the blocked task's transitions forever, and the only
+/// escape was `task.dependency.override`, which is an authority for *ignoring*
+/// a real blocker, not a way to correct a wrong one. A graph you can only add
+/// to stops being a description of the work.
+///
+/// # No direction, and no `If-Match`
+///
+/// Naming both ends identifies the edge: `A blocks B` and `B blocks A` together
+/// are a cycle, so at most one can exist. And an edge is not part of the task
+/// representation the `ETag` describes, which is the same reason `POST` carries
+/// no precondition either.
+///
+/// # The far end need not be visible
+///
+/// `docs/03` shows a blocker the viewer cannot see as `restricted` rather than
+/// hiding the edge. Requiring visibility to remove would make exactly those
+/// edges permanent — and it would protect nothing, because the caller can
+/// already see the edge exists on their own panel. The authority is
+/// `task.update` on the task in the path, the same permission that added it.
+///
+/// # Errors
+///
+/// `404` when the task is not visible or no edge joins the two, `403` without
+/// `task.update`.
+pub async fn remove(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    headers: HeaderMap,
+    Path((task_id, other_id)): Path<(Uuid, Uuid)>,
+) -> Result<Response, ApiError> {
+    let request_id = RequestId::of_parts(&headers);
+
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+
+    let (task_row, project_key) = task::read_visible(&mut scoped, &ctx.viewer, task_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading the task failed");
+            ApiError::internal(&request_id)
+        })?
+        .ok_or_else(|| ApiError::missing(codes::TASK_NOT_FOUND, &request_id))?;
+
+    let is_member = project::is_member(&mut scoped, task_row.project_id, ctx.actor.as_uuid())
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading project membership failed");
+            ApiError::internal(&request_id)
+        })?;
+    let team = project::read_visible(&mut scoped, &ctx.viewer, task_row.project_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading the project failed");
+            ApiError::internal(&request_id)
+        })?
+        .map(|row| row.teams())
+        .unwrap_or_default();
+    unit::authorized(
+        ctx.authority.may_in_project(
+            permission::TASK_UPDATE,
+            ProjectId::from_uuid(task_row.project_id),
+            &team,
+            &ctx.facts_in_project(is_member),
+        ),
+        &request_id,
+    )?;
+
+    let removed = dependency::remove(&mut scoped, task_id, other_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "removing the dependency failed");
+            ApiError::internal(&request_id)
+        })?;
+    if !removed {
+        // The same answer an absent task gives. There is nothing to disclose:
+        // the caller can see this task, and either the edge is there or it is
+        // not.
+        return Err(ApiError::missing(codes::TASK_NOT_FOUND, &request_id));
+    }
+
+    // ADR-006: the edge and its history commit together. `docs/25` names the
+    // event `task.dependency.removed`.
+    UnitOfWork::record(
+        &mut scoped,
+        &Change {
+            aggregate_type: "task".to_owned(),
+            aggregate_id: task_id,
+            project_id: Some(task_row.project_id),
+            event_type: "task.dependency.removed".to_owned(),
+            activity_changes: serde_json::json!({
+                "key": format!("{project_key}-{}", task_row.number),
+                "other_task_id": other_id,
+            }),
+            audit_changes: serde_json::json!({
+                "before": { "task_id": task_id, "other_task_id": other_id },
+                "after": serde_json::Value::Null,
+            }),
+            payload: serde_json::json!({ "task_id": task_id, "other_task_id": other_id }),
+            schema_version: 1,
+        },
+        &ctx.provenance,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "recording the removal failed");
+        ApiError::internal(&request_id)
+    })?;
+
+    let blocked_by = dependency::blocked_by(&mut scoped, &ctx.viewer, task_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading blockers failed");
+            ApiError::internal(&request_id)
+        })?;
+    let blocks = dependency::blocks(&mut scoped, &ctx.viewer, task_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading blocked tasks failed");
+            ApiError::internal(&request_id)
+        })?;
+    unit::commit(tx, &request_id).await?;
+
+    // The panel that made the call renders this directly, rather than issuing a
+    // second request for the state it just changed.
+    Ok(axum::Json(Relations {
+        blocked_by: blocked_by.iter().map(RelationView::from).collect(),
+        blocks: blocks.iter().map(RelationView::from).collect(),
+    })
+    .into_response())
+}
+
 /// Which way the edge points, once the request is known to be coherent.
 #[derive(Debug, Clone, Copy)]
 enum Direction {

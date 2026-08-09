@@ -20,17 +20,16 @@
  * column is legible rather than being a stack of inputs. `docs/23` keeps status
  * out of this pattern: it is a command, not a field (see `StatusControl`).
  *
- * # The assignee gap, stated once
+ * # Assignees are their own request, and that is deliberate
  *
- * `TaskView` carries no `assignees` today and there is no `GET` for them; the
- * write half exists and answers with the resulting set. So this shows the set it
- * has been told about and says plainly when it has not been told — a wrong fact
- * stated confidently is worse than a missing one stated plainly. It reads
- * `task.assignees` when the field appears, so the day the read lands this
- * lights up with no change here.
+ * `TaskView` still carries no `assignees` field, because a 200-card board would
+ * fetch 200 assignee sets it does not draw — the N+1 `docs/04` §The list problem
+ * forbids. The detail surface asks for one set, from
+ * `GET /tasks/{id}/assignees`, and a write updates that cache directly rather
+ * than re-reading what it was just told.
  */
 import { type ReactElement } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
@@ -41,7 +40,7 @@ import {
   type Task,
   type TaskType,
 } from '../api/tasks'
-import { assignTask, unassignTask } from '../api/tasks'
+import { assignTask, readAssignees, unassignTask } from '../api/tasks'
 import { directory, listMembers } from '../api/workspaces'
 import { useAnnounce } from '../shell/announce'
 import type { Authority } from '../shell/permissions'
@@ -58,11 +57,6 @@ import {
   typeLabel,
 } from '../tasks/present'
 import { StatusControl } from './StatusControl'
-
-/** The assignee set when the representation carries one. See the module docs. */
-function assigneesOf(task: Task): readonly string[] | undefined {
-  return (task as { assignees?: readonly string[] }).assignees
-}
 
 export function TaskMeta({
   task,
@@ -286,9 +280,16 @@ function AssigneeField({
   nameOf: (id: string) => string
 }): ReactElement {
   const workspaceId = useWorkspaceId()
+  const client = useQueryClient()
   const announce = useAnnounce()
   const mayAssign = authority.can(PERMISSIONS.taskAssign)
-  const known = assigneesOf(task)
+
+  const assigned = useQuery({
+    queryKey: keys.assignees(workspaceId, task.id),
+    queryFn: ({ signal }) => readAssignees(workspaceId, task.id, signal),
+    enabled: workspaceId !== '',
+  })
+  const known = assigned.data?.assignees
 
   const members = useQuery({
     queryKey: keys.members(workspaceId),
@@ -298,25 +299,38 @@ function AssigneeField({
   })
 
   const assign = useMutation({
-    // The two endpoints answer with different bodies — the assign returns the
-    // resulting set, the unassign returns nothing — and neither is used here,
-    // so the result is discarded rather than widened into a union nobody reads.
-    mutationFn: async ({ userId, on }: { userId: string; on: boolean }): Promise<void> => {
-      if (on) await assignTask(workspaceId, task.id, userId)
-      else await unassignTask(workspaceId, task.id, userId)
+    // The two endpoints answer differently — assign returns the resulting set,
+    // unassign returns nothing — so the set is taken from the one that has it
+    // and re-read otherwise. Either way the panel ends up on the server's
+    // answer rather than on an optimistic guess about it.
+    mutationFn: async ({
+      userId,
+      on,
+    }: {
+      userId: string
+      on: boolean
+    }): Promise<{ assignees: readonly string[] } | undefined> => {
+      if (on) return assignTask(workspaceId, task.id, userId)
+      await unassignTask(workspaceId, task.id, userId)
+      return undefined
     },
-    onSuccess: (_result, { userId, on }) =>
-      announce(`${nameOf(userId)} ${on ? 'assigned to' : 'unassigned from'} ${task.key}`),
+    onSuccess: (result, { userId, on }) => {
+      if (result === undefined) {
+        void client.invalidateQueries({ queryKey: keys.assignees(workspaceId, task.id) })
+      } else {
+        client.setQueryData(keys.assignees(workspaceId, task.id), result)
+      }
+      // `assignee=@me` is a filter, so My Work and any assignee-filtered list
+      // are now wrong until they refetch.
+      void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
+      announce(`${nameOf(userId)} ${on ? 'assigned to' : 'unassigned from'} ${task.key}`)
+    },
     onError: () => announce('The assignment did not save.', 'error'),
   })
 
   const people = members.data?.data ?? []
   const label =
-    known === undefined
-      ? 'Not shown yet'
-      : known.length === 0
-        ? 'Nobody'
-        : known.map(nameOf).join(', ')
+    known === undefined ? (assigned.isPending ? '…' : '—') : known.length === 0 ? 'Nobody' : known.map(nameOf).join(', ')
 
   const value = (
     <span className={known === undefined || known.length === 0 ? 'meta2__unset' : ''}>{label}</span>
@@ -333,15 +347,6 @@ function AssigneeField({
     >
       {() => (
         <div>
-          {known === undefined ? (
-            /* One quiet line, not a boxed developer notice: the reader is about
-               to assign someone and needs to know the list they see afterwards
-               is this session's answer, not the server's. */
-            <p className="gapline pop__section">
-              This list only shows changes made here — the server does not return a
-              task’s assignees yet.
-            </p>
-          ) : null}
           <ul className="pop__list">
             {people.map((member) => {
               const on = (known ?? []).includes(member.user_id)

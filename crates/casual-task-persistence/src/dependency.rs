@@ -234,6 +234,44 @@ pub async fn insert(
     ))
 }
 
+/// Remove whichever edge joins these two tasks. `false` if there is none.
+///
+/// # Why the direction is not a parameter
+///
+/// At most one edge can exist between a pair: `A blocks B` and `B blocks A`
+/// together *are* a cycle, and [`insert`] refuses the second. So naming both
+/// ends identifies the edge, and a `direction` argument could only be a way for
+/// a caller to disagree with the graph — and get a silent no-op when it did.
+///
+/// # Why this does not check that both ends are visible
+///
+/// [`insert`] does, because creating an edge to a task you cannot see would let
+/// you discover it exists. Removal cannot: the edge is already on the caller's
+/// own Relations panel, shown as `restricted` when the far end is invisible
+/// (`docs/03`). Requiring visibility here would make exactly those edges
+/// permanent — the ones a person most needs to remove and can never re-create.
+/// The authority to remove is `task.update` on the task in the path, which the
+/// handler checks; this function is the statement.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn remove(scoped: &mut Scoped<'_>, one: Uuid, other: Uuid) -> Result<bool, sqlx::Error> {
+    let affected = sqlx::query(
+        "DELETE FROM task_dependency
+          WHERE workspace_id = $1
+            AND ((from_task_id = $2 AND to_task_id = $3)
+              OR (from_task_id = $3 AND to_task_id = $2))",
+    )
+    .bind(scoped.workspace_id().as_uuid())
+    .bind(one)
+    .bind(other)
+    .execute(scoped.conn())
+    .await?
+    .rows_affected();
+    Ok(affected > 0)
+}
+
 /// The loop the refused edge would have closed, as human keys in order.
 ///
 /// Walks the same direction the check does — forwards from `blocked` — keeping

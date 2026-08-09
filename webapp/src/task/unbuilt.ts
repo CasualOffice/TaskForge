@@ -29,8 +29,24 @@
  */
 import { contributions } from '../extensions/coreContributions'
 
-/** Panels the client renders itself. Everything else declared is still to come. */
-const IMPLEMENTED: ReadonlySet<string> = new Set(['details', 'comments'])
+/**
+ * Panels the client renders itself. Everything else declared is still to come.
+ *
+ * `attachments` is deliberately **not** here, and the reason is worth stating:
+ * the pipeline exists — presign, commit, scan, download — but the presigned
+ * upload URL points at an object origin (`{origin}/attachments/{key}`) that no
+ * route in this deployment serves. A client could get a URL and would have
+ * nowhere to PUT the bytes, so an upload control would be a button that always
+ * fails. Better a line saying attachments are not available than a control that
+ * looks built and is not.
+ */
+const IMPLEMENTED: ReadonlySet<string> = new Set([
+  'details',
+  'comments',
+  'relations',
+  'activity',
+  'subtasks',
+])
 
 /** The declared-but-unserved section titles, lowercased for a sentence. */
 export function unbuiltSections(): readonly string[] {
@@ -40,18 +56,21 @@ export function unbuiltSections(): readonly string[] {
 }
 
 /**
- * "Attachments, relations and activity are not available yet." — or `undefined`
- * when everything declared is served, at which point the line disappears rather
- * than becoming a boast.
+ * "Not available yet: attachments." — or `undefined` when everything declared is
+ * served, at which point the line disappears rather than becoming a boast.
+ *
+ * # Why the verb went away
+ *
+ * It read "Attachments is not available yet" once only one panel was left. The
+ * agreement was computed from *how many sections* there were, and every section
+ * name is itself a plural word — so one section produced a singular verb against
+ * a plural noun. Naming them after a colon has no verb to get wrong, however
+ * many there are.
  */
 export function unbuiltSentence(): string | undefined {
   const names = unbuiltSections()
   const last = names[names.length - 1]
   if (last === undefined) return undefined
   const list = names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`
-  return `${sentenceCase(list)} ${names.length === 1 ? 'is' : 'are'} not available yet.`
-}
-
-function sentenceCase(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1)
+  return `Not available yet: ${list}.`
 }

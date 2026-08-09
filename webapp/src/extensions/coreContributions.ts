@@ -54,6 +54,9 @@ const CORE: readonly Contribution[] = [
   { point: 'ui.task.panel', slug: 'attachments', title: 'Attachments', provider: 'core' },
   { point: 'ui.task.panel', slug: 'relations', title: 'Relations', provider: 'core' },
   { point: 'ui.task.panel', slug: 'activity', title: 'Activity', provider: 'core' },
+  // Declared once it was built, not before: the registry says what exists, and
+  // `unbuilt.ts` reads it to name what does not.
+  { point: 'ui.task.panel', slug: 'subtasks', title: 'Subtasks', provider: 'core' },
   // Badges on cards and list rows, rendered from data already fetched.
   { point: 'ui.task.badge', slug: 'status', title: 'Status', provider: 'core' },
   { point: 'ui.task.badge', slug: 'priority', title: 'Priority', provider: 'core' },

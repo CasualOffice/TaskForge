@@ -39,7 +39,10 @@ import { useQuery } from '@tanstack/react-query'
 import { keys } from '../api/keys'
 import { listProjects } from '../api/projects'
 import { readTask } from '../api/tasks'
+import { Activity } from './Activity'
 import { CommentThread } from './CommentThread'
+import { RelationsPanel } from './Relations'
+import { Subtasks } from './Subtasks'
 import { EmptyState } from '../shell/EmptyState'
 import { GapNotice, ErrorNotice } from '../shell/notice'
 import { useAuthority } from '../shell/permissions'
@@ -125,10 +128,19 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
           <div className="detail__scrollable">
             <TaskDescription task={current} authority={authority} />
 
-            {/* Subtasks, blockers, attachments and activity land here as they
-                are served. Until then: one line, not one box each. §12 governs
-                how blockers and subtasks appear when they arrive — two lists,
-                never one. */}
+            {/* §12: blockers and subtasks are two lists, never one. A blocker
+                gates this task's transitions; a subtask is part of its scope and
+                gates nothing. */}
+            <Subtasks taskId={current.id} />
+            <RelationsPanel
+              taskId={current.id}
+              taskKey={current.key}
+              authority={authority}
+            />
+            <Activity taskId={current.id} authority={authority} />
+
+            {/* Whatever the registry declares and nothing serves. One line, not
+                one box each. */}
             {missing === undefined ? null : <GapNotice what={missing} />}
           </div>
 

@@ -1612,6 +1612,76 @@ on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
 
+**The task surface is complete** — subtasks, blockers and activity render, and
+the assignee set is read rather than guessed at (C-008, C-011, C-018). The
+endpoints had been served for some time; nothing in the client reached them, and
+the surface said so in one grey line.
+
+**Two more write-only holes, the same shape as the last two.**
+
+- `GET /api/v1/tasks/{id}/assignees` — the set was returned by `POST` and by
+  nothing else, so the only way to learn who was on a task was to assign someone.
+  `TaskView` still carries no `assignees` field on purpose: a 200-card board would
+  fetch 200 sets it does not draw, which is the N+1 `docs/04` §The list problem
+  forbids. Ids, not names — the client resolves them through the member directory
+  it already holds, and a second name source would be a second thing to keep in
+  step with anonymization (ADR-026).
+- `DELETE /api/v1/tasks/{id}/dependencies/{other_id}` — dependencies were
+  add-only. An edge added by mistake gated the blocked task's transitions forever,
+  and the only escape was `task.dependency.override`, which is an authority for
+  *ignoring* a real blocker rather than a way to correct a wrong one. A graph you
+  can only add to stops describing the work.
+
+**Two decisions the removal needed, made here rather than left implicit.** No
+direction parameter: at most one edge can join a pair, because `A blocks B` and
+`B blocks A` together are a cycle, so naming both ends identifies it. And the far
+end need **not** be visible — `docs/03` shows an unreadable blocker as
+`restricted` rather than hiding the edge, so requiring visibility would make
+exactly those edges permanent while protecting nothing the caller cannot already
+see on their own panel. The authority is `task.update` on the task in the path.
+
+**Attachments stay declared and unbuilt, and now the reason is written down.**
+The pipeline exists end to end — presign, commit, scan status, download — but
+`presign_put` returns `{origin}/attachments/{key}?…` and **no route in this
+deployment serves that origin**. A client would receive an upload URL with
+nowhere to PUT the bytes. An upload control would therefore be a button that
+always fails, which is worse than the line that says the panel is not available.
+The missing piece is the object-serving handler (or an S3 backend configured to
+answer the presigned URL).
+
+**A wrong client type crashed the surface, and the test had encoded the same
+mistake.** `Relationship` carries `Subtasks` under `#[serde(flatten)]`, so the
+payload is `{parent, data, done, total, truncated}` — there is no `children`
+object. It was typed as nested, the panel test's stub repeated the assumption,
+the test passed, and the first real response threw `Cannot read properties of
+undefined`. Found by opening the page. The type is now copied from the payload
+and the stub carries a comment saying why.
+
+**Two defects the panels exposed in what was already there.** Both were visible
+on every task and neither had a test:
+
+- *Every value in the metadata column rendered as three characters.* `.pop` is
+  `inline-flex` and its trigger carries `overflow: hidden` for the ellipsis;
+  together those make the trigger a flex item whose automatic minimum size is
+  zero, so it collapsed to ~40 px inside a 203 px cell — "Nob…", "N…", "T…". The
+  column exists to be read at rest, so this was the surface's worst bug and it
+  looked like a design choice.
+- *"Attachments is not available yet."* The verb agreed with the *number of
+  sections*, and every section name is a plural word. The sentence now names them
+  after a colon and has no verb to get wrong.
+
+**What the panels refuse to guess.** Subtask progress is the server's `done` and
+`total`, counted across every child the caller may see — a panel counting its own
+rendered page would report "3 of 5 done" on a task with forty children. A blocker
+in a project the reader cannot see is drawn as restricted rather than dropped,
+because a task shown as blocked by nothing reads as "you may move this". And an
+activity row whose event type the client has never seen is rendered as its event
+type: a dropped row is a hole in an audit trail.
+
+**Activity is fetched only when opened.** On a board where the peek opens on
+hover, an eager fetch is one history request per card looked at, and nothing on
+screen would show it happening.
+
 **Administration is reachable** (`/settings`, C-018). Seven sections — profile,
 workspace, members, teams, roles, workflow, tags — each a route, wired to the
 endpoints that already existed and unbuilt in the client until now. Functional
