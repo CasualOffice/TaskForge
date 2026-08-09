@@ -289,13 +289,21 @@ async fn run() -> ExitCode {
     // The backend is chosen ONCE, here, from TF_STORAGE_BACKEND. No handler
     // branches on it again, which is what keeps the single-node profile running
     // the identical handshake S3 would (`docs/28` §Local deployment).
+    //
+    // The concrete filesystem store is kept beside the trait object, because the
+    // attachment origin below serves bytes off disk and S3 has no equivalent to
+    // serve — with S3 the *bucket* answers the presigned URL and this process
+    // never sees a byte of file content.
+    let local_objects: Option<std::sync::Arc<casual_task_infra::FilesystemStore>>;
     let storage: std::sync::Arc<dyn casual_task_infra::ObjectStore> = match config.storage.backend {
         casual_task_api::config::StorageBackend::Filesystem => {
-            std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
+            let store = std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
                 std::path::PathBuf::from(&config.storage.path),
                 config.attachment_origin.clone(),
                 config.secret_key.clone(),
-            ))
+            ));
+            local_objects = Some(std::sync::Arc::clone(&store));
+            store
         }
         // Unreachable: `Config::from_source` refuses this value rather than
         // letting a deployment believe its files are in a bucket.
@@ -320,6 +328,56 @@ async fn run() -> ExitCode {
     // `serve` below cannot leave orphaned dispatchers polling a database whose
     // API is gone.
     let _worker = start_embedded_worker(&config, &state).await;
+
+    // The attachment origin, on its own listener (`docs/28` §Serving downloads).
+    //
+    // A second *port* is a second origin, which is the control that document
+    // calls the most important one here: a stored HTML or SVG file cannot
+    // execute in the application's origin. `Config::from_source` already refuses
+    // a deployment whose `TF_ATTACHMENT_ORIGIN` shares an origin with
+    // `TF_PUBLIC_URL`; this is what makes that promise true on one node.
+    //
+    // Absent `TF_OBJECT_BIND_ADDR`, nothing is served here — the S3 profile,
+    // where the bucket answers the presigned URL. Warned about rather than
+    // failed on, because that is a legitimate deployment and this process
+    // cannot tell it apart from a misconfigured one.
+    let _objects = match (config.object_bind_addr, local_objects) {
+        (Some(addr), Some(store)) => {
+            let router = casual_task_api::objects::object_router(store, &config.secret_key);
+            match tokio::net::TcpListener::bind(addr).await {
+                Ok(listener) => {
+                    tracing::info!(%addr, "attachment origin listening");
+                    // Spawned, not awaited: the two listeners run together and
+                    // the application's is the one whose exit ends the process.
+                    Some(tokio::spawn(async move {
+                        if let Err(error) = axum::serve(listener, router).await {
+                            tracing::error!(%error, "the attachment origin failed");
+                        }
+                    }))
+                }
+                Err(error) => {
+                    // Fatal: a deployment that asked for the origin and cannot
+                    // bind it would accept uploads whose bytes go nowhere.
+                    tracing::error!(%error, %addr, "cannot bind the attachment origin");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        (Some(_), None) => {
+            tracing::warn!(
+                "TF_OBJECT_BIND_ADDR is set but the storage backend is not the filesystem: \
+                 nothing is served there"
+            );
+            None
+        }
+        (None, _) => {
+            tracing::warn!(
+                "TF_OBJECT_BIND_ADDR is unset: attachment uploads and downloads are \
+                 served by whatever TF_ATTACHMENT_ORIGIN points at, not by this process"
+            );
+            None
+        }
+    };
 
     match casual_task_api::serve(listener, state).await {
         Ok(()) => ExitCode::SUCCESS,

@@ -94,7 +94,7 @@ The documentation phase. All complete unless noted.
 | D-059 | Notification preferences, subscriptions, quiet hours and digests — the tables `docs/29` assumes and the schema does not have | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Open** — surfaced by C-016. Accept before C-016 is `Gated` |
 | D-060 | How the worker obtains a `BYPASSRLS` DSN, given `docs/48` names one `DATABASE_URL` | [48](48-DEPLOYMENT-PROFILES.md) | **Consumed** — `DISPATCHER_DATABASE_URL`, a second DSN as `taskforge_dispatcher`. It was already in `deploy/docker-compose.yml` and read by nothing; now documented in [48](48-DEPLOYMENT-PROFILES.md) and wired into both binaries |
 | D-061 | **What a board column is: a permanent state or a workflow status** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [42](42-FRONTEND-ARCHITECTURE.md) | **Open** — surfaced by C-018. Shipped as the five permanent states, with the cost stated; see below |
-| D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Proposed — fail closed. Needs the user's countersign.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
+| D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Accepted — fail closed. Countersigned by the project owner on 2026-08-10.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
 | D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
 | D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
 | D-065 | **A time-zone database, so an offset can be derived without a client** | [27](27-FILTER-AND-SAVED-VIEW-DSL.md), [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — `user_account.time_zone` stores an IANA name (migration 0030) and evaluation uses the offset the client sends, which a browser computes correctly including daylight saving. A server-side job has no client to ask, so digests and scheduled notifications cannot resolve `@today` for a user until a tz database is a dependency |
@@ -1611,6 +1611,42 @@ the cycle check under an advisory lock from
 on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
 compiler, so adding the grammar is supplying a richer AST rather than a second
 query path.
+
+**The attachment origin exists, which is what made the pipeline reachable**
+(C-010, `docs/28` §Serving downloads). Presign, commit, scan status and download
+had all been built; `presign_put` returned `{origin}/attachments/{key}` and
+**nothing served that origin**, so a client could obtain an upload URL and had
+nowhere to send the bytes.
+
+**A second listener, because a second port is a second origin.** `docs/28` calls
+origin separation "the single most important control here: a stored HTML or SVG
+file cannot execute in the application's origin even if every other check
+fails", and `Config::from_source` already refused a deployment whose
+`TF_ATTACHMENT_ORIGIN` shared an origin with `TF_PUBLIC_URL`. That promise was
+unkeepable while nothing served the other origin. `TF_OBJECT_BIND_ADDR` binds
+it; unset, this process serves nothing there and says so at startup, which is
+the S3 profile where the bucket answers instead.
+
+**The signature is the whole authority, and it is bound to the method.** There
+is no session at the attachment origin and there must not be — a cookie would
+not travel there anyway. A presigned URL is a capability minted by an endpoint
+that already checked `task.attachment.create` or `task.attachment.read`. The
+signature covers the key, the expiry *and* the method, so a download link handed
+to a colleague cannot be turned into an upload slot. Eight tests assert the
+properties a bug would leave working: method binding, expiry, three shapes of
+forgery, path traversal under a *valid* signature, and the download headers.
+
+**Uploads replace rather than append.** A client retrying a `PUT` whose response
+it never saw is doing the right thing; appending would double the bytes and the
+only thing that would notice is `commit`'s size check — a refusal for a correct
+client. `FilesystemStore::replace` is deliberately not on the `ObjectStore`
+trait: with S3 the bucket takes the `PUT` and this process never sees a byte.
+
+**D-062 is settled: fail closed, countersigned 2026-08-10.** With no scanner
+configured a committed attachment stays `PENDING` and is never downloadable.
+That is not a gap in this work — it is the decision working. A deployment that
+wants attachments served must configure a scanner, and the alternative default
+was, in `docs/14`'s own words, a silent lie.
 
 **The task surface is complete** — subtasks, blockers and activity render, and
 the assignee set is read rather than guessed at (C-008, C-011, C-018). The

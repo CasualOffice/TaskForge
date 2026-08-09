@@ -104,6 +104,7 @@ TF_STORAGE_BACKEND           fs | s3            (default fs)
 TF_STORAGE_PATH              ./data/attachments
 TF_S3_*                      endpoint, bucket, region, credentials
 TF_ATTACHMENT_ORIGIN         required in prod — the separate user-content origin
+| `TF_OBJECT_BIND_ADDR` | — | Where this process serves the attachment origin. A **different port** from `TF_BIND_ADDR`: a different port is a different origin, which is the control §Serving downloads rests on. Unset means the origin is served elsewhere — a bucket, a CDN — and this process serves no file bytes |
 TF_REDIS_URL                 optional; required with >1 api instance
 TF_WORKER_EMBEDDED           true | false       (default true)
 DISPATCHER_DATABASE_URL      required to run the outbox dispatcher — a SECOND DSN,

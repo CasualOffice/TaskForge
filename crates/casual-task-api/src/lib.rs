@@ -36,6 +36,7 @@ pub mod mfa;
 pub mod middleware;
 pub mod milestones;
 pub mod notifications;
+pub mod objects;
 pub mod password_reset;
 pub mod permissions;
 pub mod project_teams;
