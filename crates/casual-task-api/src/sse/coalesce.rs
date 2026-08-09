@@ -58,7 +58,7 @@ pub const MAX_PENDING: usize = 256;
 /// What decides that two events are the same update.
 type Key = (Uuid, String);
 
-/// Holds events for [`WINDOW`], keeping the newest per [`Key`].
+/// Holds events for [`WINDOW`], keeping the newest per `Key`.
 #[derive(Debug, Default)]
 pub struct Coalescer {
     /// Insertion-ordered. A replacement keeps its **original** position, so

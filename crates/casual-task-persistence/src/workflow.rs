@@ -181,6 +181,45 @@ async fn create_default_workflow(scoped: &mut Scoped<'_>) -> Result<Uuid, sqlx::
 /// # Errors
 ///
 /// Any database error.
+/// A workflow's own row, without its statuses or transitions.
+///
+/// Separate from [`load`] because the board asks for the whole thing and the
+/// caller of a single transition does not: reading five columns to name a
+/// workflow should not also read every status row in it.
+#[derive(Debug, Clone)]
+pub struct WorkflowRow {
+    pub id: Uuid,
+    pub name: String,
+    pub is_default: bool,
+    pub version: i64,
+}
+
+/// Read one workflow in this scope.
+///
+/// Returns `None` when the workflow does not exist **or** belongs to another
+/// workspace — row-level security makes the second case indistinguishable from
+/// the first, which is what `docs/04` requires anyway.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn read(
+    scoped: &mut Scoped<'_>,
+    workflow: Uuid,
+) -> Result<Option<WorkflowRow>, sqlx::Error> {
+    let row: Option<(Uuid, String, bool, i64)> =
+        sqlx::query_as("SELECT id, name, is_default, version FROM workflow WHERE id = $1")
+            .bind(workflow)
+            .fetch_optional(scoped.conn())
+            .await?;
+    Ok(row.map(|(id, name, is_default, version)| WorkflowRow {
+        id,
+        name,
+        is_default,
+        version,
+    }))
+}
+
 pub async fn load(
     scoped: &mut Scoped<'_>,
     workflow: Uuid,

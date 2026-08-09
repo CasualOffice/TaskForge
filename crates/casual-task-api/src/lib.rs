@@ -38,6 +38,7 @@ pub mod sse;
 pub mod tasks;
 pub mod unit;
 pub mod wire;
+pub mod workflows;
 pub mod workspaces;
 
 pub use config::{Config, ConfigError};
