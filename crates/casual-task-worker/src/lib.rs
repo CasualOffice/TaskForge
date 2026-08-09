@@ -20,3 +20,4 @@
 //! calls [`dispatcher::run`] directly rather than shelling out to a binary.
 
 pub mod dispatcher;
+pub mod projection;

@@ -172,6 +172,15 @@ pub const BACKOFF: [time::Duration; 6] = [
 pub struct Claimed {
     pub delivery_id: Uuid,
     pub event_id: Uuid,
+    /// The tenant the event belongs to.
+    ///
+    /// Every consumer needs it and none can derive it: the dispatcher polls
+    /// across tenants by design (`docs/25`), so the workspace cannot come from
+    /// a session the way it does on a request. A consumer that writes anything
+    /// reconstructs its scope from here through
+    /// [`WorkspaceScope::for_job`](casual_task_model::WorkspaceScope::for_job),
+    /// which is the one constructor that exists for exactly this path.
+    pub workspace_id: Uuid,
     pub consumer: String,
     pub event_type: String,
     pub aggregate_id: Uuid,
@@ -199,7 +208,19 @@ pub async fn claim(
     worker: &str,
     limit: i64,
 ) -> Result<Vec<Claimed>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, Uuid, serde_json::Value, i32)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            Uuid,
+            String,
+            String,
+            Uuid,
+            serde_json::Value,
+            i32,
+        ),
+    >(
         "UPDATE outbox_delivery d
             SET claimed_at = now(), claimed_by = $2, attempts = d.attempts + 1
           WHERE d.id IN (
@@ -225,7 +246,7 @@ pub async fn claim(
                  ORDER BY e.created_at, e.id
                  LIMIT $3
                    FOR UPDATE OF c SKIP LOCKED)
-      RETURNING d.id, d.event_id, d.consumer,
+      RETURNING d.id, d.event_id, d.workspace_id, d.consumer,
                 (SELECT event_type   FROM outbox_event WHERE id = d.event_id),
                 (SELECT aggregate_id FROM outbox_event WHERE id = d.event_id),
                 (SELECT payload      FROM outbox_event WHERE id = d.event_id),
@@ -241,16 +262,24 @@ pub async fn claim(
     Ok(rows
         .into_iter()
         .map(
-            |(delivery_id, event_id, consumer, event_type, aggregate_id, payload, attempts)| {
-                Claimed {
-                    delivery_id,
-                    event_id,
-                    consumer,
-                    event_type,
-                    aggregate_id,
-                    payload,
-                    attempts,
-                }
+            |(
+                delivery_id,
+                event_id,
+                workspace_id,
+                consumer,
+                event_type,
+                aggregate_id,
+                payload,
+                attempts,
+            )| Claimed {
+                delivery_id,
+                event_id,
+                workspace_id,
+                consumer,
+                event_type,
+                aggregate_id,
+                payload,
+                attempts,
             },
         )
         .collect())

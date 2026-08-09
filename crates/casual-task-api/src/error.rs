@@ -35,6 +35,19 @@ impl Code {
         Self(code)
     }
 
+    /// Adopt a code the model layer already produced.
+    ///
+    /// `casual-task-search` reports refusals as
+    /// [`casual_task_model::ErrorCode`], which is the same registry
+    /// (`docs/20`) behind a different newtype — the model crate cannot depend
+    /// on this one. Both wrap a `&'static str` from the registry, so carrying
+    /// it across is the identity, and doing it here keeps the API crate from
+    /// re-deciding what a filter error is called.
+    #[must_use]
+    pub fn from_registry(code: casual_task_model::ErrorCode) -> Self {
+        Self(code.as_str())
+    }
+
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         self.0
@@ -105,6 +118,24 @@ pub mod codes {
     pub const BAD_CURSOR: Code = Code::new("TF-QRY-0006");
     /// Page size over limit.
     pub const PAGE_TOO_LARGE: Code = Code::new("TF-QRY-0007");
+    /// Unknown filter field.
+    pub const UNKNOWN_FILTER_FIELD: Code = Code::new("TF-QRY-0001");
+    /// Unknown or unsortable sort field.
+    pub const UNSORTABLE_FIELD: Code = Code::new("TF-QRY-0002");
+    /// Operator not valid for this field type.
+    pub const BAD_OPERATOR: Code = Code::new("TF-QRY-0003");
+    /// Too many filter clauses.
+    pub const TOO_MANY_CLAUSES: Code = Code::new("TF-QRY-0004");
+    /// Filter nesting too deep.
+    pub const FILTER_TOO_DEEP: Code = Code::new("TF-QRY-0005");
+    /// Search query too long.
+    pub const SEARCH_TOO_LONG: Code = Code::new("TF-QRY-0008");
+    /// A symbol (`@me`, `+7d`) this server does not know.
+    ///
+    /// `docs/20` has no code for it, so it reports as the operator/value code:
+    /// an unrecognised symbol is a malformed value for the field it was written
+    /// on. Recorded in `docs/14` as a registry gap rather than a new area.
+    pub const UNKNOWN_SYMBOL: Code = Code::new("TF-QRY-0003");
 
     /// Project not found or not visible — never disambiguated.
     pub const PROJECT_NOT_FOUND: Code = Code::new("TF-PRJ-0001");
@@ -177,6 +208,12 @@ pub mod codes {
         CONSTRAINT_UNSATISFIED,
         BAD_CURSOR,
         PAGE_TOO_LARGE,
+        UNKNOWN_FILTER_FIELD,
+        UNSORTABLE_FIELD,
+        BAD_OPERATOR,
+        TOO_MANY_CLAUSES,
+        FILTER_TOO_DEEP,
+        SEARCH_TOO_LONG,
         PROJECT_NOT_FOUND,
         PROJECT_KEY_TAKEN,
         PROJECT_KEY_IMMUTABLE,

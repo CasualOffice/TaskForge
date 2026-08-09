@@ -124,8 +124,12 @@ fn cast_for(field: Field) -> &'static str {
         Field::State => "task_state",
         Field::Type => "task_type",
         Field::Priority => "task_priority",
-        Field::CreatedAt | Field::UpdatedAt | Field::DueAt | Field::Archived => "timestamptz",
-        Field::IsBlocked => "boolean",
+        Field::CreatedAt | Field::UpdatedAt | Field::DueAt => "timestamptz",
+        // Both are BOOLEAN in the grammar (`casual_task_search::FieldType`)
+        // even though `archived` is stored as a nullable timestamp: the filter
+        // asks "is it archived", and the comparison is against
+        // `archived_at IS NOT NULL`.
+        Field::IsBlocked | Field::Archived => "boolean",
         // Compared as text; no cast needed, and `q` is handled structurally.
         Field::Title | Field::Q | Field::Key => "",
     }
@@ -149,6 +153,14 @@ pub struct Compiled {
     pub sql: String,
     pub params: Vec<Param>,
 }
+
+/// The ranking expression (`docs/26` §Weighting).
+///
+/// `ts_rank_cd` — cover density — rather than `ts_rank`: it accounts for how
+/// close the matched lexemes are to each other, so a title containing the whole
+/// phrase outranks a description that happens to mention both words pages
+/// apart.
+const RANK: &str = "ts_rank_cd(s.document, q)";
 
 /// The static identifier map. The only place a column name is written.
 fn column_of(field: Field) -> &'static str {
@@ -192,10 +204,18 @@ pub fn compile(
     params.push(Param::Workspace(workspace));
     params.push(Param::Projects(authorized.as_slice().to_vec()));
 
-    let predicate = emit(filter, &mut params);
-    let keyset = keyset_predicate(page, &mut params);
+    // A `q` clause changes the SHAPE of the query, not just its predicate:
+    // `docs/26` §Permission filtering joins the projection and ranks in the
+    // select list, because a rank cannot be computed from a subquery the
+    // planner is free to turn into a semi-join. Hoisted here so the clause
+    // emitter never sees it.
+    if let Some(term) = full_text_term(filter) {
+        return compile_search(filter, term, page, params);
+    }
 
+    let predicate = emit(filter, &mut params);
     let col = sort_column(page.sort.field);
+    let keyset = keyset_predicate(page, &mut params, col);
     let dir = match page.sort.direction {
         Direction::Asc => "ASC",
         Direction::Desc => "DESC",
@@ -226,17 +246,99 @@ pub fn compile(
     Compiled { sql, params }
 }
 
+/// The single full-text term in a filter, if it has one.
+///
+/// Only the first is honoured. Two `q` clauses would need two `tsquery`
+/// constructions and a rank over both, and `docs/27`'s URL form cannot express
+/// it — a repeated parameter is one value, not two clauses.
+fn full_text_term(node: &Node) -> Option<String> {
+    match node {
+        Node::Clause(clause) if clause.field == Field::Q => match &clause.value {
+            Value::Literal(term) | Value::Symbol(term) => Some(term.clone()),
+            _ => None,
+        },
+        Node::And(children) | Node::Or(children) => children.iter().find_map(full_text_term),
+        Node::Not(inner) => full_text_term(inner),
+        Node::Clause(_) => None,
+    }
+}
+
+/// The ranked full-text query (`docs/26` §Permission filtering).
+///
+/// # The tenant predicate is on the projection, not only on `task`
+///
+/// `s.workspace_id = $1 AND s.project_id = ANY($2)` are applied to
+/// `task_search` itself so `task_search_scope_ix` can serve them and be
+/// combined with `task_search_gin` in a `BitmapAnd`. Filtering only through the
+/// join to `task` would leave the planner scanning the whole projection and
+/// discarding rows afterwards — which is the shape **D-043** measured as a
+/// `Parallel Seq Scan` at reference scale.
+///
+/// **D-043 is not closed by this.** Under row-level security `@@` resolves to
+/// `ts_match_vq`, which is not `LEAKPROOF`, so PostgreSQL will not evaluate it
+/// before the row-security qual and cannot use the GIN index as an index qual
+/// at all. This shape is the "tenant-filtered projection" that decision says to
+/// try first; whether it is enough is a measurement, and the answer is recorded
+/// in `docs/14` §D-043 rather than assumed here.
+fn compile_search(filter: &Node, term: String, page: &Page, mut params: Vec<Param>) -> Compiled {
+    // $3 — bound before any clause parameter, like the tenant pair above, so
+    // the numbering stays positional and predictable.
+    let query = bind(&mut params, Param::Text(term));
+
+    // Every other clause still applies. `Field::Q` emits TRUE inside this
+    // shape because it has been hoisted into the FROM and WHERE.
+    let predicate = emit(filter, &mut params);
+
+    // The ranking EXPRESSION, not the `rank` alias. A select-list alias is not
+    // visible in `WHERE`, so a keyset resume written against `rank` fails with
+    // "column rank does not exist" — on the second page only, which is exactly
+    // the kind of bug a first-page test never sees.
+    let col = if page.sort.field == SortField::Rank {
+        RANK
+    } else {
+        sort_column(page.sort.field)
+    };
+    let keyset = keyset_predicate(page, &mut params, col);
+    let dir = match page.sort.direction {
+        Direction::Asc => "ASC",
+        Direction::Desc => "DESC",
+    };
+    let limit = page.limit.saturating_add(1);
+    let columns = crate::task::COLUMNS;
+    let configuration = crate::search::CONFIGURATION;
+
+    // `ts_rank_cd` per `docs/26` §Weighting. The rank is in the select list so
+    // it can be ordered by and carried in a cursor; `SortField::Rank` maps to
+    // this alias and exists only in this shape.
+    let sql = format!(
+        "SELECT {columns}, {RANK} AS rank \
+           FROM task_search s \
+           JOIN task t ON t.id = s.task_id \
+           CROSS JOIN plainto_tsquery('{configuration}', {query}) q \
+          WHERE s.workspace_id = $1 \
+            AND s.project_id = ANY($2) \
+            AND s.document @@ q \
+            AND t.workspace_id = $1 \
+            AND t.deleted_at IS NULL \
+            AND ({predicate}){keyset} \
+          ORDER BY {col} {dir}, t.id {dir} \
+          LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
 /// The keyset resume predicate, or nothing on the first page.
 ///
 /// Row-value comparison — `(key, id) < ($k, $id)` — rather than the expanded
 /// `key < $k OR (key = $k AND id < $id)`. PostgreSQL can drive a composite
 /// index directly from the row-value form; the expanded form is a filter it
 /// often cannot, which is the difference between a keyset page and a scan.
-fn keyset_predicate(page: &Page, params: &mut Vec<Param>) -> String {
+/// `col` is the sort EXPRESSION, not a name: in the full-text shape the key is
+/// `ts_rank_cd(...)`, and a select-list alias is not visible in `WHERE`.
+fn keyset_predicate(page: &Page, params: &mut Vec<Param>, col: &str) -> String {
     let Some(cursor) = &page.after else {
         return String::new();
     };
-    let col = sort_column(page.sort.field);
     // Descending sorts resume *below* the last row, ascending *above* it.
     // Getting this backwards returns the page just served, forever.
     let cmp = match page.sort.direction {
@@ -336,12 +438,20 @@ fn emit_clause(field: Field, op: Operator, value: &Value, params: &mut Vec<Param
             return "FALSE".to_owned();
         }
         Field::Q => {
-            let p = bind(params, param_of(value));
-            return format!(
-                "EXISTS (SELECT 1 FROM task_search s \
-                  WHERE s.task_id = t.id \
-                    AND s.document @@ plainto_tsquery('english', {p}))"
-            );
+            // Already hoisted into the FROM and WHERE by `compile_search`,
+            // which is the only path that can reach a `q` clause. Emitting the
+            // predicate a second time here would build a second `tsquery` and
+            // ask the planner to satisfy the same condition twice.
+            return "TRUE".to_owned();
+        }
+        Field::Archived => {
+            // `archived` is a BOOLEAN in the grammar and a TIMESTAMP in the
+            // schema: `archived=true` means "has an archived_at", not
+            // "archived_at equals the string true". Compiled as a column
+            // comparison it bound `'true'::timestamptz` and errored at
+            // execution — a filter that 500s rather than answers.
+            let p = cast(&bind(params, param_of(value)), Field::Archived, false);
+            return format!("(t.archived_at IS NOT NULL) = ({p})");
         }
         _ => {}
     }
