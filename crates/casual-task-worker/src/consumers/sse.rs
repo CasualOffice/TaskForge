@@ -103,6 +103,9 @@ mod tests {
 
     fn a_claim(workspace: Uuid, project: Option<Uuid>) -> Claimed {
         Claimed {
+            // C-016 added the actor so the notification fan-out can suppress
+            // self-actions (migration 0024). SSE does not read it.
+            actor_id: None,
             delivery_id: Uuid::now_v7(),
             event_id: Uuid::now_v7(),
             consumer: "sse_fanout".to_owned(),
