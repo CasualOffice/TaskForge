@@ -44,12 +44,30 @@
 -- the rule holds at reference scale. Plan choice depends on selectivity and on
 -- table size, and this suite runs two orders of magnitude below the corpus the
 -- rule is written about. Tracked as D-043.
-SELECT t.id, ts_rank_cd(s.document, plainto_tsquery('english', :'probe_term')) AS rank
+--
+-- C-013 UPDATE: this is now the query the compiler actually emits, character
+-- for character in shape — the repository projection, the `CROSS JOIN
+-- plainto_tsquery(...) q` that builds the tsquery once instead of twice, and
+-- the ranking expression repeated in ORDER BY rather than the `rank` alias
+-- (an alias is not visible in WHERE, so the keyset resume must use the
+-- expression). Nothing above changes: the tenant predicate is already on
+-- task_search itself, which is the "tenant-filtered projection" D-043 accepts
+-- as the thing to try first, and it is not sufficient.
+SELECT t.id, t.workspace_id, t.project_id, t.number, t.title, t.description,
+       t.type::text AS "type", t.priority::text AS priority, t.status_id,
+       t.state::text AS state,
+       t.reporter_id, t.environment_id, t.milestone_id, t.parent_id,
+       t.start_at, t.due_at, t.position, t.created_at, t.created_by,
+       t.updated_at, t.updated_by, t.version, t.archived_at,
+       ts_rank_cd(s.document, q) AS rank
   FROM task_search s
   JOIN task t ON t.id = s.task_id
+  CROSS JOIN plainto_tsquery('english', :'probe_term') q
  WHERE s.workspace_id = :'ws_id'
    AND s.project_id = ANY (:accessible_projects)
-   AND s.document @@ plainto_tsquery('english', :'probe_term')
+   AND s.document @@ q
+   AND t.workspace_id = :'ws_id'
    AND t.deleted_at IS NULL
- ORDER BY rank DESC, t.id DESC
+   AND (TRUE)
+ ORDER BY ts_rank_cd(s.document, q) DESC, t.id DESC
  LIMIT 51

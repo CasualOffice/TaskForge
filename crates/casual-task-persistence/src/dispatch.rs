@@ -172,13 +172,18 @@ pub const BACKOFF: [time::Duration; 6] = [
 pub struct Claimed {
     pub delivery_id: Uuid,
     pub event_id: Uuid,
+    /// The tenant the event belongs to.
+    ///
+    /// Every consumer needs it and none can derive it: the dispatcher polls
+    /// across tenants by design (`docs/25`), so the workspace cannot come from
+    /// a session the way it does on a request. A consumer that writes anything
+    /// reconstructs its scope from here through
+    /// [`WorkspaceScope::for_job`](casual_task_model::WorkspaceScope::for_job),
+    /// which is the one constructor that exists for exactly this path.
+    pub workspace_id: Uuid,
     pub consumer: String,
     pub event_type: String,
     pub aggregate_id: Uuid,
-    /// The tenant. Carried on the claim rather than looked up by a consumer,
-    /// because a consumer that has to ask "which workspace was this?" is a
-    /// consumer one forgotten join away from answering for the wrong one.
-    pub workspace_id: Uuid,
     /// The authorization scope (migration 0022). `None` for workspace-level
     /// events, which no project-scoped subscriber may receive.
     pub project_id: Option<Uuid>,
@@ -245,7 +250,7 @@ pub async fn claim(
                  ORDER BY e.created_at, e.id
                  LIMIT $3
                    FOR UPDATE OF c SKIP LOCKED)
-      RETURNING d.id, d.event_id, d.consumer,
+      RETURNING d.id, d.event_id, d.workspace_id, d.consumer,
                 (SELECT event_type   FROM outbox_event WHERE id = d.event_id),
                 (SELECT aggregate_id FROM outbox_event WHERE id = d.event_id),
                 (SELECT workspace_id FROM outbox_event WHERE id = d.event_id),

@@ -24,6 +24,7 @@ pub mod invitation;
 pub mod project;
 pub mod role;
 pub mod scoped;
+pub mod search;
 pub mod task;
 #[cfg(feature = "test-support")]
 pub mod test_support;

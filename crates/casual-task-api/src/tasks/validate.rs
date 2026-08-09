@@ -186,6 +186,7 @@ mod tests {
             updated_at: OffsetDateTime::UNIX_EPOCH,
             updated_by: None,
             version: 1,
+            rank: None,
             archived_at: None,
         };
         assert_eq!(view(&row, "WR").key, "WR-125");

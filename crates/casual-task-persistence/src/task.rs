@@ -50,6 +50,13 @@ pub struct TaskRow {
     pub updated_by: Option<Uuid>,
     pub version: i64,
     pub archived_at: Option<OffsetDateTime>,
+    /// The full-text relevance of this row, when the query ranked one.
+    ///
+    /// `None` for every structured list — there is no query to rank against.
+    /// It is not a column of `task`: it is computed per query, and it is here
+    /// because a cursor that resumes on rank has to carry the value it
+    /// resumed from (`docs/26` §Cursor pagination).
+    pub rank: Option<f32>,
 }
 
 /// The columns [`TaskRow`] decodes, qualified as `t`.
@@ -93,6 +100,9 @@ fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
         updated_by: row.try_get("updated_by")?,
         version: row.try_get("version")?,
         archived_at: row.try_get("archived_at")?,
+        // Absent from every projection but the ranked search one, so a missing
+        // column is the ordinary case rather than a decode failure.
+        rank: row.try_get("rank").ok(),
     })
 }
 

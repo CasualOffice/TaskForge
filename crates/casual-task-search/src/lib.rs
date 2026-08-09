@@ -15,9 +15,11 @@
 pub mod filter;
 pub mod resolve;
 pub mod sort;
+pub mod url;
 
 pub use filter::{
     Clause, Field, FieldType, FilterError, MAX_CLAUSES, MAX_DEPTH, Node, Operator, Value, validate,
 };
 pub use resolve::{Context, ResolveError, resolve};
 pub use sort::{Direction, Sort, SortField};
+pub use url::{Query, UrlError, parse as parse_url};

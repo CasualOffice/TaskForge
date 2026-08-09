@@ -16,7 +16,8 @@ use casual_task_persistence::{
     AuthorizedProjectSet, Change, Page as CompilerPage, UnitOfWork, compile, idempotency, project,
     task,
 };
-use casual_task_search::filter::{Clause, Field, Node, Operator, Value};
+use casual_task_search::filter::{Field, Node, Value};
+use casual_task_search::sort::{Direction, Sort, SortField};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
@@ -28,6 +29,8 @@ use crate::middleware::WorkspaceMember;
 use crate::server::{AppState, RequestId};
 use crate::wire::{self, Body, Page, Paged};
 use crate::{etag, unit};
+use casual_task_persistence::task::TaskRow;
+use serde::Deserialize;
 
 /// `POST /api/v1/projects/{id}/tasks`.
 ///
@@ -340,7 +343,6 @@ pub async fn list(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Response, ApiError> {
     let request_id = RequestId::of_parts(&headers);
-    unit::reject_unknown(&params, &["limit", "cursor", "project_id"], &request_id)?;
     let limit = wire::limit(
         params
             .get("limit")
@@ -357,18 +359,44 @@ pub async fn list(
         &request_id,
     )?;
     let after = wire::cursor(params.get("cursor").map(String::as_str), &request_id)?;
-    let project_filter = params
-        .get("project_id")
-        .map(|raw| {
-            raw.parse::<Uuid>().map_err(|_| {
-                ApiError::bad_request(
-                    codes::MALFORMED_BODY,
-                    "project_id must be a UUID",
-                    &request_id,
-                )
-            })
+
+    // The whole grammar, read by `casual-task-search`. There is no second
+    // parser here: `docs/27` §Compilation has one AST with two entry points,
+    // and a handler that re-derived what `<` means would be the second one.
+    //
+    // `project_id` is accepted as an alias for the grammar's `project`. The
+    // endpoint shipped with that spelling in C-006 and a name is a contract.
+    let pairs: Vec<(&str, &str)> = params
+        .iter()
+        .map(|(name, value)| {
+            let name = if name == "project_id" {
+                "project"
+            } else {
+                name
+            };
+            (name, value.as_str())
         })
-        .transpose()?;
+        .collect();
+    let query = casual_task_search::parse_url(pairs).map_err(|error| {
+        ApiError::bad_request(
+            crate::error::Code::from_registry(error.code()),
+            "The query could not be understood",
+            &request_id,
+        )
+        .with_details(serde_json::json!({ "field": error.field() }))
+    })?;
+
+    if let Some(term) = full_text_term(&query.filter)
+        && term.chars().count() > MAX_SEARCH_TERM
+    {
+        // docs/26 §Query limits: 256 characters. An unbounded term is an
+        // unbounded `tsquery` construction.
+        return Err(ApiError::bad_request(
+            codes::SEARCH_TOO_LONG,
+            "q must be at most 256 characters",
+            &request_id,
+        ));
+    }
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
@@ -381,36 +409,60 @@ pub async fn list(
             tracing::error!(%error, "resolving the accessible project set failed");
             ApiError::internal(&request_id)
         })?;
-    // A `project_id` the caller cannot see narrows the set to nothing rather
-    // than returning a 404: it is a filter over a list, and a list filtered to
-    // an invisible project is legitimately empty.
+    // The permission filter. A `project` clause the caller cannot see simply
+    // intersects to nothing rather than returning a 404: it is a filter over a
+    // list, and a list filtered to an invisible project is legitimately empty.
     let visible: Vec<ProjectId> = accessible
         .iter()
-        .map(|(id, _)| *id)
-        .filter(|id| project_filter.is_none_or(|wanted| wanted == *id))
-        .map(ProjectId::from_uuid)
+        .map(|(id, _)| ProjectId::from_uuid(*id))
         .collect();
     let keys: HashMap<Uuid, String> = accessible.into_iter().collect();
 
-    let filter = project_filter.map_or_else(
-        || Node::And(Vec::new()),
-        |id| {
-            Node::Clause(Clause {
-                field: Field::Project,
-                op: Operator::Eq,
-                value: Value::Literal(id.to_string()),
-            })
-        },
+    // Symbols become values before validation, so `@me` never reaches the
+    // compiler as the three characters a bind would send to the database.
+    //
+    // The offset is UTC, and that is a KNOWN GAP: `docs/27` §Timezone requires
+    // the actor's, "`due before @today` must mean the same thing to someone in
+    // Auckland and someone in Los Angeles", and `user_account` has nowhere to
+    // store one. Recorded in `docs/14` rather than papered over with a header
+    // nothing documents.
+    let resolver = casual_task_search::Context::new(
+        ctx.actor,
+        ctx.viewer
+            .teams
+            .iter()
+            .copied()
+            .map(TeamId::from_uuid)
+            .collect(),
+        OffsetDateTime::now_utc(),
+        time::UtcOffset::UTC,
     );
+    let filter = casual_task_search::resolve(&query.filter, &resolver).map_err(|error| {
+        ApiError::bad_request(
+            codes::UNKNOWN_SYMBOL,
+            "The query uses a symbol this server does not know",
+            &request_id,
+        )
+        .with_details(serde_json::json!({ "symbol": format!("{error:?}") }))
+    })?;
+
+    // Clause count and nesting depth (`docs/26` §Query limits). Checked after
+    // resolution because resolution can rewrite a clause, and before
+    // compilation because the compiler trusts its input.
+    casual_task_search::validate(&filter).map_err(|error| {
+        ApiError::bad_request(
+            crate::error::Code::from_registry(error.code()),
+            "The query exceeds a documented limit",
+            &request_id,
+        )
+    })?;
+
+    let sort = sort_for(&query, &filter, &request_id)?;
     let compiled = compile(
         &filter,
         ctx.workspace,
         &AuthorizedProjectSet::resolved(visible),
-        &CompilerPage {
-            after,
-            limit,
-            ..CompilerPage::default()
-        },
+        &CompilerPage { sort, after, limit },
     );
     let mut rows = task::list(&mut scoped, &compiled).await.map_err(|error| {
         tracing::error!(%error, "listing tasks failed");
@@ -420,13 +472,14 @@ pub async fn list(
 
     let has_more = rows.len() > limit as usize;
     rows.truncate(limit as usize);
-    // The default sort is `updated_at DESC` (docs/26), so that is the key the
-    // cursor carries. The id tiebreaker is mandatory — without it, ties in
-    // updated_at make a page repeat or skip a row.
+    // The cursor carries the key of the sort actually used, not always
+    // `updated_at`. Carrying the wrong one resumes against a column the query
+    // does not order by, which silently repeats or skips rows — and only ever
+    // on the second page.
     let next_cursor = has_more
         .then(|| rows.last())
         .flatten()
-        .map(|row| Cursor::new(vec![wire::timestamp(row.updated_at)], row.id).encode());
+        .map(|row| Cursor::new(vec![cursor_key(row, sort.field)], row.id).encode());
 
     let data: Vec<TaskView> = rows
         .iter()
@@ -446,9 +499,8 @@ pub async fn list(
     .into_response())
 }
 
-// ---------------------------------------------------------------------------
-// Update, delete
-// ---------------------------------------------------------------------------
+/// `docs/26` §Query limits: search term length 256 characters.
+const MAX_SEARCH_TERM: usize = 256;
 
 /// `PATCH /api/v1/tasks/{id}` — update plain fields.
 ///
@@ -667,3 +719,118 @@ pub async fn delete(
 // ---------------------------------------------------------------------------
 // Transitions
 // ---------------------------------------------------------------------------
+
+/// The full-text term in a filter, if it has one.
+pub(crate) fn full_text_term(node: &Node) -> Option<&str> {
+    match node {
+        Node::Clause(clause) if clause.field == Field::Q => match &clause.value {
+            Value::Literal(term) | Value::Symbol(term) => Some(term.as_str()),
+            _ => None,
+        },
+        Node::And(children) | Node::Or(children) => children.iter().find_map(full_text_term),
+        Node::Not(inner) => full_text_term(inner),
+        Node::Clause(_) => None,
+    }
+}
+
+/// Decide the ordering, refusing the two combinations that cannot work.
+///
+/// - **`rank` without `q`** — there is nothing to rank against. Silently
+///   falling back to `updated_at` would answer a different question than the
+///   one asked.
+/// - **More than one sort key** — the cursor carries one key plus the id
+///   tiebreaker, and the compiler emits one keyset comparison. Accepting
+///   `sort=-due_at,key` and honouring only the first would produce a
+///   non-deterministic order across pages, which is the bug the mandatory
+///   tiebreaker exists to prevent. `docs/27` documents the multi-key form, so
+///   this is a **gap reported as an error**, not a silent truncation.
+pub(crate) fn sort_for(
+    query: &casual_task_search::Query,
+    filter: &Node,
+    request_id: &str,
+) -> Result<Sort, ApiError> {
+    let searching = full_text_term(filter).is_some();
+    if query.sorts.len() > 1 {
+        return Err(ApiError::bad_request(
+            codes::UNSORTABLE_FIELD,
+            "Only one sort key is supported; a second would make the cursor \
+             non-deterministic",
+            request_id,
+        ));
+    }
+    let Some(sort) = query.sorts.first().copied() else {
+        // A search with no explicit order is ordered by relevance — the only
+        // ordering a search box implies.
+        return Ok(if searching {
+            Sort {
+                field: SortField::Rank,
+                direction: Direction::Desc,
+            }
+        } else {
+            Sort::default()
+        });
+    };
+    if sort.field == SortField::Rank && !searching {
+        return Err(ApiError::bad_request(
+            codes::UNSORTABLE_FIELD,
+            "sort=rank requires a q parameter — there is nothing to rank without one",
+            request_id,
+        ));
+    }
+    Ok(sort)
+}
+
+/// The value a cursor must carry to resume the given sort.
+///
+/// Must agree with the compiler's `cursor_type` for the same field: the
+/// parameter is cast to that type on the way back in, so a value formatted
+/// differently here fails at execution on page two.
+pub(crate) fn cursor_key(row: &TaskRow, field: SortField) -> String {
+    match field {
+        SortField::CreatedAt => wire::timestamp(row.created_at),
+        SortField::UpdatedAt => wire::timestamp(row.updated_at),
+        SortField::DueAt => row.due_at.map(wire::timestamp).unwrap_or_default(),
+        SortField::Priority => row.priority.clone(),
+        SortField::Position => row.position.clone(),
+        SortField::Key => row.number.to_string(),
+        SortField::Rank => row.rank.unwrap_or_default().to_string(),
+        // Not reachable: the compiler's `ws.position` has no FROM entry, so a
+        // status-position sort cannot execute and is refused before here.
+        SortField::StatusPosition => String::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Update, delete
+// ---------------------------------------------------------------------------
+
+/// `PATCH /api/v1/tasks/{id}`.
+///
+/// `status_id` and `state` are **accepted and then refused** with
+/// `TF-WFL-0001`. Leaving them out of the struct would make them unknown fields
+/// — a `400` saying "we have never heard of `status_id`", when the truth is
+/// that the field exists and has its own door (`docs/23` §The transition
+/// command). The same argument `docs/23` makes for why the door exists at all
+/// is the reason the error has to say so.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PatchRequest {
+    #[serde(default)]
+    pub title: Option<String>,
+    /// `Option<Option<_>>`: absent leaves it alone, `null` clears it
+    /// (`docs/05` §Conventions).
+    #[serde(default, deserialize_with = "wire::double_option")]
+    pub description: Option<Option<String>>,
+    #[serde(default, rename = "type")]
+    pub task_type: Option<String>,
+    #[serde(default)]
+    pub priority: Option<String>,
+    #[serde(default, deserialize_with = "wire::double_option")]
+    pub start_at: Option<Option<String>>,
+    #[serde(default, deserialize_with = "wire::double_option")]
+    pub due_at: Option<Option<String>>,
+    #[serde(default)]
+    pub status_id: Option<Uuid>,
+    #[serde(default)]
+    pub state: Option<String>,
+}
