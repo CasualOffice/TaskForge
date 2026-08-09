@@ -284,7 +284,7 @@ pub async fn confirm(
             // their inbox for a new one.
             return Ok(ApiError::new(
                 StatusCode::BAD_REQUEST,
-                codes::BAD_REQUEST,
+                codes::OUT_OF_RANGE,
                 format!("A password must be at least {minimum} characters"),
                 &request_id,
             )
