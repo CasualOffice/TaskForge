@@ -224,6 +224,11 @@
   font-size: 12px;
 }
 
+/* The gap line sits under the section it is about, not against it. */
+.detail__scrollable .gapline {
+  margin-top: 12px;
+}
+
 /* ── Quiet gap line ────────────────────────────────────────────────────────
  * One grey sentence, no box, no tint. It replaced three identical tinted
  * panels quoting tracker ids and endpoint paths; see `shell/notice.tsx` for
@@ -317,7 +322,7 @@
   display: grid;
   /* Asymmetric on purpose (§1.9): the narrative owns the width, the metadata
    * column is sized to its longest value and nothing more. */
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   min-height: 0;
   height: 100%;
 }
@@ -447,7 +452,7 @@
 }
 .meta2__row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-height: 30px;
@@ -581,4 +586,17 @@
 }
 .peek__open {
   align-self: flex-start;
+}
+
+.peek__who {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.peek__wholabel {
+  flex: none;
+  width: 72px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+  font-size: 12px;
 }

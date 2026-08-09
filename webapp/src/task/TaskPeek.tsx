@@ -29,7 +29,8 @@ import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
-import { readTask } from '../api/tasks'
+import { readTask, type Task } from '../api/tasks'
+import { directory, listMembers } from '../api/workspaces'
 import { useFocusTrap } from '../shell/focusTrap'
 import { useOpenTask } from '../shell/navigation'
 import { ErrorNotice } from '../shell/notice'
@@ -56,8 +57,19 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
     enabled: workspaceId !== '',
   })
 
+  const members = useQuery({
+    queryKey: keys.members(workspaceId),
+    queryFn: ({ signal }) => listMembers(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 5 * 60_000,
+  })
+  const nameOf = directory(members.data?.data ?? [])
+
   const authority = useAuthority(task.data?.project_id)
   const current = task.data
+  /** Present the day `TaskView` carries the set; see `TaskMeta`. */
+  const assignees =
+    current === undefined ? undefined : (current as Task & { assignees?: readonly string[] }).assignees
   const description = current?.description ?? ''
   const clipped = description.length > SNIPPET
 
@@ -111,6 +123,20 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
                 </span>
               )}
             </div>
+
+            {/* §4 names assignee among the four things a peek must answer.
+                It is the field the old drawer buried below the fold, so it is
+                the last one that may be left off this list. */}
+            <p className="peek__who">
+              <span className="peek__wholabel">Assignees</span>
+              <span className={assignees === undefined || assignees.length === 0 ? 'meta2__unset' : ''}>
+                {assignees === undefined
+                  ? 'Not shown yet'
+                  : assignees.length === 0
+                    ? 'Nobody'
+                    : assignees.map(nameOf).join(', ')}
+              </span>
+            </p>
 
             {description === '' ? (
               <p className="narr__none">No description.</p>
