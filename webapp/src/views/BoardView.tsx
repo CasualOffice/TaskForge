@@ -44,6 +44,7 @@ import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { ErrorNotice, GapNotice } from '../shell/notice'
 import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
+import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskTransition } from '../tasks/mutations'
 import { stateLabel } from '../tasks/present'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
@@ -60,6 +61,10 @@ export function BoardView(): ReactElement {
   const { unavailable: missingWorkflow, statusFor } = useProjectWorkflow(search.project)
   const authority = useAuthority(search.project)
   const move = useTaskTransition(workspaceId)
+
+  // Live updates are project-scoped because the stream is: docs/05 requires
+  // `project_id` and refuses a wildcard subscription deliberately.
+  useLiveUpdates(workspaceId, search.project)
 
   // Two different reasons a card cannot move, kept apart. `docs/04` resolves the
   // second; hiding it behind the first would tell someone without

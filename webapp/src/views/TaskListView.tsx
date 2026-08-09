@@ -26,6 +26,7 @@ import type { Sort, SortKey, Task, TaskQuery } from '../api/tasks'
 import { ErrorNotice } from '../shell/notice'
 import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { useWorkspaceId } from '../shell/session'
+import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskFeed } from '../tasks/feed'
 import { formatRelative, isOverdue, priorityLabel, stateLabel } from '../tasks/present'
 import { ScopeBar } from './ScopeBar'
@@ -55,6 +56,9 @@ export function TaskListView(): ReactElement {
   )
 
   const feed = useTaskFeed(workspaceId, spec)
+  // Only when a project is scoped: the stream has no all-projects form, and the
+  // server refusing one is the point rather than a limitation to work around.
+  useLiveUpdates(workspaceId, search.project)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
