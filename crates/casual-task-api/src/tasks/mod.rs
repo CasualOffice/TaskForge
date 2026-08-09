@@ -31,7 +31,7 @@ pub mod wire;
 
 pub use bulk::bulk;
 pub use crud::{create, delete, list, read, update};
-pub use relations::{assign, tag, transition, unassign};
+pub use relations::{assign, assignees, tag, transition, unassign};
 pub use subtasks::list as subtasks_of;
 pub use tags::{list as tags_of, remove as untag};
 pub use wire::TaskView;

@@ -345,8 +345,84 @@
  * anti-pattern is a scrollbar where the width to avoid one was available, not
  * a bounded region for prose that genuinely runs long. */
 .detail__scrollable {
-  max-height: 34vh;
+  /* Raised from 34vh when subtasks, blockers and activity moved in beside the
+     description: the cap was sized for prose alone, and leaving it would have
+     put four sections into the space one was budgeted. The mechanism is
+     unchanged — `auto`, so no scrollbar exists unless the content genuinely
+     exceeds it. */
+  max-height: 46vh;
   overflow: auto;
+}
+
+/* ── The task's relations, tree and history ────────────────────────────────
+ * Structure only. Each is a headed section inside the scrollable region, and
+ * each says what it has rather than drawing a box around it. */
+.rel,
+.sub,
+.act {
+  margin-top: 16px;
+}
+.rel__group {
+  margin-top: 8px;
+}
+.rel__title,
+.sub__progress {
+  margin: 0 0 4px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.rel__empty,
+.act__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.rel__list,
+.sub__list,
+.act__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rel__row,
+.sub__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rel__row--restricted,
+.sub__state,
+.act__when {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+/* Resolved work reads as resolved. The strike-through is never alone — the row
+ * carries the state as text beside it, because styling must not be the sole
+ * carrier of meaning. */
+.rel__done,
+.sub__done {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+.rel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 28rem;
+  margin-top: 8px;
+}
+.sub__parent {
+  margin: 0 0 4px;
+}
+.act__row {
+  font-size: var(--text-sm);
+}
+.act__who {
+  font-weight: 600;
 }
 .detail__comments {
   display: flex;
@@ -616,8 +692,27 @@
   display: inline-block;
   line-height: 22px;
 }
+/*
+ * The metadata column's popover triggers fill their cell.
+ *
+ * `.pop` is `inline-flex`, and its trigger carries `overflow: hidden` for the
+ * ellipsis. Together those make the trigger a flex item whose automatic minimum
+ * size is zero, so the shrink-to-fit `.pop` collapsed to about 40 px inside a
+ * 203 px cell and *every* value in the column rendered as three characters and
+ * an ellipsis — "Nob…", "N…", "T…". The column exists to be read at rest, so
+ * this was the whole surface's worst bug and it looked like a design choice.
+ *
+ * Block, full width: the cell decides the width, and the ellipsis engages only
+ * when a value genuinely exceeds it. Scoped to `.meta2` because the toolbar's
+ * popovers do want to be inline and sized to their content.
+ */
 .meta2 .pop {
+  display: block;
   max-width: 100%;
+}
+.meta2 .pop > .meta2__button {
+  width: 100%;
+  text-align: left;
 }
 /* Anchors that behave as the surrounding text: the row already reads as a row,
  * and an underlined blue title in every list row is noise. The link nature is

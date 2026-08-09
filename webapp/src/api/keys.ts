@@ -51,6 +51,20 @@ export const keys = {
     ['ws', workspaceId, 'tasks', 'one', taskId, 'comments'] as const,
 
   /**
+   * The task's own sub-resources. All under `tasks/one/{id}`, so a write to the
+   * task clears its panels with it — a transition can change `is_blocked`, and a
+   * relations panel keyed anywhere else would keep showing the old answer.
+   */
+  assignees: (workspaceId: string, taskId: string) =>
+    ['ws', workspaceId, 'tasks', 'one', taskId, 'assignees'] as const,
+  relations: (workspaceId: string, taskId: string) =>
+    ['ws', workspaceId, 'tasks', 'one', taskId, 'relations'] as const,
+  subtasks: (workspaceId: string, taskId: string) =>
+    ['ws', workspaceId, 'tasks', 'one', taskId, 'subtasks'] as const,
+  activity: (workspaceId: string, taskId: string) =>
+    ['ws', workspaceId, 'tasks', 'one', taskId, 'activity'] as const,
+
+  /**
    * The signed-in person. Outside every workspace, like `session()`, because
    * `user_account` is the one table with no `workspace_id` (`docs/32`) — filing
    * it under a tenant would mean a workspace switch invalidated a name that

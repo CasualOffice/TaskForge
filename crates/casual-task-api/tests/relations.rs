@@ -69,6 +69,19 @@ impl Caller {
         self.send(request.body(Body::from(body.to_string()))?).await
     }
 
+    async fn delete(&self, uri: &str) -> Result<(StatusCode, serde_json::Value, Option<String>)> {
+        self.send(
+            Request::builder()
+                .method("DELETE")
+                .uri(uri)
+                .header(header::COOKIE, &self.cookie)
+                .header("x-csrf-token", &self.csrf)
+                .header(WORKSPACE_HEADER, self.workspace.to_string())
+                .body(Body::empty())?,
+        )
+        .await
+    }
+
     async fn patch(
         &self,
         uri: &str,
@@ -859,6 +872,122 @@ async fn a_task_blocked_by_something_invisible_still_reports_blocked() -> Result
     assert_eq!(
         single["is_blocked"], true,
         "a task blocked by something invisible reported as draggable: {single}"
+    );
+    Ok(())
+}
+
+// ── Removing a dependency, which used to be impossible ──────────────────────
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_dependency_is_removed_from_either_end_and_the_removal_is_recorded() -> Result<()> {
+    // Dependencies were add-only. An edge added by mistake gated the blocked
+    // task's transitions forever, and the only escape was
+    // `task.dependency.override` — an authority for ignoring a *real* blocker,
+    // not a way to correct a wrong one.
+    let db = schema_harness::TestDatabase::start().await?;
+    let caller = caller(&db.pool, "member@example.com", "acme", RELATER).await?;
+    let (project, first) = a_task(&caller).await?;
+    let second = another_task(&caller, &project, "Second").await?;
+
+    caller
+        .post(
+            &format!("/api/v1/tasks/{first}/dependencies"),
+            &serde_json::json!({ "blocks": second }),
+            None,
+        )
+        .await?;
+
+    // Removed from the *blocked* end, naming the blocker — the direction the
+    // edge was not created from. One edge joins a pair, so naming both ends
+    // identifies it whichever way round the caller thinks of it.
+    let (status, relations, _) = caller
+        .delete(&format!("/api/v1/tasks/{second}/dependencies/{first}"))
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{relations}");
+    assert!(
+        relations["blocked_by"]
+            .as_array()
+            .expect("array")
+            .is_empty(),
+        "the edge survived: {relations}"
+    );
+
+    // And it is gone from the other end too, which is the assertion that the
+    // row was deleted rather than filtered out of one view.
+    let (_, theirs, _) = caller
+        .get(&format!("/api/v1/tasks/{first}/dependencies"))
+        .await?;
+    assert!(
+        theirs["blocks"].as_array().expect("array").is_empty(),
+        "{theirs}"
+    );
+
+    // ADR-006: the removal wrote its history in the same transaction.
+    let types =
+        casual_task_persistence::test_support::outbox_event_types(&db.pool, second.parse()?)
+            .await?;
+    assert!(
+        types.contains(&"task.dependency.removed".to_owned()),
+        "the removal wrote no event: {types:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn removing_an_edge_that_is_not_there_is_404_and_not_a_silent_success() -> Result<()> {
+    let db = schema_harness::TestDatabase::start().await?;
+    let caller = caller(&db.pool, "member@example.com", "acme", RELATER).await?;
+    let (project, first) = a_task(&caller).await?;
+    let second = another_task(&caller, &project, "Second").await?;
+
+    // Both tasks are visible and there is simply no edge. A 204 here would tell
+    // a client its state matched the server's when it did not.
+    let (status, body, _) = caller
+        .delete(&format!("/api/v1/tasks/{first}/dependencies/{second}"))
+        .await?;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"]["code"], "TF-TSK-0001");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn removing_a_dependency_needs_task_update() -> Result<()> {
+    let db = schema_harness::TestDatabase::start().await?;
+    let owner = caller(&db.pool, "owner@example.com", "acme", RELATER).await?;
+    let (project, first) = a_task(&owner).await?;
+    let second = another_task(&owner, &project, "Second").await?;
+    owner
+        .post(
+            &format!("/api/v1/tasks/{first}/dependencies"),
+            &serde_json::json!({ "blocks": second }),
+            None,
+        )
+        .await?;
+
+    // A reader can see the edge and must not be able to cut it. Adding one
+    // needs `task.update` (ADR-019: a dependency gates transitions), and
+    // removing one changes the same behaviour in the same way.
+    let reader = member_of(
+        &db.pool,
+        "reader@example.com",
+        owner.workspace,
+        &["task.read"],
+    )
+    .await?;
+    let (status, body, _) = reader
+        .delete(&format!("/api/v1/tasks/{second}/dependencies/{first}"))
+        .await?;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let (_, still, _) = owner
+        .get(&format!("/api/v1/tasks/{second}/dependencies"))
+        .await?;
+    assert_eq!(
+        still["blocked_by"][0]["id"], first,
+        "the refusal still cut the edge"
     );
     Ok(())
 }

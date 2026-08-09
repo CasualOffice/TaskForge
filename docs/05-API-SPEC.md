@@ -61,11 +61,13 @@ GET    /api/v1/tasks/{id}                  read          (returns ETag)
 PATCH  /api/v1/tasks/{id}                  update        (If-Match required)
 DELETE /api/v1/tasks/{id}                  soft delete   (If-Match required)
 POST   /api/v1/tasks/{id}/transitions      status change (If-Match required)
+GET    /api/v1/tasks/{id}/assignees        who is on it
 POST   /api/v1/tasks/{id}/assignees        assign
 DELETE /api/v1/tasks/{id}/assignees/{uid}  unassign
 POST   /api/v1/tasks/{id}/tags             tag
 GET    /api/v1/tasks/{id}/dependencies     relations     (two named lists)
 POST   /api/v1/tasks/{id}/dependencies     add dependency (cycle-checked)
+DELETE /api/v1/tasks/{id}/dependencies/{other}  remove the edge, either way round
 GET    /api/v1/tasks/{id}/activity         history       (cursor)
 POST   /api/v1/tasks/{id}/comments         comment
 GET    /api/v1/tasks/{id}/comments         thread        (cursor)
@@ -79,6 +81,15 @@ by C-008 and recorded rather than left to be inferred:
 ```json
 { "blocked_by": [ { "id", "key", "title", "state" } ], "blocks": [ … ] }
 ```
+
+The **remove** takes no direction: at most one edge can join a pair — `A blocks
+B` and `B blocks A` together are a cycle — so naming both ends identifies it, and
+a direction parameter could only be a way to disagree with the graph. It does not
+require the far end to be visible: `docs/03` shows an unreadable blocker as
+`restricted` rather than hiding the edge, and demanding visibility would make
+exactly those edges permanent while protecting nothing the caller cannot already
+see. The authority is `task.update` on the task in the path, the same permission
+that added it.
 
 Two named lists rather than one array with a `direction` field, because the task
 drawer renders them as two headed sections and a flat array makes every client

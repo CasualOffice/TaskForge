@@ -213,6 +213,28 @@ export function transitionTask(
   })
 }
 
+/**
+ * `GET /api/v1/tasks/{id}/assignees` — who is on this task.
+ *
+ * Ids, not names: a client resolves them through the workspace member directory
+ * it already holds, and a second source of display names would be a second thing
+ * to keep in step with anonymization (ADR-026).
+ *
+ * Its own request rather than a field on `TaskView`, because a 200-card board
+ * would fetch 200 assignee sets it does not draw — the N+1 `docs/04` §The list
+ * problem forbids. The detail surface asks for one.
+ */
+export function readAssignees(
+  workspaceId: string,
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<{ assignees: readonly string[] }> {
+  return request<{ assignees: readonly string[] }>(`/api/v1/tasks/${taskId}/assignees`, {
+    workspaceId,
+    signal,
+  })
+}
+
 /** `POST /api/v1/tasks/{id}/assignees` — the response is the whole assignee set. */
 export function assignTask(
   workspaceId: string,

@@ -351,7 +351,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/tasks/{id}/assignees",
-            axum::routing::post(crate::tasks::assign),
+            get(crate::tasks::assignees).post(crate::tasks::assign),
         )
         .route(
             "/api/v1/tasks/{id}/assignees/{user_id}",
@@ -368,6 +368,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/tasks/{id}/dependencies",
             get(crate::dependencies::read).post(crate::dependencies::add),
+        )
+        .route(
+            "/api/v1/tasks/{id}/dependencies/{other_id}",
+            axum::routing::delete(crate::dependencies::remove),
         )
         .route(
             "/api/v1/tasks/{id}/comments",
@@ -733,6 +737,7 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/tasks/{id}",
     "/api/v1/tasks/{id}/activity",
     "/api/v1/tasks/{id}/dependencies",
+    "/api/v1/tasks/{id}/dependencies/{other_id}",
     "/api/v1/tasks/{id}/comments",
     "/api/v1/comments/{id}",
     "/api/v1/tasks/{id}/tags/{tag_id}",

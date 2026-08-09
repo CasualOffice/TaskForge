@@ -282,6 +282,54 @@ pub(crate) async fn apply_transition(
     })
 }
 
+/// `GET /api/v1/tasks/{id}/assignees` — who is on this task.
+///
+/// # Why this read had to exist
+///
+/// The assignee set was write-only: `POST` returned it and `DELETE` did not, so
+/// the only way a client could learn who was on a task was to assign someone.
+/// A task surface cannot show "who is working on this" — the second question
+/// anyone asks after "what is it?" — without it, and `TaskView` deliberately
+/// carries no `assignees` field: a 200-card board would fetch 200 assignee sets
+/// it does not draw, which is the N+1 `docs/04` §The list problem forbids.
+///
+/// # Ids, not names
+///
+/// The same shape `POST` returns. A client resolves ids through the workspace
+/// member directory it already holds (`GET /workspaces/{id}/members`), and a
+/// second source of display names here would be a second thing to keep in step
+/// with anonymization (ADR-026).
+///
+/// # Errors
+///
+/// `404` when the task is not visible, `403` without `task.read`.
+pub async fn assignees(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    let request_id = RequestId::of_parts(&headers);
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+
+    // Visibility is the whole check. Seeing a task and not who is on it is not
+    // a distinction `docs/04` draws — there is no `task.assignee.read` in the
+    // closed registry, and inventing one would settle a permission question in
+    // a handler.
+    let (current, _) = visible(&mut scoped, &ctx, id, &request_id).await?;
+    let assignees = task::assignees(&mut scoped, current.id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading assignees failed");
+            ApiError::internal(&request_id)
+        })?;
+    unit::commit(tx, &request_id).await?;
+
+    Ok(axum::Json(serde_json::json!({ "assignees": assignees })).into_response())
+}
+
 /// `POST /api/v1/tasks/{id}/assignees` — assign someone.
 ///
 /// Idempotent: assigning someone already assigned is `200`, not an error. A
