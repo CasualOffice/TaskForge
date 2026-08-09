@@ -344,14 +344,116 @@
  * scrollbar exists unless the text actually exceeds the space — the
  * anti-pattern is a scrollbar where the width to avoid one was available, not
  * a bounded region for prose that genuinely runs long. */
+/* Raised again as the custody panel joined the column. The region holds the
+   description, custody, subtasks, blockers and activity now — five sections
+   where it was budgeted for one — and the alternative to more height is a
+   scroll inside a surface whose whole job is to be read at a glance. */
 .detail__scrollable {
   /* Raised from 34vh when subtasks, blockers and activity moved in beside the
      description: the cap was sized for prose alone, and leaving it would have
      put four sections into the space one was budgeted. The mechanism is
      unchanged — `auto`, so no scrollbar exists unless the content genuinely
      exceeds it. */
-  max-height: 46vh;
+  max-height: 52vh;
   overflow: auto;
+}
+
+/* ── Custody ───────────────────────────────────────────────────────────────
+ * The hand-off panel. Actions first, evidence under them: the moment someone
+ * opens a task is usually the moment they are about to pass it on. */
+.cust {
+  margin-top: 16px;
+}
+.cust__now {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0 0 12px;
+  font-size: var(--text-sm);
+}
+.cust__now dt {
+  color: var(--color-text-muted);
+}
+.cust__now dd {
+  margin: 0;
+}
+/* Untriaged is a state that needs a decision, not a blank. */
+.cust__untriaged {
+  color: var(--tf-warning);
+  font-weight: 600;
+}
+/* Each action is ONE ROW, not a stacked form.
+ *
+ * Three stacked forms — label, select, note, hint, button — filled the whole
+ * detail region on their own, and the surface's budget is a glance: `docs/44`
+ * puts the item surface at ten seconds, and a panel that pushes the comment
+ * thread off the fold has spent that budget on controls nobody had asked for
+ * yet. Laid out in a row the same three actions cost three lines. */
+.cust__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--tf-border);
+}
+.cust__form .field__label {
+  flex: none;
+  min-width: 6.5rem;
+}
+.cust__form .select {
+  flex: 0 1 12rem;
+  width: auto;
+}
+.cust__form .input {
+  flex: 1 1 12rem;
+  width: auto;
+}
+.cust__form .button {
+  flex: none;
+}
+/* The hint and any refusal take their own line under the row, so neither
+   squeezes the controls into uselessness. */
+.cust__form .field__hint,
+.cust__form .notice {
+  flex-basis: 100%;
+}
+.cust__verdicts {
+  display: flex;
+  gap: 8px;
+}
+/* The two numbers that expose a broken process. Warning-toned because they are
+   a finding about the process, not an error in the request. */
+.cust__warn {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border-radius: var(--tf-radius-control);
+  background: var(--tf-warning-subtle);
+  color: var(--tf-warning);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.cust__trail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+}
+.cust__who {
+  font-weight: 600;
+}
+.cust__note,
+.cust__empty {
+  color: var(--color-text-muted);
+}
+/* A failure is carried by the word "failed" as well as the colour — styling is
+   never the sole carrier of meaning. */
+.cust__fail .cust__who {
+  color: var(--tf-danger);
 }
 
 /* ── The task's relations, tree and history ────────────────────────────────

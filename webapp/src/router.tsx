@@ -29,6 +29,8 @@ import { MyWorkView } from './views/MyWorkView'
 import { TaskListView } from './views/TaskListView'
 
 const ReportsView = lazy(() => import('./views/ReportsView'))
+/** The second clock's surface. Lazy for the same reason Reports is. */
+const EnvironmentView = lazy(() => import('./views/EnvironmentView'))
 
 /**
  * Settings is lazy, and every section under it with it.
@@ -225,6 +227,17 @@ const myWorkRoute = createRoute({
   path: '/my-work',
   component: MyWorkView,
 })
+const environmentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/environments',
+  component: function EnvironmentsRoute(): ReactElement {
+    return (
+      <Suspense fallback={<p className="empty" role="status">Loading environments…</p>}>
+        <EnvironmentView />
+      </Suspense>
+    )
+  },
+})
 const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reports',
@@ -309,6 +322,7 @@ export const routeTree = rootRoute.addChildren([
   myWorkRoute,
   taskRoute,
   reportsRoute,
+  environmentsRoute,
   settingsRoute.addChildren(settingsChildren),
 ])
 

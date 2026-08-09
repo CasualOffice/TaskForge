@@ -57,6 +57,7 @@ would break the index guarantee.
 | `priority` | ordered enum | `eq` `in` `gt` `gte` `lt` `lte` |
 | `assignee` | id | `eq` `in` `is_empty` `is_not_empty` |
 | `reporter` | id | `eq` `in` |
+| `team` | id | `eq` `in` `is_empty` — the owning team ([45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md)). `is_empty` is the **triage queue**: a task nobody has routed yet |
 | `tag` | id | `in` `not_in` `is_empty` |
 | `milestone` | id | `eq` `in` `is_empty` |
 | `environment` | id | `eq` `in` `is_empty` |
@@ -196,6 +197,9 @@ sufficient:
 | My Work · Blocked | `assignee=@me AND is_blocked=true` |
 | My Work · Recently completed | `assignee=@me AND state=COMPLETED AND updated_at > -7d` |
 | Reported by me | `reporter=@me AND state not in (COMPLETED,CANCELED)` |
+| My team's queue | `team=<id> AND assignee is_empty AND state not in (COMPLETED,CANCELED)` |
+| Untriaged | `project=<id> AND team is_empty` |
+| On staging | `environment=<id>` |
 | Unassigned | `assignee is_empty AND state in (BACKLOG,PLANNED)` |
 
 If a built-in view needed a capability the grammar lacks, that is the signal the

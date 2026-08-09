@@ -120,6 +120,7 @@ fn cast_for(field: Field) -> &'static str {
         | Field::Tag
         | Field::Milestone
         | Field::Environment
+        | Field::Team
         | Field::Parent => "uuid",
         Field::State => "task_state",
         Field::Type => "task_type",
@@ -173,6 +174,7 @@ fn column_of(field: Field) -> &'static str {
         Field::Reporter => "t.reporter_id",
         Field::Milestone => "t.milestone_id",
         Field::Environment => "t.environment_id",
+        Field::Team => "t.team_id",
         Field::Parent => "t.parent_id",
         Field::CreatedAt => "t.created_at",
         Field::UpdatedAt => "t.updated_at",

@@ -41,6 +41,9 @@ import { useSession, useWorkspaceId } from './session'
 const TABS: ReadonlyArray<{ to: string; label: string; exact?: boolean }> = [
   { to: '/board', label: 'Board' },
   { to: '/', label: 'List', exact: true },
+  // The second clock gets a tab beside the first. "What is on staging" is a
+  // project question, and it is asked as often as "what is in progress".
+  { to: '/environments', label: 'Environments' },
   { to: '/reports', label: 'Reports' },
 ]
 
