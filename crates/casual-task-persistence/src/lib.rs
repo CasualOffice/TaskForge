@@ -21,6 +21,7 @@ pub mod comment;
 pub mod compile;
 pub mod dependency;
 pub mod dispatch;
+pub mod environment;
 pub mod export;
 pub mod health;
 pub mod idempotency;
@@ -39,6 +40,8 @@ pub mod task;
 pub mod test_support;
 pub mod unit_of_work;
 pub mod workflow;
+pub mod workflow_edge;
+pub mod workflow_edit;
 pub mod workspace;
 
 pub use compile::{AuthorizedProjectSet, Compiled, Page, Param, compile};

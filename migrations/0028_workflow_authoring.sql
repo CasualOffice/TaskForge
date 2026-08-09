@@ -1,0 +1,20 @@
+-- 0026 — The index workflow authoring cannot be built without.
+-- See docs/23-WORKFLOW-AND-STATE-MACHINE.md §Editing a workflow, docs/26.
+--
+-- Every authoring operation that touches in-flight work asks the same question:
+-- "which tasks are on THIS status?" — the count shown in the delete dialog, the
+-- `UPDATE` that migrates them to the target, the `task.state` recompute after a
+-- state remap, and the activity row written per migrated task.
+--
+-- `task_board_ix` cannot answer it. It leads with `project_id`, so a predicate
+-- on `status_id` alone scans the whole table — and a status is workspace
+-- configuration shared by every project on its workflow, so the project is
+-- exactly the thing the question does not carry. At the 2M-task reference scale
+-- that is the sequential scan NFR-5 forbids, on an operation that also holds a
+-- write transaction open.
+--
+-- Not partial on `deleted_at`. A soft-deleted task still carries `status_id`
+-- and still holds the foreign key, so a migration that skipped those rows would
+-- leave the `DELETE` of the status failing on a constraint violation nobody
+-- could explain from the UI.
+CREATE INDEX task_status_ix ON task (status_id);

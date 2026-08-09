@@ -116,6 +116,9 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-WFL-0006` | Cannot delete a status holding tasks — supply `migrate_to` | 422 |
 | `TF-WFL-0007` | Workflow must have exactly one initial status | 422 |
 | `TF-WFL-0008` | Status belongs to a different workflow | 422 |
+| `TF-WFL-0009` | Status name already in use in this workflow | 409 |
+| `TF-WFL-0010` | That transition already exists | 409 |
+| `TF-WFL-0011` | Too many tasks to migrate in a request — run it as a job | 422 |
 
 ### Task — `TSK`
 
@@ -141,6 +144,7 @@ user to different actions, and `/permissions/explain` returns the difference.
 | `TF-PRJ-0006` | Cannot remove the last member of a workspace | 422 |
 | `TF-PRJ-0007` | Workspace slug already in use | 409 |
 | `TF-PRJ-0008` | Team name already in use in this workspace | 409 |
+| `TF-PRJ-0009` | Environment name already in use in this project | 409 |
 | `TF-PRJ-0010` | Milestone name already in use in this project | 409 |
 | `TF-PRJ-0011` | Tag name already in use at that scope | 409 |
 | `TF-PRJ-0012` | Milestone limit for this project reached | 422 |
@@ -148,6 +152,12 @@ user to different actions, and `/permissions/explain` returns the difference.
 
 `TF-PRJ-0011` says "at that scope" and not "in this workspace" because a tag is
 `TF-PRJ-0013` bounds the tag vocabulary at the door. A tag is a user-authored
+
+`TF-WFL-0011` exists because `docs/23` puts a ceiling on the synchronous path:
+a status delete moves every task on it in one transaction, and above 10,000
+that is a tracked background job with progress rather than a request. The code
+says which side of that line the caller is on, so a client can offer the job
+instead of retrying a request that will never fit.
 
 `TF-PRJ-0006` is not `TF-AZN-0005`. That one protects the last *owner* — a
 grant — and this one protects the last *member*, which is a different fact: a

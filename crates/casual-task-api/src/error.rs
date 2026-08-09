@@ -183,6 +183,24 @@ pub mod codes {
     pub const TRANSITION_PERMISSION: Code = Code::new("TF-WFL-0003");
     /// Required fields missing for the target status.
     pub const TRANSITION_FIELDS_MISSING: Code = Code::new("TF-WFL-0004");
+    /// An environment holding tasks was deleted without a migration target.
+    pub const ENVIRONMENT_IN_USE: Code = Code::new("TF-PRJ-0005");
+    /// The environment name is taken inside this project.
+    pub const ENVIRONMENT_NAME_TAKEN: Code = Code::new("TF-PRJ-0009");
+    /// A status holding tasks was deleted without `migrate_to` (`docs/23`).
+    pub const STATUS_HOLDS_TASKS: Code = Code::new("TF-WFL-0006");
+    /// A workflow must have exactly one initial status.
+    pub const INITIAL_STATUS_RULE: Code = Code::new("TF-WFL-0007");
+    /// The status named belongs to a different workflow.
+    pub const STATUS_WRONG_WORKFLOW: Code = Code::new("TF-WFL-0008");
+    /// The status name is taken inside this workflow.
+    pub const STATUS_NAME_TAKEN: Code = Code::new("TF-WFL-0009");
+    /// That transition already exists between those two statuses.
+    pub const TRANSITION_EXISTS: Code = Code::new("TF-WFL-0010");
+    /// More tasks would move than a request may carry — `docs/23` puts the
+    /// ceiling at 10,000 and runs the rest as a tracked job.
+    pub const MIGRATION_TOO_LARGE: Code = Code::new("TF-WFL-0011");
+
     /// Blocking dependencies unresolved.
     pub const BLOCKED_BY_DEPENDENCIES: Code = Code::new("TF-WFL-0005");
 
@@ -284,6 +302,14 @@ pub mod codes {
         NO_SUCH_TRANSITION,
         TRANSITION_PERMISSION,
         TRANSITION_FIELDS_MISSING,
+        ENVIRONMENT_IN_USE,
+        ENVIRONMENT_NAME_TAKEN,
+        STATUS_HOLDS_TASKS,
+        INITIAL_STATUS_RULE,
+        STATUS_WRONG_WORKFLOW,
+        STATUS_NAME_TAKEN,
+        TRANSITION_EXISTS,
+        MIGRATION_TOO_LARGE,
         BLOCKED_BY_DEPENDENCIES,
         VERSION_CONFLICT,
         EXPORT_NOT_READY,

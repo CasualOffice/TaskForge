@@ -25,6 +25,7 @@ pub mod config;
 pub mod context;
 pub mod csrf;
 pub mod dependencies;
+pub mod environments;
 pub mod error;
 pub mod etag;
 pub mod exports;
