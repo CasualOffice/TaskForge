@@ -46,11 +46,11 @@ psql_owner() { docker exec -i "$CONTAINER" psql -U tf -d tf "$@"; }
 
 down() {
   step "Stopping"
-  # The API and the web server are started with `setsid` below so they survive
-  # this script exiting; killing the process group is how they are reclaimed.
+  # `nohup`, not `setsid`: macOS has no setsid. Children are killed by pid, with
+  # a sweep for grandchildren — pnpm dev execs vite as a child of a child.
   for pidfile in .dev/api.pid .dev/web.pid; do
     if [[ -f "$pidfile" ]]; then
-      kill -- "-$(cat "$pidfile")" 2>/dev/null || true
+      pkill -P "$(cat "$pidfile")" 2>/dev/null || true; kill "$(cat "$pidfile")" 2>/dev/null || true
       rm -f "$pidfile"
     fi
   done
@@ -67,6 +67,17 @@ case "${1:-}" in
 esac
 
 mkdir -p .dev
+
+# Checked first, and by name. The daemon on this machine has died mid-session
+# more than once, and every downstream symptom — a container that will not
+# start, a gate reporting "sequential scan", a suite failing on connection
+# refused — reads as a product bug rather than as a stopped daemon.
+if ! docker info >/dev/null 2>&1; then
+  red "the Docker daemon is not running."
+  note "macOS:  open -a Docker    (then wait ~30 s)"
+  note "Linux:  sudo systemctl start docker"
+  exit 1
+fi
 
 # ── Database ────────────────────────────────────────────────────────────────
 if [[ $RESET -eq 1 ]]; then
@@ -95,6 +106,15 @@ else
     red "PostgreSQL did not become ready"; exit 1; }
 fi
 
+# Migrations are not idempotent — 0001 creates types with no IF NOT EXISTS — so
+# re-running them against a database that already has them fails on the second
+# statement and looks like a broken migration. A dev database that survives a
+# restart is the whole point of keeping the container, so detect and skip.
+ALREADY=$(psql_owner -tAq -c "SELECT to_regclass('public.task') IS NOT NULL" 2>/dev/null || echo f)
+if [[ "$ALREADY" == "t" ]]; then
+  step "Schema is already present — skipping migrations"
+  note "run scripts/dev-up.sh --reset to rebuild it from scratch"
+else
 step "Applying migrations"
 for f in migrations/*.sql; do
   if psql_owner -v ON_ERROR_STOP=1 -q < "$f" >/dev/null 2>&1; then
@@ -105,6 +125,7 @@ for f in migrations/*.sql; do
     exit 1
   fi
 done
+fi
 
 # The API refuses to start as a superuser (see crates/casual-task-api/src/main.rs
 # and migration 0012), and it is right to: a superuser bypasses every RLS policy,
@@ -115,6 +136,11 @@ psql_owner -q -c "ALTER ROLE taskforge_app WITH LOGIN PASSWORD '${DB_PASSWORD}';
 psql_owner -q -c "ALTER ROLE taskforge_dispatcher WITH LOGIN PASSWORD '${DB_PASSWORD}';" >/dev/null
 
 APP_DSN="postgres://taskforge_app:${DB_PASSWORD}@127.0.0.1:${PGPORT}/tf"
+# A second DSN, as taskforge_dispatcher (D-060). The dispatcher bypasses RLS
+# because a background worker cannot know every workspace id; giving that
+# capability to taskforge_app instead would hand it to every request the
+# product serves.
+DISPATCHER_DSN="postgres://taskforge_dispatcher:${DB_PASSWORD}@127.0.0.1:${PGPORT}/tf"
 
 # ── The demo account ────────────────────────────────────────────────────────
 step "Creating the demo account"
@@ -141,14 +167,23 @@ step "Building the API"
 cargo build --release -p casual-task-api
 
 step "Starting the API on :${API_PORT}"
-if [[ -f .dev/api.pid ]]; then kill -- "-$(cat .dev/api.pid)" 2>/dev/null || true; fi
+if [[ -f .dev/api.pid ]]; then pkill -P "$(cat .dev/api.pid)" 2>/dev/null || true; kill "$(cat .dev/api.pid)" 2>/dev/null || true; fi
 # TF_SECRET_KEY is fixed so sessions survive a restart of this script — a
 # developer logged out by every rebuild stops using the dev stack.
+# Every variable Config::from_env demands. Listed in full rather than relying on
+# defaults: the binary refuses to start on a missing one, by design (docs/48,
+# "a misconfigured deployment must not start"), and the whole value of that
+# refusal is lost if this script has to be debugged one variable at a time.
 env DATABASE_URL="$APP_DSN" \
+    DISPATCHER_DATABASE_URL="$DISPATCHER_DSN" \
     TF_BIND_ADDR="127.0.0.1:${API_PORT}" \
     TF_SECRET_KEY="dev-only-secret-key-not-for-any-real-deployment" \
     TF_PUBLIC_URL="http://127.0.0.1:${WEB_PORT}" \
-  setsid ./target/release/casual-task-api > .dev/api.log 2>&1 &
+    TF_ATTACHMENT_ORIGIN="http://127.0.0.1:${API_PORT}" \
+    TF_STORAGE_BACKEND="fs" \
+    TF_STORAGE_PATH="$(pwd)/.dev/objects" \
+    TF_WORKER_EMBEDDED="true" \
+  nohup ./target/release/casual-task-api > .dev/api.log 2>&1 &
 echo $! > .dev/api.pid
 
 for _ in $(seq 1 60); do
@@ -169,6 +204,11 @@ green "API ready"
 # projection and SSE consume. Rows inserted behind the API would look identical
 # in the tables and behave differently in every feature built on top of them.
 step "Creating demo content"
+# Created over HTTP rather than with INSERTs, deliberately. Going through the
+# real endpoints means the demo data carries the workspace owner grant D-054
+# issues, the activity and audit rows ADR-006 requires, and the outbox events
+# the search projection and SSE consume. Rows inserted behind the API look
+# identical in the tables and behave differently in every feature built on them.
 COOKIE_JAR=.dev/cookies.txt
 rm -f "$COOKIE_JAR"
 
@@ -179,45 +219,62 @@ LOGIN=$(curl -fsS -c "$COOKIE_JAR" \
 CSRF=$(printf '%s' "$LOGIN" | sed -n 's/.*"csrf_token":"\([^"]*\)".*/\1/p')
 [[ -n "$CSRF" ]] || { red "login did not return a CSRF token"; echo "$LOGIN"; exit 1; }
 
-api() { # api METHOD PATH [JSON] [WORKSPACE]
-  local method=$1 path=$2 body=${3:-} workspace=${4:-}
-  local args=(-fsS -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X "$method"
-              -H "x-csrf-token: ${CSRF}" -H 'content-type: application/json')
-  [[ -n "$workspace" ]] && args+=(-H "x-workspace-id: ${workspace}")
-  [[ -n "$body" ]] && args+=(-d "$body")
-  curl "${args[@]}" "http://127.0.0.1:${API_PORT}${path}"
-}
+# Idempotency-Key on every create. The API requires it (TF-IDM-0003) so that a
+# timeout which actually succeeded cannot produce a duplicate nobody can detect,
+# and a seeding script is exactly the caller that would otherwise retry blind.
+api_get()  { curl -fsS -b "$COOKIE_JAR" -H "x-csrf-token: ${CSRF}" \
+               ${2:+-H "x-workspace-id: $2"} "http://127.0.0.1:${API_PORT}$1"; }
+api_post() { curl -fsS -b "$COOKIE_JAR" -X POST -H "x-csrf-token: ${CSRF}" \
+               ${3:+-H "x-workspace-id: $3"} -H 'content-type: application/json' \
+               -H "Idempotency-Key: $(uuidgen)" -d "$2" \
+               "http://127.0.0.1:${API_PORT}$1"; }
+first_id() { sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1; }
 
-id_of() { sed -n 's/.*"id":"\([^"]*\)".*/\1/p' <<<"$1"; }
-
-WORKSPACES=$(api GET /api/v1/workspaces)
+WORKSPACES=$(api_get /api/v1/workspaces)
 if grep -q '"slug":"demo"' <<<"$WORKSPACES"; then
-  note "the demo workspace already exists; leaving it alone"
+  WORKSPACE=$(printf '%s' "$WORKSPACES" | first_id)
+  note "workspace demo already exists"
 else
-  WORKSPACE=$(id_of "$(api POST /api/v1/workspaces '{"name":"Demo","slug":"demo"}')")
-  PROJECT=$(id_of "$(api POST /api/v1/projects \
-    '{"name":"Onboarding","key":"ONB"}' "$WORKSPACE")")
-  for title in \
-    "Set up the development environment" \
-    "Read docs/02-ARCHITECTURE.md" \
-    "Draw the board" \
-    "Wire the task drawer" \
-    "Ship something a user can open"
-  do
-    api POST "/api/v1/projects/${PROJECT}/tasks" \
-      "{\"title\":$(printf '%s' "$title" | sed 's/"/\\"/g; s/^/"/; s/$/"/')}" \
-      "$WORKSPACE" >/dev/null
-  done
-  note "workspace demo · project ONB · 5 tasks"
+  WORKSPACE=$(api_post /api/v1/workspaces '{"name":"Demo","slug":"demo"}' | first_id)
+  note "workspace demo created"
+fi
+
+PROJECTS=$(api_get /api/v1/projects "$WORKSPACE")
+if grep -q '"key":"ONB"' <<<"$PROJECTS"; then
+  note "projects already seeded; leaving them alone"
+else
+  seed_project() { # seed_project KEY NAME "title|title|..."
+    local key=$1 name=$2 titles=$3
+    local project
+    project=$(api_post /api/v1/projects \
+      "{\"name\":\"${name}\",\"key\":\"${key}\"}" "$WORKSPACE" | first_id)
+    local n=0
+    local IFS='|'
+    for title in $titles; do
+      api_post "/api/v1/projects/${project}/tasks" \
+        "{\"title\":\"${title}\"}" "$WORKSPACE" >/dev/null
+      n=$((n + 1))
+    done
+    note "${key} — ${n} tasks"
+  }
+
+  seed_project ONB "Onboarding" \
+    "Set up the development environment|Read docs/02-ARCHITECTURE.md|Get database access|Pair on the outbox|Ship a first change|Write the runbook entry|Review the threat model"
+  seed_project WEB "Web client" \
+    "Board drag and drop|Task drawer comments|Command palette actions|Keyboard navigation audit|Bundle budget review|Dark mode|Empty states|Error boundary copy"
+  seed_project API "Platform" \
+    "Rate limit the write classes|Attachment virus scanning|Search relevance tuning|Outbox dead-letter alerting|Permission explain endpoint|Session revocation latency"
+  seed_project OPS "Operations" \
+    "Backup restore drill|Upgrade rehearsal|On-call handover doc|Capacity review"
 fi
 
 # ── The web client ──────────────────────────────────────────────────────────
 step "Starting the web client on :${WEB_PORT}"
-if [[ -f .dev/web.pid ]]; then kill -- "-$(cat .dev/web.pid)" 2>/dev/null || true; fi
+if [[ -f .dev/web.pid ]]; then pkill -P "$(cat .dev/web.pid)" 2>/dev/null || true; kill "$(cat .dev/web.pid)" 2>/dev/null || true; fi
 if command -v pnpm >/dev/null 2>&1; then
   (cd webapp && pnpm install --silent >/dev/null 2>&1 || true)
   env VITE_API_URL="http://127.0.0.1:${API_PORT}" \
-    setsid pnpm --dir webapp dev --port "${WEB_PORT}" > .dev/web.log 2>&1 &
+    nohup pnpm --dir webapp dev --port "${WEB_PORT}" > .dev/web.log 2>&1 &
   echo $! > .dev/web.pid
   sleep 3
   green "web client starting"

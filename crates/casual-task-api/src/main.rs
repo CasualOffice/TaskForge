@@ -287,6 +287,12 @@ async fn start_embedded_worker(
         config.public_url.clone(),
     ));
     let sse = std::sync::Arc::new(SseFanout::new(std::sync::Arc::clone(&state.broadcast)));
+    // Its own pool, as `taskforge_app` and NOT the dispatcher's: the projection
+    // writes tenant rows, and the dispatcher role bypasses row-level security
+    // and is granted on the two outbox tables and nothing else (migration 0014).
+    let search = std::sync::Arc::new(casual_task_worker::projection::SearchProjection::new(
+        state.pool.clone(),
+    ));
 
     for (name, spawn) in [
         (
@@ -294,6 +300,10 @@ async fn start_embedded_worker(
             Loop::Notification(notification),
         ),
         ("sse_fanout", Loop::Sse(sse)),
+        // Without this loop the index is never written and search returns
+        // nothing — while every task write succeeds and every gate passes,
+        // because the projection's own tests drive the consumer directly.
+        (casual_task_worker::projection::NAME, Loop::Search(search)),
     ] {
         let pool = pool.clone();
         let cancel = cancel.clone();
@@ -323,6 +333,17 @@ async fn start_embedded_worker(
                     )
                     .await
                 }
+                Loop::Search(consumer) => {
+                    dispatcher::run(
+                        &pool,
+                        consumer,
+                        &worker_id,
+                        dispatcher::Config::default(),
+                        cancel,
+                        metrics,
+                    )
+                    .await
+                }
             };
             match outcome {
                 Ok(stopped) => tracing::info!(consumer = name, ?stopped, "dispatch loop stopped"),
@@ -341,6 +362,7 @@ async fn start_embedded_worker(
 enum Loop {
     Notification(std::sync::Arc<casual_task_worker::consumers::NotificationFanout>),
     Sse(std::sync::Arc<casual_task_worker::consumers::SseFanout>),
+    Search(std::sync::Arc<casual_task_worker::projection::SearchProjection>),
 }
 
 /// Refuse to serve as a superuser (`docs/48`, migration 0012).
