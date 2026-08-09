@@ -435,7 +435,7 @@ pub async fn list(
             .map(TeamId::from_uuid)
             .collect(),
         OffsetDateTime::now_utc(),
-        time::UtcOffset::UTC,
+        crate::wire::caller_offset(&headers),
     );
     let filter = casual_task_search::resolve(&query.filter, &resolver).map_err(|error| {
         ApiError::bad_request(

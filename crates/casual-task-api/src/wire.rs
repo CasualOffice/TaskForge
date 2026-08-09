@@ -197,6 +197,36 @@ pub fn cursor(
         })
 }
 
+/// The caller's UTC offset, in minutes east of UTC.
+///
+/// `casual-task-search`'s resolver takes an offset and has **no default**,
+/// because `docs/27` says "`due before @today` must mean the same thing to
+/// someone in Auckland and someone in Los Angeles. Server-local date boundaries
+/// are a classic and extremely confusing bug." The API passed `UtcOffset::UTC`
+/// anyway, at every call site, because nothing carried the caller's — so the
+/// type made the mistake impossible to write by accident and the application
+/// made it in the one place the type could not see.
+///
+/// The client sends it because a browser computes it correctly, including
+/// daylight saving, and the server cannot: deriving it from the stored IANA
+/// name needs a time-zone database, which is D-065. Trusting the header is safe
+/// — it changes only how the caller's own date symbols resolve, and a caller
+/// lying about it can only confuse themselves.
+///
+/// Absent or malformed falls back to UTC, which is the behaviour that already
+/// existed and is documented rather than silent.
+pub fn caller_offset(headers: &axum::http::HeaderMap) -> time::UtcOffset {
+    headers
+        .get("x-utc-offset-minutes")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<i32>().ok())
+        // ±14:00 is the real range; anything outside it is a broken client
+        // rather than a place.
+        .filter(|minutes| minutes.abs() <= 14 * 60)
+        .and_then(|minutes| time::UtcOffset::from_whole_seconds(minutes * 60).ok())
+        .unwrap_or(time::UtcOffset::UTC)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
