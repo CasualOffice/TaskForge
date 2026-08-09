@@ -758,6 +758,72 @@ pub async fn add_blocker(
     Ok(())
 }
 
+/// A workflow, a project and one task, as the smallest thing a projection test
+/// can index.
+///
+/// Written out rather than driven through the API because the worker crate has
+/// no HTTP: `task.status_id` and `project.workflow_id` are both `NOT NULL`, so
+/// "one task" is unavoidably four rows.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_task_fixture(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    user_id: Uuid,
+    title: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let workflow = Uuid::now_v7();
+    let status = Uuid::now_v7();
+    let project = Uuid::now_v7();
+    let task = Uuid::now_v7();
+
+    sqlx::query(
+        "INSERT INTO workflow (id, workspace_id, name, is_default) VALUES ($1,$2,'D',true)",
+    )
+    .bind(workflow)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO workflow_status
+             (id, workflow_id, workspace_id, name, state, position, is_initial)
+         VALUES ($1,$2,$3,'Backlog','BACKLOG'::task_state,1,true)",
+    )
+    .bind(status)
+    .bind(workflow)
+    .bind(workspace_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO project
+             (id, workspace_id, key, name, workflow_id, created_by, visibility)
+         VALUES ($1,$2,'WR','Work',$3,$4,'WORKSPACE'::visibility)",
+    )
+    .bind(project)
+    .bind(workspace_id)
+    .bind(workflow)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO task
+             (id, workspace_id, project_id, number, title, status_id, state,
+              reporter_id, position, created_by)
+         VALUES ($1,$2,$3,1,$4,$5,'BACKLOG'::task_state,$6,'a0',$6)",
+    )
+    .bind(task)
+    .bind(workspace_id)
+    .bind(project)
+    .bind(title)
+    .bind(status)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(task)
+}
+
 /// Rebuild one task's search document, as the projection consumer would.
 ///
 /// The consumer itself lives in `casual-task-worker` and is exercised by its
