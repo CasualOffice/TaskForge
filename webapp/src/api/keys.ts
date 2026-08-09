@@ -78,6 +78,12 @@ export const keys = {
    */
   me: () => ['me'] as const,
   mySessions: () => ['me', 'sessions'] as const,
+  /**
+   * Whose turn is it. Under the tenant prefix even though the endpoint is
+   * `/me/…`: the answer is entirely about one workspace's work, so a workspace
+   * switch must clear it.
+   */
+  queue: (workspaceId: string) => ['ws', workspaceId, 'queue'] as const,
 
   /** Administration. All under the tenant prefix, so a switch clears them. */
   workspaceSettings: (workspaceId: string) => ['ws', workspaceId, 'settings'] as const,

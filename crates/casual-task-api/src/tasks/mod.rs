@@ -34,7 +34,7 @@ pub use crud::{create, delete, list, read, update};
 pub use relations::{assign, assignees, tag, transition, unassign};
 pub use subtasks::list as subtasks_of;
 pub use tags::{list as tags_of, remove as untag};
-pub use wire::TaskView;
+pub use wire::{TaskView, view};
 
 pub(crate) use guard::*;
 pub(crate) use validate::*;

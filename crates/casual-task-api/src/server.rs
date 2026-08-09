@@ -296,6 +296,8 @@ pub fn router(state: AppState) -> Router {
         // a person belongs to many workspaces — and every handler answers only
         // about the caller, which is what makes that safe.
         .route("/api/v1/me", get(crate::me::read).patch(crate::me::update))
+        // Whose turn is it (`docs/45`). The home screen's whole answer.
+        .route("/api/v1/me/queue", get(crate::custody::queue))
         .route(
             "/api/v1/me/password",
             axum::routing::post(crate::me::change_password),
@@ -735,6 +737,7 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",
     "/api/v1/me",
+    "/api/v1/me/queue",
     "/api/v1/me/password",
     "/api/v1/me/sessions",
     "/api/v1/me/sessions/{id}",

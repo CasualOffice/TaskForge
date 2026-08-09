@@ -16,6 +16,7 @@
  * this" at a glance.
  */
 import { request } from './http'
+import type { Task } from './tasks'
 
 export interface Transfer {
   readonly id: string
@@ -128,4 +129,34 @@ export function verify(
       ...(environmentId === undefined ? {} : { environment_id: environmentId }),
     },
   })
+}
+
+/**
+ * The four courts a task can be in, for the signed-in person (`docs/45`).
+ *
+ * # Why the server computes this
+ *
+ * "Whose turn is it" is a derived fact over the owning team, the assignees and
+ * the verification history. Composing it from four filtered lists here would put
+ * that definition in the client — a second copy of a domain rule, in another
+ * language, drifting from the first.
+ *
+ * # The courts are not exclusive
+ *
+ * A task assigned to you *and* awaiting verification is in both, because both
+ * are true. A person who saw only one of them would act on half the picture.
+ */
+export interface Queue {
+  /** Assigned to you and still open. */
+  readonly mine: readonly Task[]
+  /** Owned by one of your teams, and nobody has picked it up. */
+  readonly team_queue: readonly Task[]
+  /** Open and owned by no team — the triage queue. */
+  readonly triage: readonly Task[]
+  /** Pushed to an environment and not passed there since. */
+  readonly awaiting_verification: readonly Task[]
+}
+
+export function readQueue(workspaceId: string, signal?: AbortSignal): Promise<Queue> {
+  return request<Queue>('/api/v1/me/queue', { workspaceId, signal })
 }

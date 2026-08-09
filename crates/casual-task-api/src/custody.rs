@@ -158,6 +158,70 @@ pub async fn read(
     .into_response())
 }
 
+/// The home screen's answer, in four courts.
+#[derive(Debug, Serialize)]
+pub struct QueueView {
+    pub mine: Vec<crate::tasks::TaskView>,
+    pub team_queue: Vec<crate::tasks::TaskView>,
+    pub triage: Vec<crate::tasks::TaskView>,
+    pub awaiting_verification: Vec<crate::tasks::TaskView>,
+}
+
+/// How many cards a home screen shows per court. A glance, not a backlog.
+const QUEUE_LIMIT: i64 = 25;
+
+/// `GET /api/v1/me/queue` — whose turn is it, for the caller.
+///
+/// # Why the server answers this and not the client
+///
+/// `docs/45` defines "whose turn is it" as a derived fact over the owning team,
+/// the assignees and the verification history. A client composing it from four
+/// filtered lists would hold that definition in TypeScript — a second copy of a
+/// domain rule, in another language, drifting from the first. It is the same
+/// argument `docs/42` makes for not re-deriving authority in the UI.
+///
+/// The courts are not exclusive, and that is deliberate: a task assigned to you
+/// *and* awaiting verification appears in both, because both are true and a
+/// person who only saw one of them would act on half the picture.
+///
+/// # Errors
+///
+/// `500` on a database failure. There is no `403`: every bucket is filtered by
+/// the same visibility predicate every list uses, so a caller sees their own
+/// work or nothing.
+pub async fn queue(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let request_id = RequestId::of_parts(&headers);
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+
+    let queue = custody::queue(&mut scoped, &ctx.viewer, QUEUE_LIMIT)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading the queue failed");
+            ApiError::internal(&request_id)
+        })?;
+    unit::commit(tx, &request_id).await?;
+
+    let cards = |rows: Vec<(casual_task_persistence::task::TaskRow, String)>| {
+        rows.iter()
+            .map(|(row, key)| crate::tasks::view(row, key))
+            .collect()
+    };
+
+    Ok(axum::Json(QueueView {
+        mine: cards(queue.mine),
+        team_queue: cards(queue.team_queue),
+        triage: cards(queue.triage),
+        awaiting_verification: cards(queue.awaiting_verification),
+    })
+    .into_response())
+}
+
 /// `PUT /api/v1/tasks/{id}/team` — hand it to another team.
 ///
 /// `PUT` and not `POST`: the task has exactly one owning team, and sending the

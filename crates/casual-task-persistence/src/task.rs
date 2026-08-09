@@ -95,7 +95,13 @@ pub(crate) const COLUMNS: &str =
                                                  AND b.deleted_at IS NULL
                                                  AND b.state NOT IN ('COMPLETED','CANCELED'))) AS is_blocked";
 
-fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
+/// `pub(crate)` so a sibling module can decode the same projection.
+///
+/// `crate::custody::queue` selects `COLUMNS` and must produce identical rows —
+/// a home screen whose cards differ from the board's would be two renderings of
+/// one task, and the difference would live in whichever mapper was written
+/// second.
+pub(crate) fn row_of(row: &sqlx::postgres::PgRow) -> Result<TaskRow, sqlx::Error> {
     use sqlx::Row as _;
     Ok(TaskRow {
         id: row.try_get("id")?,
