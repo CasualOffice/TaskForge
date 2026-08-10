@@ -544,16 +544,47 @@
   margin: 0;
 }
 
+/* `docs/46` §3 and §8: the narrow composition.
+ *
+ * The rail used to be `order: -1` — eight fields between the reader and the
+ * title of the thing they opened. It is a disclosure at the end now, and the
+ * *route* scrolls rather than a region inside it, so no section can be cut off
+ * mid-control by a container it does not know about. */
 @media (max-width: 1024px) {
-  .detail__cols {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+  .detail,
+  .detail__cols,
+  .detail__main {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+  .detail__scrollable {
+    overflow: visible;
+    min-height: 0;
+  }
+  .detail__main {
+    padding: var(--space-3) var(--space-3) 0;
   }
   .detail__side {
-    border-left: 0;
-    border-bottom: 1px solid var(--tf-border, var(--color-border));
-    order: -1;
+    display: none;
   }
+}
+
+/* The metadata disclosure. Present only on the narrow composition; the wide one
+ * has a rail and does not need a second way to say the same thing. */
+.moredetails {
+  margin: var(--space-3) 0 var(--space-4);
+  border-top: 1px solid var(--tf-border, var(--color-border));
+}
+.moredetails__head {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.moredetails__body {
+  padding-bottom: var(--space-3);
 }
 
 /* ── Narrative: title and description ──────────────────────────────────── */
@@ -846,6 +877,10 @@
 }
 .dsec + .dsec,
 .acts + .dsec {
+  margin-top: var(--space-3);
+}
+/* The wrappers are gone, so the gap belongs to the panels themselves. */
+.detail__scrollable > .dsec + .dsec {
   margin-top: var(--space-3);
 }
 

@@ -185,7 +185,7 @@ export function TaskDescription({
 
   if (editing) {
     return (
-      <section className="narr__section" aria-labelledby="desc-heading">
+      <section className="narr__section dsec" aria-labelledby="desc-heading">
         <h2 id="desc-heading" className="narr__heading">
           Description
         </h2>
@@ -228,7 +228,7 @@ export function TaskDescription({
   const text = task.description ?? ''
 
   return (
-    <section className="narr__section" aria-labelledby="desc-heading">
+    <section className="narr__section dsec" aria-labelledby="desc-heading">
       <div className="narr__sectionhead">
         <h2 id="desc-heading" className="narr__heading">
           Description

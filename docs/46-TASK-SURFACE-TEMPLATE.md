@@ -1,241 +1,365 @@
-# 46 — The Task Surface: Template, Research and Fundamentals
+# 46 — The Task Surface: One Experience, Three Presentations
 
-The task is the only object in this product that every role opens every day. It
-has two surfaces — a **peek** and a **page** — and until now neither was
-designed. Both were assembled from the fields the API returns, in the order it
-returns them, which is why the result reads as a form rather than as a document.
+The task is the only object every role opens every day. It has three
+presentations — a **list row**, a **quick side panel**, and a **full page** —
+and until now each was assembled separately from whatever fields the API
+returned. That is the mechanical cause of the complaint this document answers:
+information exists on one surface and disappears or moves unpredictably on
+another.
 
-This closes that. It is a template, not a suggestion: the regions, their order,
-their spacing and their responsive behaviour are fixed here, and both surfaces
-are built from it.
+> **The problem is not colour or spacing. It is information architecture and the
+> scrolling model.**
+
+The three presentations share components and terminology. They differ only in
+*purpose*, and purpose decides what each may carry.
+
+| | Purpose | Answers |
+| --- | --- | --- |
+| **List row** | Scan and decide | "What needs my attention?" |
+| **Side panel** | Quick peek | "What is this, what state, who owns it, does anything need attention?" |
+| **Full page** | Understand and work | "What happened, and what do I do about it?" |
+
+The rule that follows: **a row triages, a panel answers, a page transacts.** No
+presentation attempts the job of the one to its right.
 
 > **Source note.** The competitive section is written from working knowledge of
-> these products, not from fetched documentation. Where a claim is a measured
-> fact it is marked `[Measured]`; where it is an observed pattern it is marked
-> `[Pattern]`. Nothing here is a quotation of anyone's private design system.
+> those products, not from fetched documentation. Nothing here quotes anyone's
+> private design system.
 
 ---
 
-## 1. What the two surfaces are for
+## 1. Competitive reading
 
-The failure they replace is that both tried to do the same job at different
-sizes. A panel that is a small version of the page is a page you have to scroll
-in a smaller box.
+**Linear — issue peek.** Identifier, title, then a horizontal band of property
+pills, then description. Pills rather than label/value rows is what lets eight
+facts occupy one band instead of eight lines. *Taken: the band. Left: the
+density, which assumes a user who has learned the icons.*
 
-| | Peek (side panel) | Page (full route) |
+**Jira — issue view.** Narrative left, details right, grouped under headings,
+with People and Dates separated. Jira's own redesign moved status **out** of the
+details panel and up beside the title, because it is the field people look for
+first. *Taken: grouping by question, and status out of the rail. Left: the
+accordions — a field you must open is a field you will not read.*
+
+**GitHub — issue page.** One narrative column, a quiet rail, and **the composer
+at the end of the timeline**. Hierarchy is carried by whitespace and one heading
+weight, with very few boxes. *Taken: restraint with borders.*
+
+**Asana — task pane.** The pane *is* the page, docked. That only works because
+Asana's field set is small; ours is not, which is exactly why our pane read as a
+property dump. *Taken: the confirmation that we need two compositions, not one.*
+
+**Height, Shortcut.** Both put a one-sentence status line under the title before
+any field list.
+
+**What none of them have: the two clocks.** No mainstream tracker separates
+*what state work is in* from *where it has reached*, nor shows custody passing
+between teams. That is ours (`docs/45`), so it earns a line on every one of the
+three presentations rather than a row in a panel.
+
+---
+
+## 2. Fundamentals
+
+1. **One question per region.** A region answering two questions gets split.
+2. **Hierarchy is size, weight, then space.** Colour is a fourth resort and
+   never the only signal (WCAG 2.2 §1.4.1) — status and priority always carry
+   text.
+3. **A heading must outrank its own contents.**
+4. **The 8-point grid**, with rhythm *between* regions larger than *within*
+   them. Proximity groups before any border does.
+5. **Borders are the last grouping tool.** Boxes inside boxes are a smell —
+   which is why metadata is a compact definition list and **not a series of
+   cards**.
+6. **Progressive disclosure** for rare, consequential acts; never for the
+   frequent ones. Status is frequent, so it is always one press.
+7. **Measure** capped near 70 characters for prose.
+8. **44 × 44 CSS px** touch targets on coarse pointers.
+9. **The narrow order is the reading order.** Reflow (WCAG 2.2 §1.4.10) is not
+   satisfied by stacking the same regions — metadata before the title fails it
+   even though it "fits".
+10. **No engineering artefacts in product copy.** No decision IDs, endpoint
+    names, schema limits, permission keys or tracker references on any of these
+    surfaces. They belong in `docs/` and in development diagnostics.
+
+---
+
+## 3. The scrolling model — settled
+
+This is the second half of the complaint, and it is fixed here before any CSS.
+
+> **One scrolling region per route, at every width. Nothing nests.**
+
+| Width | What scrolls | The rail |
 | --- | --- | --- |
-| **The question** | "Is this the one I mean, and where does it stand?" | "What is this, what happened, what do I do about it?" |
-| **Budget** | About five seconds, from a list | Minutes, deliberately |
-| **Enters from** | Clicking a row; `Escape` returns | ⌘-click, a pasted link, "Open full view" |
-| **Carries** | Identity, standing, description excerpt, assignment, environment | Everything, including every act and the whole history |
-| **Never carries** | Multi-step forms, history, comments composer | — |
+| ≥ 1024 px | The narrative column. One region. | `position: sticky`, **not** a second scroller |
+| < 1024 px | The page. One region. | Becomes the *More details* disclosure at the end |
 
-The rule that follows: **the peek answers, the page transacts.** If a control on
-the peek would need a second decision after pressing it, it belongs on the page.
+Consequences, stated so they cannot be re-argued in CSS:
 
----
-
-## 2. Competitive research
-
-### Linear — issue peek `[Pattern]`
-
-Right-hand overlay from a list. Its whole content above the fold is: identifier,
-title, a horizontal row of *property pills* (status, assignee, priority,
-labels), then description. Properties are pills rather than label/value rows,
-which is what lets eight of them fit in one band instead of eight lines.
-
-**What we take:** the property band. **What we leave:** the density — Linear's
-pills assume a user who has learned the icons.
-
-### Jira — issue view `[Pattern]`
-
-Two columns: the narrative left, a "Details" accordion right. The details panel
-groups fields under collapsible headings and puts *People* and *Dates* in
-separate groups. Jira's own redesign moved status out of the details panel and
-up beside the title, because it is the one field people look for first.
-
-**What we take:** grouping the rail by question, and status out of the rail.
-**What we leave:** the accordions — a field you have to open is a field you will
-not read.
-
-### GitHub — issue page `[Pattern]`
-
-Single narrative column with a right rail. The rail is quiet: labels, assignees,
-projects, milestone. The body is a timeline, and **the composer is at the end of
-the timeline**, not pinned. GitHub's hierarchy is carried almost entirely by
-whitespace and one heading weight, with very few boxes.
-
-**What we take:** the composer at the end of the story; restraint with borders.
-
-### Asana — task pane `[Pattern]`
-
-The pane *is* the page — same component, docked. Fields are stacked label/value
-at the top, description below, comments at the bottom. Asana can do this because
-its field set is small; ours is not, which is the reason our current pane reads
-as a property dump.
-
-**What we take:** the confirmation that one component for both sizes only works
-when the field set is small. Ours needs two.
-
-### Height, Shortcut `[Pattern]`
-
-Both put a single-sentence status line under the title — "In review · assigned
-to X" — before any field list. It is the pattern closest to what `docs/45`
-already needs us to say.
-
-### What none of them have
-
-**The two clocks.** No mainstream tracker separates *what state the work is in*
-from *where it has reached*, and none shows a chain of custody between teams.
-That is our differentiator (`docs/45`), so it gets the most valuable line on
-both surfaces rather than being hidden in a panel.
+- `.shell__main` may not be `overflow: hidden` on a route whose content scrolls.
+- No panel, section, comment thread, board column body or metadata rail may
+  introduce its own `overflow: auto` on a route that already scrolls. The board
+  is the single exception: its **columns** scroll, because a board is a
+  horizontal set of vertical lists and that is what it is.
+- A section must never be cut off mid-control by a container it does not know
+  about. If a region can overflow, the *route* scrolls, not the region.
+- Bottom navigation is `position: fixed` and the scrolling region carries bottom
+  padding equal to its height, so the composer and the last comment are never
+  underneath it.
 
 ---
 
-## 3. Design fundamentals this template applies
+## 4. Shared component structure
 
-1. **One question per region.** A region that answers two questions gets split.
-2. **Hierarchy is size, weight and space — in that order.** Colour is a fourth
-   resort and never the only signal (WCAG 2.2 §1.4.1).
-3. **A heading must outrank its own contents.** Our section headings were 12 px
-   uppercase muted above 14 px form labels, which inverts the hierarchy and is
-   the direct cause of "the layout is messy".
-4. **The 8-point grid.** Every gap is a multiple of 4, and vertical rhythm
-   between regions is larger than rhythm within them — 24 between, 8 within. A
-   reader parses grouping from spacing before they read a word (proximity, the
-   first Gestalt principle that applies to a form).
-5. **Borders are the last grouping tool, not the first.** Space groups; a border
-   is for when space is unavailable. Boxes inside boxes are a smell.
-6. **Progressive disclosure.** Rare, consequential acts are closed by default
-   and open in place. An always-open form spends the reader's attention on a
-   decision they are not making.
-7. **Measure.** Prose is capped near 70 characters; a description that runs the
-   width of a 1440 px window is a description nobody finishes.
-8. **Touch targets are 44×44 CSS px** on coarse pointers (WCAG 2.2 §2.5.8 sets
-   24 as the minimum; 44 is the tier this repository already commits to).
-9. **The mobile order is the reading order.** Reflow (WCAG 2.2 §1.4.10) is not
-   satisfied by putting the same regions in a column — it is satisfied when the
-   column is ordered by what the reader needs first. Metadata before the title
-   fails this even though it "fits".
+The three presentations compose the same pieces. This is what prevents a fact
+from existing on one surface and vanishing on another.
+
+| Component | Row | Panel | Page |
+| --- | :-: | :-: | :-: |
+| `TaskIdentity` — key, type | ● | ● | ● |
+| `TaskAttentionSummary` — blocked, overdue, subtask progress | ● | ● | ● |
+| `TaskStatusControl` | ● (read) | ● (edit) | ● (edit) |
+| `TaskPeople` — assignees | ● | ● | ● |
+| `TaskDescription` | — | excerpt | full, inline edit |
+| `TaskRelationships` — blocked by / blocks | secondary line | summary | full, separate sections |
+| `TaskSubtasks` | progress only | `3 of 5 complete` | full list |
+| `TaskComments` | — | count + latest | composer + thread |
+| `TaskMetadata` | selected columns | selected rows | full definition list |
+| `TaskActions` | on hover/focus | status + open | full, overflow menu |
+
+**Terminology is shared too.** A thing called "Blocked by" on the page is
+"Blocked by" in the panel and in the row's secondary line. No surface renames a
+concept.
 
 ---
 
-## 4. The template
+## 5. List row — scan and decide
 
-### 4.1 Peek — the overview
+The list answers *what needs my attention*. It does not attempt to display the
+whole task.
 
-```
-┌────────────────────────────────────────────┐
-│ ONB-2   Task                        [✕]    │  identity bar, 44px
-├────────────────────────────────────────────┤
-│ Write the client                           │  h2, 18/24, 2-line clamp
-│                                            │
-│ In Backend's court · reached qa · failed   │  standing, one line
-│                                            │
-│ ● Backlog   Nobody   No priority   qa      │  property band, wrapping
-│                                            │
-│ The client crashes when the device is      │  description excerpt,
-│ rotated during the login handshake…        │  4-line clamp, no editor
-│                                            │
-│ 3 comments · 1 subtask · 0 blockers        │  what is inside, as counts
-│                                            │
-│ [ Open full view ]                         │  one primary action
-└────────────────────────────────────────────┘
-```
+### Desktop columns
 
-**Rules.** No editing. No history. No composer. The counts are the honest way to
-say "there is more here" without rendering it. `Open full view` is a real
-anchor, so ⌘-click works.
+Identifier + type · **Title (visually dominant)** · Status · Priority ·
+Assignees · Due · Updated.
 
-**Accessibility.** The peek is a **complementary region, not a dialog**: it does
-not trap focus, because it does not obscure the list it came from and a trap
-would make the list unreachable by keyboard. It therefore carries
-`role="complementary"` with an `aria-label` naming the task, `Escape` closes it,
-and focus returns to the row that opened it. If it ever becomes an overlay that
-covers the list, it becomes `role="dialog" aria-modal="true"` and gains a trap —
-the two are a pair and must not be mixed.
-
-### 4.2 Page — the document
+Under the title, a **secondary line** carries only what demands attention:
+blocked state, overdue state, subtask progress. Nothing else.
 
 ```
- ← ONB   ONB-2   Task                                     [rail]
-─────────────────────────────────────────────────────  ┌──────────┐
- Write the client                          Rename      │ Status   │
-                                                       │ Assignees│
- In Backend's court · reached qa · failed on qa        ├──────────┤
- [Hand over…] [Record promotion…] [Verify…]            │ Priority │
-                                                       │ Type     │
- ┌─ Description ─────────────────────────────┐         ├──────────┤
- │ …                                          │        │ Project  │
- └────────────────────────────────────────────┘        │ Due      │
- ┌─ Subtasks ────────────────────────────────┐         │ Start    │
- ┌─ Blockers ────────────────────────────────┐         ├──────────┤
- ┌─ Chain of custody ────────────────────────┐         │ raised by│
- ┌─ Comments ────────────────────────────────┐         └──────────┘
+┌────────┬────────────────────────────┬───────────┬──────────┬────────────┐
+│ ONB-12 │ Fix mobile task layout     │ In prog.  │ Sachin   │ Tomorrow   │
+│ Bug    │ Blocked by ONB-8           │ High      │          │            │
+└────────┴────────────────────────────┴───────────┴──────────┴────────────┘
 ```
 
-**Region order, and why.**
+Row actions appear on hover **and on keyboard focus**, and are laid out so the
+columns do not move when they appear. A row that reflows under the pointer is a
+row people mis-click.
 
-1. **Identity** — back, key, type. Persistent, quiet.
-2. **Title** — the largest thing on the page.
-3. **Standing** — whose court, where it reached, how it last fared. The product's
-   own question, in a sentence, before any control.
-4. **Acts** — closed. Rare and consequential; each opens in place.
-5. **Description** — what it is.
-6. **Subtasks**, **Blockers** — what it contains and what holds it up.
-7. **Chain of custody**, **Comments** — what happened, ending with the composer.
+### Mobile — a stacked summary, not a crushed table
 
-**The rail** answers three questions in three groups, in this order: *whose turn*
-(status, assignees), *what kind* (priority, type), *where and when* (project,
-due, start). Provenance — raised by, created, updated — is a footnote in
-smaller, muted type, not three rows the size of the status.
+```
+ONB-12 · Bug                        High
+Fix mobile task layout
+In progress · Sachin · Due tomorrow
+Blocked by ONB-8
+```
 
-### 4.3 Responsive
-
-| Width | Layout |
-| --- | --- |
-| ≥ 1024 px | Two columns, rail 320 px fixed, narrative `minmax(0, 1fr)` |
-| 640–1023 px | One column. **Title and standing first**, then a horizontal property band in place of the rail, then the sections |
-| < 640 px | As above; acts become full-width buttons; every control ≥ 44 px |
-
-The rail **never** comes first. The current `order: -1` at narrow widths is the
-defect this row exists to forbid: it puts eight fields between the reader and
-the title of the thing they opened.
-
-The page scrolls as **one** region at every width. There is exactly one
-scrolling container on the route.
-
-### 4.4 Spacing and type
-
-| Token | Value | Used for |
-| --- | --- | --- |
-| Region gap | 24 px | between sections |
-| Inner gap | 8 px | between a heading and its content |
-| Section padding | 12 / 16 px | inside a bounded section |
-| Title | 28/34, 600 | the task title |
-| Section heading | 15/20, 600, sentence case | section names |
-| Body | 14/21 | description, comments |
-| Meta | 13/18, muted | rail labels, timestamps |
-
-Section headings are **sentence case, not uppercase**: uppercase costs legibility
-and, at 12 px muted, lost to the form labels beneath it.
+**No horizontal page scrolling, ever.** Secondary columns fold into the stacked
+summary; the **title is never the column that shrinks**.
 
 ---
 
-## 5. Acceptance
+## 6. Side panel — quick peek
 
-- No region on either surface renders a field the template does not place.
-- At 390 px the title is the first thing under the identity bar on the page, and
-  the peek does not exceed the viewport.
-- Every interactive element on a coarse pointer is ≥ 44 px.
-- The peek is reachable, dismissable and returns focus, without trapping it.
-- One scrolling container per route.
+Four questions, **without scrolling**: what is this, what state is it in, who
+owns it, does anything need attention.
 
-## 6. Related
+```
+┌─────────────────────────────────────────┐
+│ ONB-12              Open full view   ×  │
+├─────────────────────────────────────────┤
+│ Fix mobile task layout                  │
+│                                         │
+│ [In progress ▾]  [High]                 │
+│                                         │
+│ Assignees     Sachin, Aditi             │
+│ Due           Tomorrow                  │
+│ Blocked by    ONB-8 — API contract      │
+│                                         │
+│ Description                             │
+│ The mobile task page currently…         │
+│                                         │
+│ Subtasks      3 of 5 complete           │
+│ Comments      4 · latest 20 min ago     │
+│                                         │
+│               Open full task →          │
+└─────────────────────────────────────────┘
+```
 
-- [45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md) — the two clocks and the chain of
-  custody, which is what the standing line says.
+- **Width 480–520 px** on desktop.
+- **No long forms, no full comment thread.** Description is a controlled
+  excerpt. Relationships are summaries, not editors.
+- **Status is editable** — frequent and compact, so it does not get deferred to
+  the page.
+- **"Open full task" is always obvious**, and is a real anchor so ⌘-click opens
+  a tab.
+- **At narrow widths there is no drawer.** Opening a task navigates to the full
+  route. A drawer on a phone is a page with a worse header.
+
+### Accessibility contract for the panel — **this supersedes the previous note**
+
+An earlier revision of this document argued the panel should be a
+`role="complementary"` region *without* a focus trap, on the grounds that
+trapping would make the list behind it unreachable. That is now overruled, and
+the reason is worth recording: **the panel makes its background inert.** Once
+the background is inert, a trap is not a restriction — it is the honest
+description of what is already true, and a focus ring that wanders into inert
+content is a keyboard user lost with no way back.
+
+So the panel is a **dialog**:
+
+- `role="dialog"`, `aria-modal="true"`, labelled by the task title.
+- Background inert.
+- Focus moves into the panel on open and is **trapped**.
+- `Escape` closes it, and **focus returns to the originating row or card**.
+
+The two configurations are a matched pair. A panel that traps focus must make
+its background inert; a panel that does not must not trap. They are never mixed.
+
+---
+
+## 7. Full page — understand and work
+
+The canonical presentation. On desktop it uses the available width and keeps
+every essential fact above the fold.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ ← Tasks    ONB-12 · Bug                     Watch   Share   ⋯        │
+├─────────────────────────────────────────────┬────────────────────────┤
+│ Fix mobile task layout                      │ Status                 │
+│                                             │ [In progress ▾]        │
+│ Description                          Edit   │ Assignees              │
+│ The mobile task page currently…             │ Sachin, Aditi    Edit  │
+│                                             │ Priority     High      │
+│ Blocked by                                  │ Due          Tomorrow  │
+│ ONB-8 · API contract                 Active │ Start        8 Aug     │
+│                                             │ Project      Web app   │
+│ Subtasks                          3/5 done  │ Reporter     Demo User │
+│ ✓ Audit current layout                      │ Tags         UX, Mobile│
+│ ○ Design mobile composition                 │ Milestone    Phase 1   │
+│                                             │                        │
+│ Comments                                    │ Created      Yesterday │
+│ [Write a comment…                        ]  │                        │
+│ Latest conversation…                        │                        │
+└─────────────────────────────────────────────┴────────────────────────┘
+```
+
+Fixed decisions:
+
+- The **title is the `<h1>`**. One per route.
+- **Status and owner are never below the fold.**
+- Description, relationships, subtasks and comments are the **working
+  narrative**, in that order.
+- Metadata is a **compact definition list, not a series of cards.**
+- **Routine fields edit inline.**
+- **Archive, delete and other uncommon actions live in the overflow menu**, not
+  on the surface.
+- **"Blocked by" and "Blocks" are separate sections**, because direction
+  matters and merging them loses the only fact that distinguishes them.
+- The **comment composer sits above the recent conversation**, immediately
+  available.
+- Empty sections carry compact operational copy: *"No subtasks yet. Add one."*
+  — never a paragraph explaining the feature.
+
+### The two clocks on this page
+
+The standing line — whose court, where it reached, how it last fared — sits
+directly under the title, above the description. It is the one thing here that
+no other tracker can say, and it is a sentence rather than three fields.
+
+---
+
+## 8. Full page on mobile — a separate composition
+
+Not reordered desktop columns.
+
+```
+┌─────────────────────────────┐
+│ ← Tasks       ONB-12    ⋯   │
+├─────────────────────────────┤
+│ Fix mobile task layout      │
+│                             │
+│ [In progress ▾]  [High]     │
+│ Sachin · Due tomorrow       │
+│                             │
+│ Description            Edit │
+│ The mobile task page…       │
+│                             │
+│ Blocked by                  │
+│ ONB-8 · API contract        │
+│                             │
+│ Subtasks              3/5   │
+│ Comments                    │
+│ [Write a comment…]          │
+│ Latest conversation…        │
+│                             │
+│ More details            ▾   │
+└─────────────────────────────┘
+```
+
+- **One page-level vertical scroll. No nested scrolling.**
+- **No metadata-first layout.** Status, assignee, priority and due stay near the
+  title; everything less frequent goes under **More details**.
+- Every touch target ≥ 44 px.
+- Bottom navigation never covers the composer or the last content.
+- The **sticky header carries back, identifier and overflow only** — never
+  workspace administration.
+
+---
+
+## 9. Accessibility contract
+
+Binding on all three presentations:
+
+- One `<h1>` on the full route; the panel's title labels its dialog.
+- Logical heading sequence for Description, Relationships, Subtasks, Comments.
+- Focus **trapping and restoration** in the panel (§6).
+- Status and priority communicated with **text, not colour alone**.
+- Visible focus on every editable field and every action.
+- **Keyboard-operable** status changes and relationship actions.
+- Errors rendered **adjacent to the field** they concern.
+- **Live announcements** for saves, transitions and comment failures.
+- **User input preserved after a failed mutation** — a comment that fails to
+  post is still in the box.
+- Verified by **real-browser** axe, keyboard, responsive and visual-regression
+  tests. The jsdom suite cannot see layout, focus order or contrast, and a suite
+  that claims to check accessibility while skipping those retires the question.
+
+---
+
+## 10. Order of work
+
+The components are reorganised around this architecture rather than patched
+individually:
+
+1. Extract the shared components in §4 so all three presentations compose the
+   same pieces.
+2. Settle the scrolling model in §3 — shell first, then routes.
+3. Rebuild the panel as a dialog (§6), including narrow-width navigation.
+4. Rebuild the list row, desktop and mobile (§5).
+5. Rebuild the full page's two compositions (§7, §8).
+6. Add the real-browser test layer (§9), without which none of the above stays
+   fixed.
+
+## 11. Related
+
+- [45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md) — the two clocks and the chain
+  of custody, which the standing line states.
 - [44](44-PRODUCT-RESEARCH-AND-SURFACE-BRIEFS.md) — the jobs and their time
-  budgets, which is where the peek's five seconds comes from.
-- [42](42-FRONTEND-ARCHITECTURE.md) — the bundle budget the "no chart library"
-  and "no editor in the peek" rules protect.
+  budgets.
+- [42](42-FRONTEND-ARCHITECTURE.md) — the bundle budget behind "no editor in the
+  panel".

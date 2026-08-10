@@ -52,6 +52,7 @@ import { TypeBadge } from '../tasks/TaskCard'
 import { TaskDescription, TaskTitle } from './TaskNarrative'
 import { TaskMeta } from './TaskMeta'
 import { unbuiltSentence } from './unbuilt'
+import { useNarrow } from '../shell/viewport'
 
 export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -73,6 +74,7 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
   // through its project, and asking at workspace scope would understate the
   // answer for anyone whose authority comes from a project role.
   const authority = useAuthority(task.data?.project_id)
+  const narrow = useNarrow()
 
   if (task.error != null) {
     return (
@@ -139,24 +141,19 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
           <div className="detail__scrollable">
             <Custody task={current} authority={authority} part="standing" />
 
-            {/* The cards carry no headings of their own: every panel already
-                has one, and a card that repeats it tells the reader the same
-                word twice. What the card adds is the boundary — which is the
-                thing that was missing. */}
-            <div className="dsec">
-              <TaskDescription task={current} authority={authority} />
-            </div>
+            {/* The card is each panel's own root, not a wrapper around it.
+                Wrapped from outside, a panel that renders nothing — Subtasks on
+                a task with none — left an empty bordered box behind it. A
+                container that outlives its content is a container in the wrong
+                place. */}
+            <TaskDescription task={current} authority={authority} />
 
             {/* §12: blockers and subtasks are two lists, never one. A blocker
                 gates this task's transitions; a subtask is part of its scope and
                 gates nothing. */}
-            <div className="dsec">
-              <Subtasks taskId={current.id} />
-            </div>
+            <Subtasks taskId={current.id} />
 
-            <div className="dsec">
-              <RelationsPanel taskId={current.id} taskKey={current.key} authority={authority} />
-            </div>
+            <RelationsPanel taskId={current.id} taskKey={current.key} authority={authority} />
 
             {/* One region for everything that has happened: the conversation
                 first, because it is what people come back for, and the field
@@ -181,9 +178,22 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
           </div>
         </div>
 
-        <aside className="detail__side" aria-label="Task metadata">
-          <TaskMeta task={current} authority={authority} projectName={project?.name} />
-        </aside>
+        {/* `docs/46` §8: on the narrow composition the metadata is not the
+            first thing between a reader and the title — it is a disclosure at
+            the end, because status, assignee, priority and due already sit
+            under the title where they belong. */}
+        {narrow ? (
+          <details className="moredetails">
+            <summary className="moredetails__head">More details</summary>
+            <div className="moredetails__body">
+              <TaskMeta task={current} authority={authority} projectName={project?.name} />
+            </div>
+          </details>
+        ) : (
+          <aside className="detail__side" aria-label="Task metadata">
+            <TaskMeta task={current} authority={authority} projectName={project?.name} />
+          </aside>
+        )}
       </div>
     </section>
   )

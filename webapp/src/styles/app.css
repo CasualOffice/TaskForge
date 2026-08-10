@@ -313,6 +313,17 @@ body {
   .shell__search-text {
     display: none;
   }
+  /* `docs/46` §3: one scrolling region per route. On the narrow composition
+     that region is the page, so the routes stop scrolling inside themselves and
+     this does it instead. */
+  .shell__main {
+    min-height: 0;
+    overflow-y: auto;
+    /* The bottom bar is in the grid rather than fixed, so it does not overlay
+       the composer — but the padding stays as the guarantee `docs/46` asks for
+       if it ever becomes fixed. */
+    padding-bottom: var(--space-2);
+  }
 }
 
 @media (max-width: 860px) {
@@ -325,11 +336,22 @@ body {
     border-top: 1px solid var(--tf-border);
     overflow: visible;
   }
+  /* Destinations only. The projects and teams lists belong to the sidebar, and
+     on a bottom bar they overflowed it — "Onboarding", "Backend", "Platform"
+     spilling off the right edge of a 390 px phone. `docs/46` §8: the narrow
+     chrome carries navigation, not workspace administration. */
   .side__scope,
   .side__heading,
   .side__more,
-  .side__key {
+  .side__key,
+  .side__group[aria-labelledby='side-projects'],
+  .side__group[aria-labelledby='side-teams'] {
     display: none;
+  }
+  /* WCAG 2.2 §2.5.8, and the repository's own 44 px tier. */
+  .side__link {
+    min-width: 44px;
+    min-height: 44px;
   }
   .side__group {
     flex-direction: row;

@@ -41,7 +41,7 @@ export function Subtasks({ taskId }: { taskId: string }): ReactElement | null {
   if (data.parent === null && data.total === 0) return null
 
   return (
-    <section className="sub" aria-labelledby="subtasks-heading">
+    <section className="sub dsec" aria-labelledby="subtasks-heading">
       <h2 id="subtasks-heading" className="narr__heading">
         {data.parent === null ? 'Subtasks' : 'Part of'}
       </h2>
