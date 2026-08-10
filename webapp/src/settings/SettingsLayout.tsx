@@ -48,6 +48,7 @@ const GROUPS: ReadonlyArray<{
       { to: '/settings/teams', label: 'Teams' },
       { to: '/settings/roles', label: 'Roles' },
       { to: '/settings/workflow', label: 'Workflow' },
+      { to: '/settings/environments', label: 'Environments' },
       { to: '/settings/tags', label: 'Tags' },
     ],
   },

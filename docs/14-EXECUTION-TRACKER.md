@@ -371,6 +371,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-025 | **Who may raise what** — `task_type_in`, decoded, enforced and offered | **Gated** |
 | C-026 | **Reports** — a filter plus a grouped count (ADR-027), `count` only | **Gated** |
 | C-027 | **Stylesheet gate** — one spacing scale, no duplicate rules | `Built` |
+| C-028 | **Environments as configuration** — add, rename, reorder, remove | **Gated** |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by

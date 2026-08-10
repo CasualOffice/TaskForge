@@ -36,6 +36,9 @@ pub struct EnvironmentRow {
 #[derive(Debug)]
 pub enum WriteError {
     Duplicate,
+    /// The ids given to [`reorder`] are not exactly this project's
+    /// environments — one is missing, repeated, or belongs elsewhere.
+    Mismatch,
     Db(sqlx::Error),
 }
 
@@ -172,6 +175,66 @@ pub async fn rename(
 /// # Errors
 ///
 /// Any database error.
+/// Put a project's environments in the given order.
+///
+/// # Why the whole order and not one move
+///
+/// Moving one environment changes the position of every environment it passed,
+/// so a per-item update is a read-modify-write over a set that two people can
+/// hold at once — and the losing write leaves a pipeline with two `staging`s at
+/// position 3, or a gap where `qa` used to be. Taking the whole order makes the
+/// operation atomic and idempotent: the caller states what the pipeline *is*,
+/// not what changed.
+///
+/// # Why the set must match exactly
+///
+/// A caller that omits an environment would silently leave it at whatever
+/// position it held, which is how a pipeline ends up with an environment nobody
+/// can see between two they can. A caller that names one twice, or names one
+/// from another project, is confused about what it is ordering. Both are
+/// refused rather than partially applied.
+///
+/// # Errors
+///
+/// [`WriteError::Mismatch`] when the ids are not exactly this project's
+/// environments, or any database error.
+pub async fn reorder(
+    scoped: &mut Scoped<'_>,
+    project: Uuid,
+    ordered: &[Uuid],
+) -> Result<(), WriteError> {
+    let existing: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM project_environment WHERE project_id = $1")
+            .bind(project)
+            .fetch_all(scoped.conn())
+            .await?;
+
+    let mut have: Vec<Uuid> = existing.into_iter().map(|row| row.0).collect();
+    let mut want: Vec<Uuid> = ordered.to_vec();
+    have.sort_unstable();
+    want.sort_unstable();
+    want.dedup();
+    if have != want || want.len() != ordered.len() {
+        return Err(WriteError::Mismatch);
+    }
+
+    // One statement, so no window exists in which the pipeline is half-ordered.
+    // `WITH ORDINALITY` numbers the array in the order it was given, which is
+    // the whole point — the caller's sequence *is* the position.
+    sqlx::query(
+        "UPDATE project_environment e
+            SET position = o.ordinality
+           FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, ordinality)
+          WHERE e.id = o.id
+            AND e.project_id = $1",
+    )
+    .bind(project)
+    .bind(ordered)
+    .execute(scoped.conn())
+    .await?;
+    Ok(())
+}
+
 pub async fn count_tasks_on(
     scoped: &mut Scoped<'_>,
     project: Uuid,

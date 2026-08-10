@@ -59,6 +59,9 @@ const RolesSettings = lazy(() =>
 const WorkflowSettings = lazy(() =>
   import('./settings/WorkflowSettings').then((m) => ({ default: m.WorkflowSettings })),
 )
+const EnvironmentsSettings = lazy(() =>
+  import('./settings/EnvironmentsSettings').then((m) => ({ default: m.EnvironmentsSettings })),
+)
 const TagsSettings = lazy(() =>
   import('./settings/TagsSettings').then((m) => ({ default: m.TagsSettings })),
 )
@@ -358,6 +361,7 @@ const settingsChildren = [
   settingsChild('/teams', 'teams', <TeamsSettings />),
   settingsChild('/roles', 'roles', <RolesSettings />),
   settingsChild('/workflow', 'the workflow', <WorkflowSettings />),
+  settingsChild('/environments', 'environments', <EnvironmentsSettings />),
   settingsChild('/tags', 'tags', <TagsSettings />),
 ]
 

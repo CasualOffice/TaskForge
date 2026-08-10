@@ -410,3 +410,76 @@ async fn an_environment_from_another_project_is_refused_before_anything_moves() 
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn reordering_takes_the_whole_pipeline_or_none_of_it() -> Result<()> {
+    // A pipeline's order is a set, not a field. Moving one environment changes
+    // the position of every environment it passed, so a partial order is a
+    // pipeline with two environments at the same position or a gap where one
+    // used to be — and nothing on screen would say so.
+    let db = schema_harness::TestDatabase::start().await?;
+    let caller = signed_in(&db.pool, "lead@example.test", "acme").await?;
+    let project_id = project(&caller, "WR", "Work").await?;
+
+    let dev = environment(&caller, project_id, "dev").await?;
+    let qa = environment(&caller, project_id, "qa").await?;
+    let staging = environment(&caller, project_id, "staging").await?;
+
+    // Created in order, so they start in it.
+    let (_, listed) = caller
+        .get(&format!("/api/v1/projects/{project_id}/environments"))
+        .await?;
+    let names = |body: &serde_json::Value| {
+        body["data"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .filter_map(|e| e["name"].as_str().map(str::to_owned))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names(&listed), vec!["dev", "qa", "staging"], "{listed}");
+
+    // Reversed, in one call.
+    let (status, reordered) = caller
+        .send_json(
+            "PUT",
+            &format!("/api/v1/projects/{project_id}/environments/order"),
+            &json!({ "environment_ids": [staging, qa, dev] }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{reordered}");
+    assert_eq!(
+        names(&reordered),
+        vec!["staging", "qa", "dev"],
+        "{reordered}"
+    );
+
+    // A partial order is refused rather than applied to the names it mentions.
+    let (status, refused) = caller
+        .send_json(
+            "PUT",
+            &format!("/api/v1/projects/{project_id}/environments/order"),
+            &json!({ "environment_ids": [dev, qa] }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+
+    // A repeat is refused too: it would leave one environment unplaced.
+    let (status, repeated) = caller
+        .send_json(
+            "PUT",
+            &format!("/api/v1/projects/{project_id}/environments/order"),
+            &json!({ "environment_ids": [dev, dev, qa, staging] }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{repeated}");
+
+    // And nothing moved on either refusal.
+    let (_, after) = caller
+        .get(&format!("/api/v1/projects/{project_id}/environments"))
+        .await?;
+    assert_eq!(names(&after), vec!["staging", "qa", "dev"], "{after}");
+
+    Ok(())
+}
