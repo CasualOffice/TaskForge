@@ -34,6 +34,7 @@ pub mod notification;
 pub mod project;
 pub mod project_team;
 pub mod release;
+pub mod report;
 pub mod role;
 pub mod role_edit;
 pub mod scoped;

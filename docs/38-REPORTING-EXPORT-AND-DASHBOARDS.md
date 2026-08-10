@@ -161,6 +161,20 @@ It is **rebuildable from `activity_event`**, which is append-only and complete.
 A projection that cannot be rebuilt is a second source of truth; this one is a
 cache.
 
+### What is built today (C-026)
+
+`POST /api/v1/reports/run` takes the URL-form filter, one dimension from the
+closed set, and returns a grouped `count` with the project scope it was computed
+over. The filter is parsed, resolved, validated and compiled by the **list
+query's own pipeline** — `compile_group_count` sits beside `compile` in the same
+module, so the tenant predicate and the authorized project set are injected in
+exactly one place.
+
+The remaining measures wait on `task_state_interval` below and are refused by
+name (`TF-SYS-0007`) rather than approximated. Saved reports and dashboards are
+not built; a run is ad-hoc, and its "saved" form is the URL the toolbar already
+produces.
+
 ### Report execution limits
 
 Same discipline as every other query ([21](21-API-LIMITS-AND-QUOTAS.md)):

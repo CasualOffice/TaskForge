@@ -44,6 +44,7 @@ pub mod project_teams;
 pub mod projects;
 pub mod rate_limit;
 pub mod releases;
+pub mod reports;
 pub mod roles;
 pub mod server;
 pub mod sse;

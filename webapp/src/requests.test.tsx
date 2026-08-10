@@ -86,6 +86,9 @@ function respond(url: string): unknown {
       ],
     }
   }
+  if (url.startsWith('/api/v1/reports/run')) {
+    return { group_by: 'type', measure: 'count', groups: [], total: 0, scope: { projects: 1 } }
+  }
   return { data: [], page: { next_cursor: null, has_more: false } }
 }
 
@@ -292,5 +295,34 @@ describe('the create form offers the types the actor may raise', () => {
     })
     // And the default moved off `TASK`, which nobody here may raise.
     expect(select.value).toBe('BUG')
+  })
+})
+
+describe('running a report', () => {
+  it("asks for the toolbar's filter and the chosen slice, not a query of its own", async () => {
+    // ADR-027: a report is the *same* filter plus an aggregation. The failure
+    // this pins is a report that quietly answers a different question from the
+    // list it was opened beside — the numbers still look plausible, and nobody
+    // reconciles a total against a list by hand.
+    render(at(`/reports?project=${PROJECT}&priority=URGENT`))
+
+    const posted = await waitFor(() => {
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls as unknown as [
+        string,
+        RequestInit,
+      ][]
+      const call = calls.find((entry) => String(entry[0]).includes('/reports/run'))
+      expect(call, `no report was run; sent: ${sent.join(', ')}`).toBeDefined()
+      return call as [string, RequestInit]
+    })
+
+    expect(posted[1].method).toBe('POST')
+    const body = JSON.parse(String(posted[1].body)) as {
+      group_by: string
+      filter: Record<string, string>
+    }
+    expect(body.group_by).toBe('type')
+    expect(body.filter.project).toBe(PROJECT)
+    expect(body.filter.priority).toBe('URGENT')
   })
 })

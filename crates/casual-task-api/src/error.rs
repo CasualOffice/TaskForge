@@ -106,6 +106,11 @@ pub mod codes {
     /// The service is temporarily unable to answer. Always carries
     /// `Retry-After`.
     pub const UNAVAILABLE: Code = Code::new("TF-SYS-0002");
+
+    /// Designed, not built here. Distinct from `TF-VAL-*`, which means the
+    /// caller asked for something that will never exist: this one means the
+    /// request is well formed and the capability is scheduled.
+    pub const NOT_BUILT: Code = Code::new("TF-SYS-0007");
     /// Anything unhandled.
     pub const INTERNAL: Code = Code::new("TF-SYS-0001");
 
