@@ -171,5 +171,5 @@ references. They belong in `docs/` and in development diagnostics.
 
 - [47](47-TASK-SURFACE-TEMPLATE.md) — the same argument applied to the task
   surface; the section template here follows its bounded-region rule.
-- [04](04-AUTHORIZATION-MODEL.md) — the closed permission registry the language
+- [04](04-RBAC-AND-AUTHORIZATION.md) — the closed permission registry the language
   table in §5 is built from.

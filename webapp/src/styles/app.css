@@ -847,11 +847,14 @@ kbd {
 }
 .list__cell {
   text-align: left;
-  font-weight: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font: var(--tf-body);
+  /* After the shorthand, not before it. `font:` resets every longhand it does
+     not name, so this sat above it doing nothing and a cell never inherited the
+     weight its row set — which is why a bold row had unbold cells. */
+  font-weight: inherit;
   color: var(--tf-text-secondary);
   padding: var(--tf-gap-tight) 0;
 }

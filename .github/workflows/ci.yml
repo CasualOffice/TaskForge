@@ -205,6 +205,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Source-level accessibility and hook rules
         run: pnpm lint
+      - name: Stylesheets — one spacing scale, no duplicate rules
+        # Catches the two mistakes that produced the worst regressions here: a
+        # declaration appended to a stylesheet that already defined the same
+        # selector, and structural spacing written off the grid. Duplicate
+        # selectors are warnings until the thirteen that predate this are
+        # merged; everything else is fatal.
+        run: pnpm lint:css
       - name: axe over rendered output
         run: pnpm test
 

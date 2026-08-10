@@ -370,6 +370,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-024 | **Team scope** — team as a place to stand, beside project and workspace | **Gated** |
 | C-025 | **Who may raise what** — `task_type_in`, decoded, enforced and offered | **Gated** |
 | C-026 | **Reports** — a filter plus a grouped count (ADR-027), `count` only | **Gated** |
+| C-027 | **Stylesheet gate** — one spacing scale, no duplicate rules | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -385,6 +386,25 @@ nobody has seen fail is a suite nobody should trust.
 client — the transfer, promotion and verification forms — is not. It is the
 least risky of the four (a form that posts what was typed, with no derived
 scope in between), which is why it is last, not why it is fine.
+
+**C-027 exists because I kept making the same two mistakes.** Three times in one
+session I appended a declaration to a stylesheet that already defined the same
+selector, and the later copy silently won — once changing the shape of every
+settings list on every settings page. Separately, two spacing scales with
+colliding indices (`--space-4` is 8 px, `--tf-space-4` is 16) were mixed 92
+times to 57 in one file, so the gaps actually rendered were 1, 2, 4, 5, 6, 7, 8,
+11 and 14 px and nothing looked layered.
+
+`pnpm lint:css` now fails on structural spacing that is not a grid step or a
+layout token, and reports duplicate selectors. Duplicates are **warnings, not
+errors**: eighteen predate this change — `.card`, `.textarea`, `.pill`,
+`.filter__option`, `.side__link`, `:root` and more — and merging eighteen rules
+blind, without reliable visual verification, is how the pages got worse in the
+first place. Merging them is the next job and the rule becomes fatal with it.
+
+It has already earned itself: it found `.list__cell` setting `font-weight:
+inherit` *above* a `font:` shorthand, which resets it — so a list cell never
+inherited its row's weight, on the surface most complained about.
 
 **C-026 is a Phase 4 row built in Phase 1, and that is a scheduling decision
 rather than a design one.** `docs/38` places reports in Phase 4; ADR-027 already

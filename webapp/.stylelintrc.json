@@ -1,0 +1,50 @@
+{
+  "extends": [
+    "stylelint-config-standard"
+  ],
+  "rules": {
+    "no-duplicate-selectors": [
+      true,
+      {
+        "severity": "warning"
+      }
+    ],
+    "declaration-block-no-duplicate-properties": [
+      true,
+      {
+        "ignore": [
+          "consecutive-duplicates-with-different-syntaxes"
+        ]
+      }
+    ],
+    "declaration-property-value-allowed-list": {
+      "/^(margin|padding|gap|row-gap|column-gap)/": [
+        "/^(0|-?[12]px|(4|8|12|16|20|24|28|32|36|40|48|56|64)px|var\\(--tf-[a-z0-9-]+\\)|auto|inherit|initial|revert|unset)( +(0|-?[12]px|(4|8|12|16|20|24|28|32|36|40|48|56|64)px|var\\(--tf-[a-z0-9-]+\\)|auto|inherit|initial|revert|unset)){0,3}$/",
+        "/^(calc|clamp|min|max)\\(/",
+        "/^-?[0-9.]+(rem|em|ch|%|vh|vw)( +.*)?$/"
+      ]
+    },
+    "custom-property-pattern": null,
+    "selector-class-pattern": null,
+    "declaration-empty-line-before": null,
+    "comment-empty-line-before": null,
+    "no-descending-specificity": null,
+    "alpha-value-notation": null,
+    "color-function-notation": null,
+    "media-feature-range-notation": null,
+    "value-keyword-case": null,
+    "shorthand-property-no-redundant-values": null,
+    "rule-empty-line-before": null,
+    "at-rule-empty-line-before": null,
+    "length-zero-no-unit": null,
+    "custom-property-empty-line-before": null,
+    "import-notation": null,
+    "declaration-block-no-redundant-longhand-properties": null,
+    "property-no-vendor-prefix": null,
+    "value-no-vendor-prefix": null
+  },
+  "ignoreFiles": [
+    "dist/**",
+    "node_modules/**"
+  ]
+}

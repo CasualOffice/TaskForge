@@ -687,6 +687,10 @@
   max-width: 100%;
   min-height: 26px;
   padding: 4px 8px;
+  /* Optical, not rhythm: pulls the control's own padding back so its *label*
+     lines up with the text above it rather than its box. A grid step would
+     misalign the thing this exists to align. */
+  /* stylelint-disable-next-line declaration-property-value-allowed-list */
   margin-left: -6px;
   border: 1px solid transparent;
   border-radius: 6px;
