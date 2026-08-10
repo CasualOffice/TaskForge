@@ -25,7 +25,7 @@ import { createTag, listTags } from '../api/tags'
 import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, NeedsPermission, Section, useWrite, WriteError } from './parts'
+import { Field, Form, Loading, NeedsPermission, useWrite, WriteError, PageHead } from './parts'
 
 export function TagsSettings(): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -66,7 +66,7 @@ export function TagsSettings(): ReactElement {
   const rows = tags.data?.data ?? []
 
   return (
-    <Section
+    <PageHead
       title="Tags"
       description="The vocabulary everyone shares. Applying a tag to a task is a different permission from authoring one."
     >
@@ -145,6 +145,6 @@ export function TagsSettings(): ReactElement {
       <p className="field__hint">
         Renaming and deleting a tag are not served by the API yet, so they are not offered here.
       </p>
-    </Section>
+    </PageHead>
   )
 }

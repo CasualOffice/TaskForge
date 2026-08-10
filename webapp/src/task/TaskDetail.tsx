@@ -178,7 +178,7 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
           </div>
         </div>
 
-        {/* `docs/46` §8: on the narrow composition the metadata is not the
+        {/* `docs/47` §8: on the narrow composition the metadata is not the
             first thing between a reader and the title — it is a disclosure at
             the end, because status, assignee, priority and due already sit
             under the title where they belong. */}

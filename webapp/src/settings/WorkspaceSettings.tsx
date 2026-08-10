@@ -24,7 +24,16 @@ import { renameWorkspace, type Workspace } from '../api/admin'
 import { useAuthority } from '../shell/permissions'
 import { useSession, useWorkspaceId } from '../shell/session'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, NeedsPermission, Section, useWrite, WriteError } from './parts'
+import {
+  Field,
+  Form,
+  Loading,
+  NeedsPermission,
+  Section,
+  useWrite,
+  WriteError,
+  PageHead,
+} from './parts'
 
 export function WorkspaceSettings(): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -87,7 +96,7 @@ function Identity({
 
   return (
     <>
-      <Section
+      <PageHead
         title="Workspace"
         description="What this workspace is called, and the identifier everything else refers to it by."
       >
@@ -121,7 +130,7 @@ function Identity({
             {rename.pending ? 'Renaming…' : 'Rename workspace'}
           </Button>
         </Form>
-      </Section>
+      </PageHead>
       <Switcher />
     </>
   )

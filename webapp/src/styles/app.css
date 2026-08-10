@@ -313,14 +313,14 @@ body {
   .shell__search-text {
     display: none;
   }
-  /* `docs/46` §3: one scrolling region per route. On the narrow composition
+  /* `docs/47` §3: one scrolling region per route. On the narrow composition
      that region is the page, so the routes stop scrolling inside themselves and
      this does it instead. */
   .shell__main {
     min-height: 0;
     overflow-y: auto;
     /* The bottom bar is in the grid rather than fixed, so it does not overlay
-       the composer — but the padding stays as the guarantee `docs/46` asks for
+       the composer — but the padding stays as the guarantee `docs/47` asks for
        if it ever becomes fixed. */
     padding-bottom: var(--space-2);
   }
@@ -338,7 +338,7 @@ body {
   }
   /* Destinations only. The projects and teams lists belong to the sidebar, and
      on a bottom bar they overflowed it — "Onboarding", "Backend", "Platform"
-     spilling off the right edge of a 390 px phone. `docs/46` §8: the narrow
+     spilling off the right edge of a 390 px phone. `docs/47` §8: the narrow
      chrome carries navigation, not workspace administration. */
   .side__scope,
   .side__heading,

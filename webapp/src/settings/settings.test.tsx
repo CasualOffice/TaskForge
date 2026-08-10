@@ -72,23 +72,38 @@ const RESPONSES: ReadonlyArray<readonly [string, unknown]> = [
   ['/api/v1/auth/session', { actor_id: ME, actor_type: 'USER' }],
   [
     '/api/v1/workspaces?',
-    { data: [{ id: WORKSPACE, name: 'Acme', slug: 'acme', created_at: iso() }], page: { has_more: false } },
+    {
+      data: [{ id: WORKSPACE, name: 'Acme', slug: 'acme', created_at: iso() }],
+      page: { has_more: false },
+    },
   ],
   [`/api/v1/workspaces/${WORKSPACE}/members`, { data: [member()], page: { has_more: false } }],
-  [`/api/v1/workspaces/${WORKSPACE}/invitations`, { data: [invitation()], page: { has_more: false } }],
+  [
+    `/api/v1/workspaces/${WORKSPACE}/invitations`,
+    { data: [invitation()], page: { has_more: false } },
+  ],
   [
     `/api/v1/workspaces/${WORKSPACE}/teams`,
     { data: [{ id: 't1', name: 'Platform', created_at: iso() }], page: { has_more: false } },
   ],
-  [`/api/v1/workspaces/${WORKSPACE}`, { id: WORKSPACE, name: 'Acme', slug: 'acme', created_at: iso() }],
+  [
+    `/api/v1/workspaces/${WORKSPACE}`,
+    { id: WORKSPACE, name: 'Acme', slug: 'acme', created_at: iso() },
+  ],
   ['/api/v1/teams/t1/members', { data: [member()], page: { has_more: false } }],
   ['/api/v1/me/sessions', { data: [session()] }],
   ['/api/v1/me', me()],
-  ['/api/v1/permissions/effective', { workspace_id: WORKSPACE, actor_id: ME, project_id: null, permissions: EVERYTHING }],
+  [
+    '/api/v1/permissions/effective',
+    { workspace_id: WORKSPACE, actor_id: ME, project_id: null, permissions: EVERYTHING },
+  ],
   ['/api/v1/roles', { data: [role()] }],
   ['/api/v1/role-assignments', { data: [assignment()], page: { has_more: false } }],
   ['/api/v1/projects', { data: [project()], page: { has_more: false } }],
-  [`/api/v1/workflows/${WORKFLOW}/statuses`, { data: STATUSES.map((s) => ({ ...s, task_count: 3 })) }],
+  [
+    `/api/v1/workflows/${WORKFLOW}/statuses`,
+    { data: STATUSES.map((s) => ({ ...s, task_count: 3 })) },
+  ],
   [`/api/v1/workflows/${WORKFLOW}`, workflow()],
   ['/api/v1/tags', { data: [{ id: 'g1', project_id: null, name: 'security', color: '#7a5cff' }] }],
 ]
@@ -97,10 +112,22 @@ function iso(): string {
   return '2026-08-09T10:00:00Z'
 }
 function me(): unknown {
-  return { id: ME, email: 'dev@example.test', display_name: 'Ada', avatar_url: null, time_zone: 'Europe/London' }
+  return {
+    id: ME,
+    email: 'dev@example.test',
+    display_name: 'Ada',
+    avatar_url: null,
+    time_zone: 'Europe/London',
+  }
 }
 function member(): unknown {
-  return { user_id: ME, display_name: 'Ada', email: 'dev@example.test', member_type: 'MEMBER', joined_at: iso() }
+  return {
+    user_id: ME,
+    display_name: 'Ada',
+    email: 'dev@example.test',
+    member_type: 'MEMBER',
+    joined_at: iso(),
+  }
 }
 function session(): unknown {
   return {
@@ -115,7 +142,14 @@ function session(): unknown {
   }
 }
 function invitation(): unknown {
-  return { id: 'i1', email: 'new@example.test', role_id: 'r1', invited_by: ME, expires_at: iso(), created_at: iso() }
+  return {
+    id: 'i1',
+    email: 'new@example.test',
+    role_id: 'r1',
+    invited_by: ME,
+    expires_at: iso(),
+    created_at: iso(),
+  }
 }
 function role(): unknown {
   return {
@@ -167,7 +201,14 @@ function workflow(): unknown {
     // Backlog → Todo only. The matrix test reads both the present cell and an
     // absent one, so a component that drew every cell the same would fail.
     transitions: [
-      { id: 'e1', from: 's1', to: 's2', required_permission: null, required_fields: [], ignore_dependencies: false },
+      {
+        id: 'e1',
+        from: 's1',
+        to: 's2',
+        required_permission: null,
+        required_fields: [],
+        ignore_dependencies: false,
+      },
     ],
   }
 }
@@ -178,10 +219,13 @@ function answer(url: string): Response {
     .filter(([prefix]) => path.startsWith(prefix))
     .sort((a, b) => b[0].length - a[0].length)[0]
   if (match === undefined) {
-    return new Response(JSON.stringify({ error: { code: 'TF-AZN-0008', message: 'not stubbed', request_id: 'r' } }), {
-      status: 404,
-      headers: { 'content-type': 'application/json' },
-    })
+    return new Response(
+      JSON.stringify({ error: { code: 'TF-AZN-0008', message: 'not stubbed', request_id: 'r' } }),
+      {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      },
+    )
   }
   return new Response(JSON.stringify(match[1]), {
     status: 200,
@@ -192,7 +236,10 @@ function answer(url: string): Response {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(answer(String(input)))))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => Promise.resolve(answer(String(input)))),
+  )
   localStorage.clear()
 })
 
@@ -202,7 +249,10 @@ afterEach(() => {
 })
 
 function mount(path: string): ReactElement {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) })
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -230,7 +280,15 @@ describe('the settings shell', () => {
   it('offers every section as a link', async () => {
     render(mount('/settings/profile'))
     const nav = await screen.findByRole('navigation', { name: 'Settings' })
-    for (const label of ['Your profile', 'Workspace', 'Members', 'Teams', 'Roles', 'Workflow', 'Tags']) {
+    for (const label of [
+      'Your profile',
+      'Workspace',
+      'Members',
+      'Teams',
+      'Roles',
+      'Workflow',
+      'Tags',
+    ]) {
       expect(nav.textContent).toContain(label)
     }
   })
@@ -295,7 +353,9 @@ describe('the workflow screen', () => {
     const { container } = render(mount('/settings/workflow'))
     // The stub allows Backlog → Todo and nothing else.
     expect(await screen.findByRole('button', { name: 'Backlog to Todo: allowed' })).toBeDefined()
-    expect(await screen.findByRole('button', { name: 'Backlog to Done: not allowed' })).toBeDefined()
+    expect(
+      await screen.findByRole('button', { name: 'Backlog to Done: not allowed' }),
+    ).toBeDefined()
     expect(await clean(container)).toBe('')
   })
 

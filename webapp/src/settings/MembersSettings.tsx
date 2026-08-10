@@ -33,7 +33,16 @@ import { listAssignments, listRoles, type Assignment, type Role } from '../api/r
 import { useAuthority } from '../shell/permissions'
 import { useSession, useWorkspaceId } from '../shell/session'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, NeedsPermission, Section, useWrite, WriteError } from './parts'
+import {
+  Field,
+  Form,
+  Loading,
+  NeedsPermission,
+  Section,
+  useWrite,
+  WriteError,
+  PageHead,
+} from './parts'
 
 export function MembersSettings(): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -116,7 +125,7 @@ function People({
   }
 
   return (
-    <Section
+    <PageHead
       title="Members"
       description="Being a member makes you visible here. What you may do comes from a role, which is a separate thing."
     >
@@ -150,7 +159,7 @@ function People({
       {hasMore ? (
         <p className="field__hint">Showing the first 100. Narrowing this list is not built yet.</p>
       ) : null}
-    </Section>
+    </PageHead>
   )
 }
 

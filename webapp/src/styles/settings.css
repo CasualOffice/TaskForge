@@ -253,3 +253,56 @@
     padding: var(--space-4) var(--space-4) 0;
   }
 }
+
+/* ── Settings navigation, grouped by scope (`docs/49` §3) ────────────────
+ *
+ * Two groups, because there are two scopes and a reader needs to know whether
+ * they are changing something for themselves or for everybody. The per-entry
+ * descriptions are gone: seven entries of two lines each is a wall of text
+ * where a menu should be, and a description belongs on the page it describes.
+ */
+.settings__title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.settings__group + .settings__group {
+  margin-top: var(--space-4);
+}
+.settings__grouphead {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+/* The page's own heading. Every settings route used to inherit the word
+ * "Settings" from the navigation and never name itself. */
+.settings__page-title {
+  margin: 0;
+  font-size: var(--text-xl, 22px);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--tf-text, var(--color-text));
+}
+
+/* WCAG 2.2 §2.5.8 and the repository's 44 px tier.
+ *
+ * `flex-direction: row` is not incidental: the rule above this one sets
+ * `column`, and `align-items: center` on a column container centres the label
+ * *horizontally* — which is what happened, and which is why every entry sat in
+ * the middle of the rail instead of against its left edge. */
+.settings__link {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 40px;
+}
+@media (pointer: coarse) {
+  .settings__link {
+    min-height: 44px;
+  }
+}

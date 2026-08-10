@@ -32,7 +32,7 @@ import {
   type LiveSession,
 } from '../api/me'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, Section, useWrite, WriteError } from './parts'
+import { Field, Form, Loading, Section, useWrite, WriteError, PageHead } from './parts'
 
 export function ProfileSettings(): ReactElement {
   const me = useQuery({ queryKey: keys.me(), queryFn: ({ signal }) => readMe(signal) })
@@ -82,7 +82,7 @@ function Identity({
   const unchanged = name.trim() === displayName && zone.trim() === (timeZone ?? '')
 
   return (
-    <Section
+    <PageHead
       title="Your profile"
       description={
         email === null
@@ -130,7 +130,7 @@ function Identity({
           {save.pending ? 'Saving…' : 'Save profile'}
         </Button>
       </Form>
-    </Section>
+    </PageHead>
   )
 }
 

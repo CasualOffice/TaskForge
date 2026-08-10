@@ -1,7 +1,7 @@
 /**
  * Which composition is in force.
  *
- * `docs/46` §8: the narrow task page is a *separate composition*, not the
+ * `docs/47` §8: the narrow task page is a *separate composition*, not the
  * desktop one reordered — metadata moves behind a "More details" disclosure
  * rather than being stacked above the title. A disclosure is an element, not a
  * style, so CSS alone cannot express it and the layout has to know its own
@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react'
 
-/** The breakpoint `docs/46` §3 names, in one place. */
+/** The breakpoint `docs/47` §3 names, in one place. */
 export const NARROW = '(max-width: 1024px)'
 
 /**

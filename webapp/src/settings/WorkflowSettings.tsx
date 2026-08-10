@@ -46,7 +46,16 @@ import { listProjects } from '../api/projects'
 import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, NeedsPermission, Section, useWrite, WriteError } from './parts'
+import {
+  Field,
+  Form,
+  Loading,
+  NeedsPermission,
+  Section,
+  useWrite,
+  WriteError,
+  PageHead,
+} from './parts'
 
 export function WorkflowSettings(): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -151,7 +160,7 @@ function Statuses({
   }
 
   return (
-    <Section
+    <PageHead
       title="Statuses"
       description="The columns of a board, in order. Each maps onto one of five permanent states, which is what reports read."
     >
@@ -232,7 +241,7 @@ function Statuses({
           </Button>
         </Form>
       ) : null}
-    </Section>
+    </PageHead>
   )
 }
 

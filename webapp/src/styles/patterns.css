@@ -544,7 +544,7 @@
   margin: 0;
 }
 
-/* `docs/46` §3 and §8: the narrow composition.
+/* `docs/47` §3 and §8: the narrow composition.
  *
  * The rail used to be `order: -1` — eight fields between the reader and the
  * title of the thing they opened. It is a disclosure at the end now, and the
@@ -953,7 +953,7 @@
   color: var(--color-text-muted);
 }
 
-/* ── The peek, per `docs/46` §4.1 ────────────────────────────────────────
+/* ── The peek, per `docs/47` §4.1 ────────────────────────────────────────
  *
  * An overview, not a small page. Its budget is about five seconds from a list,
  * so every element here answers "is this the one I mean, and where does it
@@ -964,7 +964,7 @@
   font-size: var(--text-md);
 }
 /* A property band. Four facts on one line rather than four label/value rows,
- * which is the difference between a glance and a read (`docs/46` §2). */
+ * which is the difference between a glance and a read (`docs/47` §2). */
 .peek__signals {
   display: flex;
   align-items: center;
@@ -983,7 +983,7 @@
   white-space: nowrap;
 }
 /* Prose is capped near 70 characters wherever it runs long — a line that
- * crosses a 1440 px window is a line nobody finishes (`docs/46` §3). */
+ * crosses a 1440 px window is a line nobody finishes (`docs/47` §3). */
 .peek__desc,
 .narr__body {
   max-width: 70ch;
