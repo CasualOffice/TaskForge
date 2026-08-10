@@ -30,6 +30,16 @@ export type Reach = 'unconditional' | 'conditional'
 export interface EffectivePermission {
   readonly permission: string
   readonly reach: Reach
+  /**
+   * For `task.create` only: the types the actor may raise, or absent for all
+   * of them.
+   *
+   * `reach: 'conditional'` says the answer may be no but not which types, and
+   * a create form offering four where one will be refused is the burden the
+   * product exists to remove. Absent rather than a list of every type, so a
+   * new type is not silently excluded by an old client.
+   */
+  readonly task_types?: readonly string[]
 }
 
 export interface EffectivePermissions {

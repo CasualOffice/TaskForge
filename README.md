@@ -48,10 +48,11 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 <!-- phase-1-landed:begin -->
-**Phase 1 is under way.** 23 items started, 2 gated:
+**Phase 1 is under way.** 24 items started, 3 gated:
 
 - **Projects, membership, visibility** (C-006) — `Gated`
 - **SSE + fan-out** (C-015) — `Gated`
+- **Who may raise what — `task_type_in`, decoded, enforced and offered** (C-025) — `Gated`
 - **Workspace, membership, teams** (C-002) — `Built`
 - **Attachment pipeline** (C-010) — `Built`
 - **Search projection + full-text** (C-013) — `Built`
@@ -139,7 +140,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
 | **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
-| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 2/24 (8 built, 13 building) | `█░░░░░░░░░` 8% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 3/25 (8 built, 13 building) | `█░░░░░░░░░` 12% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
 *Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*

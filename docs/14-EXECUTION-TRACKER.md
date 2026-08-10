@@ -368,6 +368,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-022 | **Chain of custody** — team transfer, environment promotion, verification, `/me/queue` | `Built` |
 | C-023 | **Releases** — what went out together, cut from the pipeline | `Built` |
 | C-024 | **Team scope** — team as a place to stand, beside project and workspace | `Built` |
+| C-025 | **Who may raise what** — `task_type_in`, decoded, enforced and offered | **Gated** |
 
 **C-022 and C-023 are `Built`, and the missing half of `Gated` is the client.**
 Both servers are protected: `cargo test --workspace -- --ignored` runs in CI, and
@@ -379,6 +380,17 @@ acceptance gate is the surface: the pipeline board, the selection, and the
 release bar are covered by `tsc`, `eslint` and the a11y suite, none of which
 would notice if cutting a release stopped invalidating the board. A Playwright
 path — select two, cut, assert both moved column — is what would close it.
+
+**C-025 is `Gated`, and it is a repair.** `task_type_in` has been in the closed
+constraint set since `docs/04` with its own unit tests, and `explain` has known
+its name — but `constraints_of` had no arm for it, so every stored grant
+carrying it decoded to *unsatisfiable*, and `create` authorized with no task
+type in the facts, so even a decoded constraint matched nothing. Two independent
+reasons the rule denied its holder everything, both silent, because a permission
+that denies looks like a strict administrator rather than a defect. The gate is
+`a_developer_may_raise_the_types_their_grant_names_and_no_others`, which asserts
+the allow, the deny, the default type, the convert-after-create escape, and the
+menu the client draws.
 
 **C-022 went untracked while it was built**, which this row is correcting rather
 than hiding. AGENTS.md asks for the row when the work *starts*; it was written

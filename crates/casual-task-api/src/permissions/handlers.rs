@@ -93,6 +93,27 @@ pub async fn effective(
         }
     };
 
+    // The scope the menu is drawn for, resolved the same way the list above
+    // was — one place decides which scopes the answer covers.
+    let creatable = match query.project_id {
+        None => ctx.authority.creatable_task_types_in_workspace(),
+        Some(project_id) => {
+            let project = casual_task_persistence::project::read_visible(
+                &mut scoped,
+                &ctx.viewer,
+                project_id,
+            )
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "reading the project failed");
+                ApiError::internal(&request_id)
+            })?
+            .ok_or_else(|| ApiError::missing(codes::PROJECT_NOT_FOUND, &request_id))?;
+            ctx.authority
+                .creatable_task_types_in_project(ProjectId::from_uuid(project_id), &project.teams())
+        }
+    };
+
     tx.commit().await.map_err(|error| {
         tracing::error!(%error, "committing the read failed");
         ApiError::internal(&request_id)
@@ -107,6 +128,13 @@ pub async fn effective(
             .map(|e| EffectivePermissionView {
                 permission: e.permission.as_str().to_owned(),
                 reach: reach_name(e.reach),
+                task_types: if e.permission == permission::TASK_CREATE {
+                    creatable
+                        .as_ref()
+                        .map(|kinds| kinds.iter().map(task_type_name).collect())
+                } else {
+                    None
+                },
             })
             .collect(),
     })
@@ -256,6 +284,18 @@ pub async fn explain(
             .collect(),
     })
     .into_response())
+}
+
+/// The wire spelling of a task type — the same `UPPERCASE` the filter grammar
+/// and the create body use, so a client can pass one straight back.
+fn task_type_name(kind: &casual_task_model::TaskType) -> &'static str {
+    match kind {
+        casual_task_model::TaskType::Task => "TASK",
+        casual_task_model::TaskType::Bug => "BUG",
+        casual_task_model::TaskType::Feature => "FEATURE",
+        casual_task_model::TaskType::Incident => "INCIDENT",
+        casual_task_model::TaskType::Request => "REQUEST",
+    }
 }
 
 #[cfg(test)]

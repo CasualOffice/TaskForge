@@ -48,7 +48,7 @@ pub(crate) async fn visible(
 /// `None` for anything unrecognised rather than a default: a type constraint is
 /// satisfied only by a type it lists, so an unknown value denies. A `TASK`
 /// default would silently *grant* against a value nobody understood.
-fn task_type_of(stored: &str) -> Option<casual_task_model::TaskType> {
+pub(crate) fn task_type_of(stored: &str) -> Option<casual_task_model::TaskType> {
     match stored {
         "TASK" => Some(casual_task_model::TaskType::Task),
         "BUG" => Some(casual_task_model::TaskType::Bug),
