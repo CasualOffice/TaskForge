@@ -248,6 +248,7 @@ failing:
 ```
 outbox_event ──▶ dispatcher ──┬──▶ SSE fan-out           (live UI)
                               ├──▶ search projection     (task_search)
+                              ├──▶ state interval        (task_state_interval)
                               ├──▶ notification fan-out  (per-user prefs)
                               ├──▶ automation matcher    (rule evaluation)
                               ├──▶ webhook delivery      (signed, per installation)
@@ -255,6 +256,14 @@ outbox_event ──▶ dispatcher ──┬──▶ SSE fan-out           (live
 ```
 
 A failing webhook consumer does not delay the search projection.
+
+The **state interval** consumer maintains the occupancy projection `docs/38`
+reports from — how long a task spent in each state. It rebuilds a task's whole
+series on every delivery rather than appending one interval, because delivery
+here is at-least-once: a consumer that appended would double a task's history
+the first time an event was redelivered, and every duration measure would be
+quietly wrong. Rebuilding is idempotent by construction, and it keeps the repair
+path exercised by the steady-state path.
 
 ## Activity records
 

@@ -39,6 +39,7 @@ pub mod role;
 pub mod role_edit;
 pub mod scoped;
 pub mod search;
+pub mod state_interval;
 pub mod tag;
 pub mod task;
 #[cfg(feature = "test-support")]

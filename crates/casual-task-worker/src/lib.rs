@@ -23,3 +23,4 @@ pub mod consumers;
 pub mod dispatcher;
 pub mod export;
 pub mod projection;
+pub mod state_interval;

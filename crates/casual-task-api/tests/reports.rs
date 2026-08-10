@@ -344,3 +344,83 @@ async fn an_unbuilt_measure_and_an_unknown_dimension_are_both_refused() -> Resul
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn the_state_projection_is_rebuilt_from_history_and_survives_redelivery() -> Result<()> {
+    // The property the whole projection rests on. Outbox delivery is
+    // at-least-once, so a consumer that appended an interval per event would
+    // double a task's history the first time one was redelivered — and every
+    // duration measure would be quietly wrong, with nothing on screen to say
+    // so. Rebuilding from the audit stream is idempotent by construction, and
+    // this is the assertion that says so.
+    use casual_task_model::{WorkspaceId, WorkspaceScope};
+    use casual_task_persistence::{Scoped, state_interval};
+
+    let db = schema_harness::TestDatabase::start().await?;
+    let workspace = Uuid::now_v7();
+    test_support::insert_workspace(&db.pool, workspace, "acme").await?;
+    let caller = signed_in(&db.pool, "lead@example.test", workspace, MEMBER).await?;
+
+    let (status, project) = caller
+        .send_json(
+            "POST",
+            "/api/v1/projects",
+            &json!({ "key": "WR", "name": "Work", "visibility": "WORKSPACE" }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED, "{project}");
+    let project_id: Uuid = project["id"].as_str().context("project id")?.parse()?;
+
+    let (status, task) = caller
+        .send_json(
+            "POST",
+            &format!("/api/v1/projects/{project_id}/tasks"),
+            &json!({ "title": "Login crashes on rotate" }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::CREATED, "{task}");
+    let task_id: Uuid = task["id"].as_str().context("task id")?.parse()?;
+
+    let scope = WorkspaceScope::for_job(WorkspaceId::from_uuid(workspace));
+    let rebuild_once = || async {
+        let mut tx = db.pool.begin().await.expect("begin");
+        let mut scoped = Scoped::apply(&mut tx, &scope).await.expect("scope");
+        state_interval::rebuild(&mut scoped, task_id)
+            .await
+            .expect("rebuild");
+        let rows = state_interval::for_task(&mut scoped, task_id)
+            .await
+            .expect("read");
+        tx.commit().await.expect("commit");
+        rows
+    };
+
+    let first = rebuild_once().await;
+    assert!(
+        !first.is_empty(),
+        "a created task has been somewhere, so it has at least one interval"
+    );
+    // Exactly one open interval: the task is in a state right now, and only
+    // one. A second open row would double-count it in every aggregate, which
+    // is why the schema makes it a unique index rather than a hope.
+    assert_eq!(
+        first.iter().filter(|row| row.exited_at.is_none()).count(),
+        1,
+        "{first:?}"
+    );
+
+    // The same delivery again, twice more. Converges or the projection is
+    // unusable under the delivery guarantee it actually has.
+    let second = rebuild_once().await;
+    let third = rebuild_once().await;
+    assert_eq!(first.len(), second.len(), "redelivery changed the series");
+    assert_eq!(second.len(), third.len(), "redelivery changed the series");
+    assert_eq!(
+        third.iter().filter(|row| row.exited_at.is_none()).count(),
+        1,
+        "redelivery left more than one open interval: {third:?}"
+    );
+
+    Ok(())
+}

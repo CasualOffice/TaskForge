@@ -70,6 +70,7 @@ pub struct Change {
 pub const CONSUMERS: &[&str] = &[
     "sse_fanout",
     "search_projection",
+    "state_interval_projection",
     "notification_fanout",
     "automation_matcher",
     "webhook_delivery",
@@ -196,12 +197,14 @@ mod tests {
 
     #[test]
     fn every_consumer_in_the_design_record_has_a_delivery_row() {
-        // docs/25 §Consumer fan-out names six. A consumer missing here gets no
-        // delivery row and therefore silently never receives anything.
-        assert_eq!(CONSUMERS.len(), 6, "docs/25 names six consumers");
+        // docs/25 §Consumer fan-out names seven. A consumer missing here gets
+        // no delivery row and therefore silently never receives anything.
+        assert_eq!(CONSUMERS.len(), 7, "docs/25 names seven consumers");
         for expected in [
             "sse_fanout",
             "search_projection",
+            "state_interval_projection",
+            "state_interval_projection",
             "notification_fanout",
             "automation_matcher",
             "webhook_delivery",

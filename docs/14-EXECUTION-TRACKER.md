@@ -372,6 +372,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-026 | **Reports** — a filter plus a grouped count (ADR-027), `count` only | **Gated** |
 | C-027 | **Stylesheet gate** — one spacing scale, no duplicate rules | `Built` |
 | C-028 | **Environments as configuration** — add, rename, reorder, remove | **Gated** |
+| C-029 | **State-occupancy projection** — `task_state_interval`, maintained and rebuildable | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -387,6 +388,23 @@ nobody has seen fail is a suite nobody should trust.
 client — the transfer, promotion and verification forms — is not. It is the
 least risky of the four (a form that posts what was typed, with no derived
 scope in between), which is why it is last, not why it is fine.
+
+**C-029 is the foundation the duration measures need, and it is `Built` rather
+than `Gated` because the measures that read it are not written yet.** The
+projection exists, the outbox maintains it, and
+`the_state_projection_is_rebuilt_from_history_and_survives_redelivery` pins the
+property everything else rests on: delivery is at-least-once, so a consumer that
+appended an interval per event would double a task's history the first time one
+was redelivered — and every duration number would be quietly wrong with nothing
+on screen to say so.
+
+One deviation from `docs/38` worth recording. It says the projection is
+"rebuildable from `activity_event`", and in this implementation it is not:
+`docs/25` requires the activity stream to carry **display values** — the status
+*names* — precisely so an entry survives a rename. The audit stream carries the
+ids and the state on both sides of every transition, which is what an interval
+needs, so the rebuild reads that instead. The design's intent holds; the table
+it named does not.
 
 **C-027 exists because I kept making the same two mistakes.** Three times in one
 session I appended a declaration to a stylesheet that already defined the same
