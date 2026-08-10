@@ -84,6 +84,14 @@ pub struct RenameRequest {
     pub name: String,
 }
 
+/// `PUT /api/v1/projects/{id}/environments/order`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReorderRequest {
+    /// Every environment of this project, in the order they deploy.
+    pub environment_ids: Vec<Uuid>,
+}
+
 /// `DELETE /api/v1/environments/{id}?migrate_to=…`.
 #[derive(Debug, Deserialize)]
 pub struct DeleteParams {
@@ -534,6 +542,81 @@ async fn owned(
 }
 
 /// A project the caller may see, or `404` — never disambiguated (`docs/04`).
+/// `PUT /api/v1/projects/{id}/environments/order` — the pipeline's sequence.
+///
+/// # Why the whole order rather than one move
+///
+/// Moving one environment changes the position of every environment it passed.
+/// A per-item endpoint would make that a read-modify-write over a set two
+/// people can hold at once, and the losing write leaves a pipeline with two
+/// environments at the same position or a gap where one used to be. The caller
+/// states what the pipeline *is*, which is atomic and idempotent.
+///
+/// # Errors
+///
+/// `400` when the ids are not exactly this project's environments, `403`
+/// without `project.update`, `404` when the project is not visible.
+pub async fn reorder(
+    State(state): State<AppState>,
+    member: WorkspaceMember,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Body(body): Body<ReorderRequest>,
+) -> Result<Response, ApiError> {
+    let request_id = RequestId::of_parts(&headers);
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+
+    let project = visible(&mut scoped, &ctx, project_id, &request_id).await?;
+    authorize(&mut scoped, &ctx, &project, &request_id).await?;
+
+    environment::reorder(&mut scoped, project.id, &body.environment_ids)
+        .await
+        .map_err(|error| match error {
+            WriteError::Mismatch => ApiError::bad_request(
+                codes::OUT_OF_RANGE,
+                "The order must name every environment of this project exactly once",
+                &request_id,
+            ),
+            other => write_error(other, "", &request_id),
+        })?;
+
+    let rows = environment::list(&mut scoped, project.id)
+        .await
+        .map_err(|error| internal(error, "listing environments", &request_id))?;
+
+    UnitOfWork::record(
+        &mut scoped,
+        &Change {
+            aggregate_type: "project".to_owned(),
+            aggregate_id: project.id,
+            project_id: Some(project.id),
+            event_type: "project.updated".to_owned(),
+            activity_changes: serde_json::json!({
+                "environments": rows.iter().map(|row| row.name.clone()).collect::<Vec<_>>(),
+            }),
+            audit_changes: serde_json::json!({
+                "after": { "environment_order": body.environment_ids },
+            }),
+            payload: serde_json::json!({ "project_id": project.id }),
+            schema_version: 1,
+        },
+        &ctx.provenance,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "recording the reorder failed");
+        ApiError::internal(&request_id)
+    })?;
+    unit::commit(tx, &request_id).await?;
+
+    Ok(axum::Json(serde_json::json!({
+        "data": rows.into_iter().map(EnvironmentView::from).collect::<Vec<_>>(),
+    }))
+    .into_response())
+}
+
 async fn visible(
     scoped: &mut Scoped<'_>,
     ctx: &Context,
@@ -607,6 +690,14 @@ fn internal(error: sqlx::Error, what: &'static str, request_id: &str) -> ApiErro
 
 fn write_error(error: WriteError, name: &str, request_id: &str) -> ApiError {
     match error {
+        // `reorder` handles this itself with a message about the order; reaching
+        // here means another caller hit it, and a generic 400 is the honest
+        // answer rather than a message about a name it did not send.
+        WriteError::Mismatch => ApiError::bad_request(
+            codes::OUT_OF_RANGE,
+            "That set of environments does not match this project",
+            request_id,
+        ),
         WriteError::Duplicate => ApiError::conflict(
             codes::ENVIRONMENT_NAME_TAKEN,
             "That environment name is already used in this project",

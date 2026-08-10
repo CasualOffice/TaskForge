@@ -281,6 +281,10 @@ pub fn router(state: AppState) -> Router {
             get(crate::environments::list).post(crate::environments::create),
         )
         .route(
+            "/api/v1/projects/{id}/environments/order",
+            axum::routing::put(crate::environments::reorder),
+        )
+        .route(
             "/api/v1/environments/{id}",
             axum::routing::patch(crate::environments::rename).delete(crate::environments::delete),
         )
@@ -754,6 +758,8 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/teams",
     "/api/v1/projects/{id}/teams/{team_id}",
     "/api/v1/projects/{id}/environments",
+    "/api/v1/projects/{id}/environments/order",
+    "/api/v1/projects/{id}/environments/order",
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",
     "/api/v1/projects/{id}/releases",
