@@ -29,7 +29,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border: 1px solid var(--tf-border-strong, var(--color-border-strong));
   border-radius: 8px;
   background: var(--tf-surface, var(--color-surface));
@@ -48,7 +48,7 @@
 .toast__close {
   border: 0;
   background: none;
-  padding: 0 2px;
+  padding: 0 4px;
   color: var(--tf-text-muted, var(--color-text-muted));
   font: inherit;
   cursor: pointer;
@@ -138,7 +138,7 @@
   top: calc(100% + 4px);
   z-index: 40;
   min-width: 200px;
-  padding: 6px;
+  padding: 8px;
   border: 1px solid var(--tf-border-strong, var(--color-border-strong));
   border-radius: 10px;
   background: var(--tf-surface, var(--color-surface));
@@ -163,7 +163,7 @@
   gap: 8px;
   width: 100%;
   min-height: 32px;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 0;
   border-radius: 6px;
   background: none;
@@ -192,14 +192,14 @@
   color: var(--tf-text-muted, var(--color-text-muted));
 }
 .pop__section {
-  padding: 6px 8px 2px;
+  padding: 8px 8px 4px;
   font-size: 12px;
   font-weight: 600;
   color: var(--tf-text-muted, var(--color-text-muted));
 }
 .pop__divider {
   height: 1px;
-  margin: 6px 4px;
+  margin: 8px 4px;
   background: var(--tf-border, var(--color-border));
 }
 
@@ -246,9 +246,9 @@
 .statusctl {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: 28px;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border: 1px solid var(--tf-border-strong, var(--color-border-strong));
   border-radius: 6px;
   background: var(--tf-surface, var(--color-surface));
@@ -366,7 +366,7 @@
 .cust__now {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 2px 12px;
+  gap: 4px 12px;
   margin: 0 0 12px;
   font-size: var(--text-sm);
 }
@@ -392,7 +392,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--tf-border);
@@ -426,7 +426,7 @@
    a finding about the process, not an error in the request. */
 .cust__warn {
   margin: 8px 0;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border-radius: var(--tf-radius-control);
   background: var(--tf-warning-subtle);
   color: var(--tf-warning);
@@ -439,7 +439,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   font-size: var(--text-sm);
 }
 .cust__who {
@@ -486,7 +486,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .rel__row,
 .sub__row {
@@ -563,7 +563,7 @@
     min-height: 0;
   }
   .detail__main {
-    padding: var(--space-3) var(--space-3) 0;
+    padding: var(--tf-gap-tight) var(--tf-gap-tight) 0;
   }
   .detail__side {
     display: none;
@@ -573,7 +573,7 @@
 /* The metadata disclosure. Present only on the narrow composition; the wide one
  * has a rail and does not need a second way to say the same thing. */
 .moredetails {
-  margin: var(--space-3) 0 var(--space-4);
+  margin: var(--tf-gap-tight) 0 var(--tf-gap-tight);
   border-top: 1px solid var(--tf-border, var(--color-border));
 }
 .moredetails__head {
@@ -584,7 +584,7 @@
   cursor: pointer;
 }
 .moredetails__body {
-  padding-bottom: var(--space-3);
+  padding-bottom: var(--tf-gap-tight);
 }
 
 /* ── Narrative: title and description ──────────────────────────────────── */
@@ -615,14 +615,14 @@
  * discoverable action may not be hidden behind a gesture. */
 .narr__edit {
   height: 24px;
-  padding: 0 6px;
+  padding: 0 8px;
   font-size: 12px;
   color: var(--tf-text-muted, var(--color-text-muted));
 }
 .narr__section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 /* A section heading, not a label.
  *
@@ -660,7 +660,7 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .meta2__row {
   display: grid;
@@ -686,7 +686,7 @@
   align-items: center;
   max-width: 100%;
   min-height: 26px;
-  padding: 2px 6px;
+  padding: 4px 8px;
   margin-left: -6px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -762,7 +762,7 @@
 .peek__body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   padding: 20px;
   min-height: 0;
 }
@@ -870,18 +870,18 @@
  * one thing ends.
  */
 .dsec {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
   border: 1px solid var(--tf-border, var(--color-border));
   border-radius: var(--radius-lg);
   background: var(--tf-surface, var(--color-surface));
 }
 .dsec + .dsec,
 .acts + .dsec {
-  margin-top: var(--space-3);
+  margin-top: var(--tf-gap-tight);
 }
 /* The wrappers are gone, so the gap belongs to the panels themselves. */
 .detail__scrollable > .dsec + .dsec {
-  margin-top: var(--space-3);
+  margin-top: var(--tf-gap-tight);
 }
 
 /* ── Where it stands ─────────────────────────────────────────────────────
@@ -892,7 +892,7 @@
 .standing {
   /* Prose, not a row of boxes. As a flex line the gap landed between every
      child, so "Backend" and "'s court" were two words apart. */
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--tf-gap-tight);
   font-size: var(--text-md);
   color: var(--color-text-secondary);
 }
@@ -901,7 +901,7 @@
   font-weight: 600;
 }
 .standing__sep {
-  margin: 0 6px;
+  margin: 0 8px;
   color: var(--tf-border-strong, var(--color-border-strong));
 }
 .standing__quiet {
@@ -929,15 +929,15 @@
 .acts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  gap: var(--tf-gap-hair);
+  margin-bottom: var(--tf-gap-tight);
 }
 .acts__one--open {
   flex: 1 1 100%;
 }
 .acts__body {
-  margin-top: var(--space-2);
-  padding: var(--space-3);
+  margin-top: var(--tf-gap-hair);
+  padding: var(--tf-gap-tight);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-lg);
   background: var(--tf-surface-subtle, var(--color-surface-alt));
@@ -945,8 +945,8 @@
 
 /* Provenance, as a footnote rather than three rows the size of the status. */
 .meta2__foot {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
+  margin-top: var(--tf-gap-tight);
+  padding-top: var(--tf-gap-tight);
   border-top: 1px solid var(--tf-border, var(--color-border));
   font-size: var(--text-sm);
   line-height: 1.5;
@@ -960,7 +960,7 @@
  * stand" — and anything that would need a second decision belongs on the page.
  */
 .peek__standing {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--tf-gap-tight);
   font-size: var(--text-md);
 }
 /* A property band. Four facts on one line rather than four label/value rows,
@@ -969,13 +969,13 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  gap: var(--tf-gap-hair);
+  margin-bottom: var(--tf-gap-tight);
 }
 .peek__pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border: 1px solid var(--tf-border, var(--color-border));
   border-radius: 999px;
   font-size: var(--text-sm);

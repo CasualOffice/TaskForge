@@ -221,3 +221,43 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Layout rhythm ───────────────────────────────────────────────────────
+ *
+ * Two spacing scales exist and their indices collide:
+ *
+ *     --space-3    = 6px      --tf-space-3 = 12px
+ *     --space-4    = 8px      --tf-space-4 = 16px
+ *     --space-6    = 16px     --tf-space-6 = 24px
+ *
+ * The design system's is a fine modular scale meant for the inside of its own
+ * components; the local one is a 4-point grid meant for layout. They look
+ * identical at a call site and differ by a factor of two, so a stylesheet that
+ * mixes them cannot produce a rhythm — and `app.css` mixes them 92 times to 57.
+ * Measured across the settings surface, the gaps in use were 1, 2, 4, 5, 6, 7,
+ * 8, 11 and 14 px. That is not a scale, which is why nothing looked layered:
+ * a reader infers containment from spacing before they read a word, and there
+ * was nothing consistent to infer it from.
+ *
+ * These are the only steps layout may use. They are named for the relationship
+ * they express rather than for a number, so a call site cannot pick the wrong
+ * one by counting, and they are strictly decreasing — which is what makes
+ * nesting legible: the gap around a group is always larger than the gap inside
+ * it.
+ */
+:root {
+  /* Between top-level regions of a page. */
+  --tf-gap-page: 24px;
+  /* Between groups inside a region. */
+  --tf-gap-section: 16px;
+  /* Between fields, rows, list items. */
+  --tf-gap-field: 12px;
+  /* Between a control and the control beside it. */
+  --tf-gap-tight: 8px;
+  /* Between a label and the thing it labels. */
+  --tf-gap-hair: 4px;
+  /* One step of nesting. */
+  --tf-indent: 16px;
+  /* Inside a bounded panel. */
+  --tf-pad-panel: 20px;
+}
