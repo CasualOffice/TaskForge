@@ -32,6 +32,13 @@ pub struct TaskView {
     /// in the same statement, so it can never disagree with it (`docs/23`).
     pub state: String,
     pub reporter_id: Uuid,
+    /// The owning team, or `null` for the triage queue (`docs/45`).
+    ///
+    /// On the task rather than behind `GET /tasks/{id}/custody` because
+    /// "whose court is this in" is the first line of every surface that shows a
+    /// task, and a peek that had to make a second request to say it would
+    /// either say it late or not at all.
+    pub team_id: Option<Uuid>,
     pub environment_id: Option<Uuid>,
     pub milestone_id: Option<Uuid>,
     pub parent_id: Option<Uuid>,
@@ -70,6 +77,7 @@ pub fn view(row: &TaskRow, project_key: &str) -> TaskView {
         status_id: row.status_id,
         state: row.state.clone(),
         reporter_id: row.reporter_id,
+        team_id: row.team_id,
         environment_id: row.environment_id,
         milestone_id: row.milestone_id,
         parent_id: row.parent_id,

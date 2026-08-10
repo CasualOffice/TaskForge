@@ -36,6 +36,8 @@ export interface Task {
   /** One of the five permanent states, derived from `status_id` (`docs/23`). */
   readonly state: TaskState
   readonly reporter_id: string
+  /** The owning team, or `null` for the triage queue (`docs/45`). */
+  readonly team_id: string | null
   readonly environment_id: string | null
   readonly milestone_id: string | null
   readonly parent_id: string | null
@@ -71,7 +73,14 @@ export type Priority = (typeof PRIORITIES)[number]
  * refuses it without one. Offering it in a column header would be offering a
  * `400`.
  */
-export const SORT_KEYS = ['updated_at', 'created_at', 'due_at', 'priority', 'position', 'key'] as const
+export const SORT_KEYS = [
+  'updated_at',
+  'created_at',
+  'due_at',
+  'priority',
+  'position',
+  'key',
+] as const
 export type SortKey = (typeof SORT_KEYS)[number]
 
 /** `sort=-due_at` — the leading `-` is descending (`docs/27` §URL form). */
@@ -154,11 +163,7 @@ export function listTasks(
   })
 }
 
-export function readTask(
-  workspaceId: string,
-  taskId: string,
-  signal?: AbortSignal,
-): Promise<Task> {
+export function readTask(workspaceId: string, taskId: string, signal?: AbortSignal): Promise<Task> {
   return request<Task>(`/api/v1/tasks/${taskId}`, { workspaceId, signal })
 }
 
@@ -267,22 +272,14 @@ export function assignTask(
   })
 }
 
-export function unassignTask(
-  workspaceId: string,
-  taskId: string,
-  userId: string,
-): Promise<void> {
+export function unassignTask(workspaceId: string, taskId: string, userId: string): Promise<void> {
   return request<void>(`/api/v1/tasks/${taskId}/assignees/${userId}`, {
     method: 'DELETE',
     workspaceId,
   })
 }
 
-export function deleteTask(
-  workspaceId: string,
-  taskId: string,
-  version: number,
-): Promise<void> {
+export function deleteTask(workspaceId: string, taskId: string, version: number): Promise<void> {
   return request<void>(`/api/v1/tasks/${taskId}`, {
     method: 'DELETE',
     workspaceId,

@@ -27,10 +27,13 @@
 import { Button } from '@schnsrw/design-system'
 import { useCallback, useRef, type ReactElement } from 'react'
 import { Link } from '@tanstack/react-router'
+import { readAssignees } from '../api/tasks'
+import { listTeams } from '../api/admin'
+import { listEnvironments } from '../api/environments'
 import { useQuery } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
-import { readTask, type Task } from '../api/tasks'
+import { readTask } from '../api/tasks'
 import { directory, listMembers } from '../api/workspaces'
 import { useFocusTrap } from '../shell/focusTrap'
 import { useOpenTask } from '../shell/navigation'
@@ -64,15 +67,40 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
     enabled: workspaceId !== '',
     staleTime: 5 * 60_000,
   })
+  // The two vocabularies the standing line reads through. Cached like every
+  // other configuration list, and fetched only while a peek is open.
+  const teams = useQuery({
+    queryKey: keys.teams(workspaceId),
+    queryFn: ({ signal }) => listTeams(workspaceId, signal),
+    enabled: workspaceId !== '' && taskId !== undefined,
+    staleTime: 5 * 60_000,
+  })
+  const environments = useQuery({
+    queryKey: keys.environments(workspaceId, task.data?.project_id ?? ''),
+    queryFn: ({ signal }) => listEnvironments(workspaceId, task.data?.project_id ?? '', signal),
+    enabled: workspaceId !== '' && task.data?.project_id !== undefined,
+    staleTime: 5 * 60_000,
+  })
+
   const nameOf = directory(members.data?.data ?? [])
+  const teamName = (id: string): string =>
+    (teams.data?.data ?? []).find((team) => team.id === id)?.name ?? 'a team'
+  const envName = (id: string): string =>
+    (environments.data?.data ?? []).find((env) => env.id === id)?.name ?? 'an environment'
 
   const authority = useAuthority(task.data?.project_id)
   const current = task.data
   /** Present the day `TaskView` carries the set; see `TaskMeta`. */
-  const assignees =
-    current === undefined
-      ? undefined
-      : (current as Task & { assignees?: readonly string[] }).assignees
+  // Read, not cast. This used to reach for `task.assignees`, which the payload
+  // has never carried — so the expression was `undefined` on every render and
+  // the panel said "Not shown yet" forever. A cast that invents a field is a
+  // gap that reports itself as a maybe.
+  const assigneeSet = useQuery({
+    queryKey: keys.assignees(workspaceId, taskId ?? ''),
+    queryFn: ({ signal }) => readAssignees(workspaceId, taskId ?? '', signal),
+    enabled: workspaceId !== '' && taskId !== undefined,
+  })
+  const assignees = assigneeSet.data?.assignees
   const description = current?.description ?? ''
   const clipped = description.length > SNIPPET
 
@@ -112,13 +140,44 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
               {current.title}
             </h2>
 
-            {/* The four signals a peek exists to answer, on one line, above
-                everything else. §8: where am I, what is here, what needs
-                attention — before what can I do next. */}
+            {/* `docs/46` §4.1: the standing line before any field. The two
+                clocks are what this product knows that a status column cannot
+                say, so they get the line under the title rather than a row in a
+                list of eight. */}
+            <p className="standing peek__standing">
+              {current.team_id === null ? (
+                <span className="standing__untriaged">Untriaged</span>
+              ) : (
+                <>
+                  In <strong>{teamName(current.team_id)}</strong>&rsquo;s court
+                </>
+              )}
+              <span className="standing__sep" aria-hidden="true">
+                ·
+              </span>
+              {current.environment_id === null ? (
+                <span className="standing__quiet">not deployed</span>
+              ) : (
+                <>
+                  on <strong>{envName(current.environment_id)}</strong>
+                </>
+              )}
+            </p>
+
+            {/* A property band, not eight label/value rows. `docs/46` §2: it is
+                what lets four facts occupy one line instead of four, and the
+                peek's whole budget is about five seconds. */}
             <div className="peek__signals">
               <StatusControl task={current} authority={authority} />
               <TypeBadge type={current.type} />
               {current.priority === 'NONE' ? null : <PriorityBadge priority={current.priority} />}
+              <span className="peek__pill">
+                {assignees === undefined
+                  ? '…'
+                  : assignees.length === 0
+                    ? 'Nobody assigned'
+                    : assignees.map(nameOf).join(', ')}
+              </span>
               {current.due_at === null ? null : (
                 <span className={`peek__due${isOverdue(current) ? ' peek__due--late' : ''}`}>
                   {isOverdue(current) ? 'overdue ' : 'due '}
@@ -126,22 +185,6 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
                 </span>
               )}
             </div>
-
-            {/* §4 names assignee among the four things a peek must answer.
-                It is the field the old drawer buried below the fold, so it is
-                the last one that may be left off this list. */}
-            <p className="peek__who">
-              <span className="peek__wholabel">Assignees</span>
-              <span
-                className={assignees === undefined || assignees.length === 0 ? 'meta2__unset' : ''}
-              >
-                {assignees === undefined
-                  ? 'Not shown yet'
-                  : assignees.length === 0
-                    ? 'Nobody'
-                    : assignees.map(nameOf).join(', ')}
-              </span>
-            </p>
 
             {description === '' ? (
               <p className="narr__none">No description.</p>
