@@ -301,7 +301,12 @@ describe('the profile screen', () => {
     expect(await screen.findByDisplayValue('Europe/London')).toBeDefined()
     // The current session is listed and offers no "sign out" for itself: doing
     // so would sign the reader out of the page they are standing on.
-    const row = (await screen.findByText(/Firefox/)).closest('li')
+    //
+    // A `tr`, because the sessions are a table now: the row used to be a flex
+    // line starting with the user-agent string, so the button sat at a
+    // different x on every row. The assertion is unchanged — only where it
+    // looks for the row.
+    const row = (await screen.findByText(/Firefox/)).closest('tr')
     expect(row).not.toBeNull()
     // No sign-out control on the current session: it would sign the reader out
     // of the page they are standing on. The shell's own Sign out is elsewhere,

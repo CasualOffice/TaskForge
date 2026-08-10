@@ -32,18 +32,28 @@
  * page. The section list stays put, which is what a long-form configuration
  * surface needs: you should not have to scroll back up to change section.
  */
+/* The canvas is sunken and the panels sit on it.
+ *
+ * Everything used to be one flat white sheet — navigation, page and sections
+ * alike — separated by hairlines. That is the single clearest tell that a
+ * settings surface was never designed: every product this one is measured
+ * against (GitHub, Stripe, Linear, Atlassian admin) puts bounded panels on a
+ * recessed ground, because the ground is what says "these are separate things"
+ * before a reader has read a word of them. */
 .settings {
   display: grid;
-  grid-template-columns: minmax(180px, 232px) minmax(0, 1fr);
-  gap: var(--space-5);
+  grid-template-columns: 240px minmax(0, 1fr);
   align-items: start;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  background: var(--tf-surface-sunken, var(--color-surface-alt));
 }
 
 .settings__nav {
-  padding: var(--space-4) 0 var(--space-4) var(--space-4);
+  position: sticky;
+  top: 0;
+  padding: var(--space-4) var(--space-3);
   max-height: 100%;
   overflow-y: auto;
 }
@@ -91,19 +101,27 @@
   min-height: 0;
   height: 100%;
   overflow-y: auto;
+  /* Bounded, because unbounded is why "Sign out 22 other sessions" sat eight
+     hundred pixels from the heading it belongs to. A header and its action have
+     to stay visually related, and past about 800 px they stop being — which is
+     why every enterprise settings surface caps this column rather than letting
+     it fill the window. */
+  max-width: 800px;
   /* Padding inside the scrolling element, so the scrollbar sits at the edge of
      the pane rather than inset from it. */
   padding: var(--space-4) var(--space-4) var(--space-6);
-  max-width: 62rem;
 }
 
+/* A panel, not a slab divided by rules. */
 .settings__section {
-  padding: 0 0 var(--space-5);
-  margin: 0 0 var(--space-5);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-4);
+  margin: 0 0 var(--space-3);
+  border: 1px solid var(--tf-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--tf-surface, var(--color-surface));
 }
 .settings__section:last-child {
-  border-bottom: 0;
+  margin-bottom: 0;
 }
 .settings__section-head {
   display: flex;
@@ -261,22 +279,28 @@
  * descriptions are gone: seven entries of two lines each is a wall of text
  * where a menu should be, and a description belongs on the page it describes.
  */
+/* The rail had three levels of label — "SETTINGS", then the group, then the
+ * entries — and the top two were both smaller than the entries under them. A
+ * heading smaller than its own contents is the hierarchy inversion `docs/47` §2
+ * forbids, and I introduced it here two files after writing that rule down.
+ *
+ * Two levels now. The word "Settings" is gone: the `<nav>` is already named for
+ * assistive technology and the page beside it already says where you are, so it
+ * was a third label carrying nothing. */
 .settings__title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+  display: none;
 }
 .settings__group + .settings__group {
   margin-top: var(--space-4);
 }
+/* Same size as the entries it heads, distinguished by weight and colour rather
+ * than by being smaller than them. */
 .settings__grouphead {
   margin: 0 0 var(--space-1);
-  font-size: var(--text-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-md);
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--tf-text, var(--color-text));
 }
 
 /* The page's own heading. Every settings route used to inherit the word
@@ -300,9 +324,108 @@
   flex-direction: row;
   align-items: center;
   min-height: 40px;
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+}
+.settings__link[aria-current='page'] {
+  font-weight: 600;
+  color: var(--tf-text, var(--color-text));
 }
 @media (pointer: coarse) {
   .settings__link {
     min-height: 44px;
   }
+}
+
+/* ── Tabular data is a table ─────────────────────────────────────────────
+ *
+ * The live-session list was a list: each row a flex line beginning with the
+ * user-agent string, which is as long as the client decides. "Sign out" landed
+ * at a different x on every row, so a reader had to find the button again for
+ * each one. Columns put it in one place, and a header row tells a screen reader
+ * what each cell is.
+ */
+.settings__tablewrap {
+  /* The only horizontal scroller on the page, and it belongs to the table
+   * rather than the route (`docs/47` §3). */
+  overflow-x: auto;
+}
+.settings__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.settings__table th,
+.settings__table td {
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+}
+.settings__table thead th {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.settings__cell-main {
+  display: block;
+  color: var(--tf-text, var(--color-text));
+}
+.settings__cell-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+/* One column, one position, every row. */
+.settings__cell-action {
+  width: 1%;
+  padding-right: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* A field is as wide as the answer it expects. A display name in a 900 px input
+ * is a field that looks like it wants a paragraph. */
+.settings__section .field {
+  max-width: 420px;
+}
+.settings__section .field--wide,
+.settings__section textarea {
+  max-width: 100%;
+}
+
+/* Rows inside a panel are separated by space and one hairline, never by a
+ * second border — a box inside a box is the smell `docs/47` §2 names. */
+.settings__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.settings__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+}
+.settings__row:last-child {
+  border-bottom: 0;
+}
+.settings__row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.settings__table tbody tr:hover {
+  background: var(--color-hover);
+}
+.settings__table tbody tr:last-child td {
+  border-bottom: 0;
 }
