@@ -40,9 +40,22 @@ export interface ReportGroup {
   readonly total: number
 }
 
+/** What this build maintains a bounded query for (`docs/38` §Measures). */
+export const MEASURES = [
+  { key: 'count', label: 'How many', unit: 'tasks' },
+  { key: 'cycle_time', label: 'Cycle time (median)', unit: 'seconds' },
+  { key: 'p90_cycle_time', label: 'Cycle time (90th percentile)', unit: 'seconds' },
+  { key: 'lead_time', label: 'Lead time (median)', unit: 'seconds' },
+  { key: 'throughput', label: 'Throughput', unit: 'tasks' },
+] as const
+
+export type MeasureKey = (typeof MEASURES)[number]['key']
+
 export interface ReportResult {
   readonly group_by: string
   readonly measure: string
+  /** `seconds` for a duration, `tasks` for a count — never guessed. */
+  readonly unit: string
   readonly groups: readonly ReportGroup[]
   readonly total: number
   /** How many projects the numbers were computed over. */
@@ -51,7 +64,7 @@ export interface ReportResult {
 
 export function runReport(
   workspaceId: string,
-  input: { filter?: TaskFilter; groupBy: Dimension; limit?: number },
+  input: { filter?: TaskFilter; groupBy: Dimension; measure?: MeasureKey; limit?: number },
   signal?: AbortSignal,
 ): Promise<ReportResult> {
   return request<ReportResult>('/api/v1/reports/run', {
@@ -60,6 +73,7 @@ export function runReport(
     signal,
     body: {
       group_by: input.groupBy,
+      ...(input.measure === undefined ? {} : { measure: input.measure }),
       ...(input.filter === undefined ? {} : { filter: input.filter }),
       ...(input.limit === undefined ? {} : { limit: input.limit }),
     },

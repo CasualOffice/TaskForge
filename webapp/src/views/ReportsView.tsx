@@ -41,7 +41,7 @@ import { keys } from '../api/keys'
 import { listProjects } from '../api/projects'
 import { listTeams } from '../api/admin'
 import { listMembers } from '../api/workspaces'
-import { runReport, type Dimension } from '../api/reports'
+import { MEASURES, runReport, type Dimension, type MeasureKey } from '../api/reports'
 import { EmptyState } from '../shell/EmptyState'
 import { PageHeader } from '../shell/PageHeader'
 import { CONTROL } from '../shell/controls'
@@ -74,12 +74,13 @@ export default function ReportsView(): ReactElement {
   const workspaceId = useWorkspaceId()
   const search = useAppSearch()
   const [slice, setSlice] = useState<Dimension>('type')
+  const [measure, setMeasure] = useState<MeasureKey>('count')
 
   const filter = useMemo(() => filterFromSearch(search), [search])
 
   const report = useQuery({
-    queryKey: keys.report(workspaceId, { filter, slice }),
-    queryFn: ({ signal }) => runReport(workspaceId, { filter, groupBy: slice }, signal),
+    queryKey: keys.report(workspaceId, { filter, slice, measure }),
+    queryFn: ({ signal }) => runReport(workspaceId, { filter, groupBy: slice, measure }, signal),
     enabled: workspaceId !== '',
   })
 
@@ -128,9 +129,32 @@ export default function ReportsView(): ReactElement {
     <section className="view" aria-labelledby="page-title">
       <PageHeader
         title="Reports"
-        count={report.isPending ? undefined : `${report.data?.total ?? 0} tasks`}
+        count={
+          report.isPending
+            ? undefined
+            : report.data?.unit === 'seconds'
+              ? undefined
+              : `${report.data?.total ?? 0} tasks`
+        }
       />
       <WorkToolbar>
+        <label className="visually-hidden" htmlFor="report-measure">
+          What to measure
+        </label>
+        <Select
+          width="auto"
+          containerStyle={{ maxWidth: 240 }}
+          style={{ height: CONTROL }}
+          id="report-measure"
+          value={measure}
+          onChange={(event) => setMeasure(event.target.value as MeasureKey)}
+        >
+          {MEASURES.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
         <label className="visually-hidden" htmlFor="report-slice">
           Group the count by
         </label>
@@ -170,7 +194,7 @@ export default function ReportsView(): ReactElement {
               <thead>
                 <tr>
                   <th scope="col">{SLICES.find((s) => s.key === slice)?.label ?? slice}</th>
-                  <th scope="col">Tasks</th>
+                  <th scope="col">{report.data?.unit === 'seconds' ? 'Duration' : 'Tasks'}</th>
                   <th scope="col">
                     <span className="visually-hidden">Share</span>
                   </th>
@@ -182,7 +206,9 @@ export default function ReportsView(): ReactElement {
                     <th scope="row" className="rep__key">
                       {label(group.key)}
                     </th>
-                    <td className="rep__count">{group.total}</td>
+                    <td className="rep__count">
+                      {report.data?.unit === 'seconds' ? duration(group.total) : group.total}
+                    </td>
                     <td className="rep__barcell">
                       {/* The bar carries no information the number does not, so
                           it is hidden from the reader who is listening rather
@@ -219,4 +245,20 @@ const EMPTY_LABEL: Partial<Record<Dimension, string>> = {
   assignee: 'Unassigned',
   reporter: 'No reporter',
   project: 'No project',
+}
+
+/**
+ * Seconds, as a person would say them.
+ *
+ * A cycle time of 271 828 seconds is a number nobody can act on. The unit comes
+ * from the server rather than being inferred from the measure name, so a client
+ * that has not heard of a new measure still formats it correctly or plainly.
+ */
+function duration(seconds: number): string {
+  if (seconds < 90) return `${Math.round(seconds)}s`
+  const minutes = seconds / 60
+  if (minutes < 90) return `${Math.round(minutes)}m`
+  const hours = minutes / 60
+  if (hours < 48) return `${hours.toFixed(1)}h`
+  return `${(hours / 24).toFixed(1)}d`
 }

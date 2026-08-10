@@ -303,7 +303,7 @@ async fn a_create_writes_its_activity_audit_and_outbox_rows_in_the_same_transact
     assert_eq!(outbox, 1, "no outbox event for the project create");
     assert_eq!(
         deliveries,
-        i64::try_from(casual_task_persistence::CONSUMERS.len()).expect("six"),
+        i64::try_from(casual_task_persistence::CONSUMERS.len()).expect("consumer count"),
         "one delivery row per consumer, written in the producing transaction"
     );
     assert_eq!(

@@ -405,6 +405,166 @@ pub fn compile_group_count(
     Compiled { sql, params }
 }
 
+/// What a duration report reduces a set of per-task durations to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reduce {
+    Avg,
+    P50,
+    P90,
+}
+
+impl Reduce {
+    /// The aggregate over a column of seconds.
+    fn over(self, column: &str) -> String {
+        match self {
+            Self::Avg => format!("avg({column})"),
+            Self::P50 => format!("percentile_cont(0.5) WITHIN GROUP (ORDER BY {column})"),
+            Self::P90 => format!("percentile_cont(0.9) WITHIN GROUP (ORDER BY {column})"),
+        }
+    }
+}
+
+/// Which span of a task's life a duration measure covers (`docs/38` §Measures).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Span {
+    /// First entry to an `ACTIVE` state → first entry to `COMPLETED`.
+    CycleTime,
+    /// `created_at` → first entry to `COMPLETED`.
+    LeadTime,
+}
+
+/// Compile a **validated** filter into a duration, per group (ADR-027).
+///
+/// # `CANCELED` is never `COMPLETED`
+///
+/// `docs/38` is explicit, and `docs/23` keeps the two states apart precisely so
+/// this can be true: collapsing them is the most common metric bug in trackers,
+/// because abandoned work is fast and makes a team look quick. Only intervals
+/// whose state is `COMPLETED` end a span, so a cancelled task contributes
+/// nothing rather than contributing a flattering number.
+///
+/// # Why the durations are computed per task first
+///
+/// A task can enter `ACTIVE` several times — reopened, sent back by QA — and the
+/// span is from the *first* time it started to the *first* time it finished.
+/// Aggregating the intervals directly would average a task's separate visits
+/// instead of measuring the task, and a task that bounced twice would count
+/// three times.
+///
+/// # Errors
+///
+/// None. The SQL is assembled, not executed.
+pub fn compile_duration(
+    filter: &Node,
+    workspace: WorkspaceId,
+    authorized: &AuthorizedProjectSet,
+    group: Dimension,
+    span: Span,
+    reduce: Reduce,
+    limit: u32,
+) -> Compiled {
+    let mut params: Vec<Param> = Vec::new();
+    params.push(Param::Workspace(workspace));
+    params.push(Param::Projects(authorized.as_slice().to_vec()));
+
+    let predicate = emit(filter, &mut params);
+    let join = if group.needs_assignees() {
+        " LEFT JOIN task_assignee a ON a.task_id = t.id"
+    } else {
+        ""
+    };
+    let group_expr = group.expression();
+    let started = match span {
+        // The task's own creation is the start of a lead time, and it is on
+        // `task` rather than in the projection — nothing enters a state before
+        // it exists.
+        Span::LeadTime => "min(t.created_at)".to_owned(),
+        Span::CycleTime => "min(i.entered_at) FILTER (WHERE i.state = 'ACTIVE')".to_owned(),
+    };
+    let seconds = reduce.over("EXTRACT(EPOCH FROM (finished - started))");
+
+    let sql = format!(
+        "WITH per_task AS ( \
+           SELECT t.id AS task_id, {group_expr} AS group_key, \
+                  {started} AS started, \
+                  min(i.entered_at) FILTER (WHERE i.state = 'COMPLETED') AS finished \
+             FROM task t \
+             JOIN task_state_interval i ON i.task_id = t.id{join} \
+            WHERE t.workspace_id = $1 \
+              AND t.project_id = ANY($2) \
+              AND t.deleted_at IS NULL \
+              AND ({predicate}) \
+            GROUP BY t.id, group_key \
+         ) \
+         SELECT group_key, NULL::timestamptz AS bucket_start, \
+                round({seconds})::bigint AS total \
+           FROM per_task \
+          WHERE started IS NOT NULL AND finished IS NOT NULL AND finished >= started \
+          GROUP BY group_key \
+          ORDER BY total DESC, group_key NULLS LAST \
+          LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
+/// Compile a **validated** filter into a count of tasks *entering* `COMPLETED`,
+/// per bucket (`docs/38` §Measures — throughput).
+///
+/// # Why the bucket is the completion, not a column on the task
+///
+/// Throughput is "how much finished in that week". Bucketing on `created_at`
+/// would answer "how much that was raised that week has since finished", which
+/// is a different question and a worse one — it moves work into the past as it
+/// completes, so last month's number changes every day.
+///
+/// # Errors
+///
+/// None. The SQL is assembled, not executed.
+pub fn compile_throughput(
+    filter: &Node,
+    workspace: WorkspaceId,
+    authorized: &AuthorizedProjectSet,
+    group: Dimension,
+    interval: Interval,
+    limit: u32,
+) -> Compiled {
+    let mut params: Vec<Param> = Vec::new();
+    params.push(Param::Workspace(workspace));
+    params.push(Param::Projects(authorized.as_slice().to_vec()));
+
+    let predicate = emit(filter, &mut params);
+    let join = if group.needs_assignees() {
+        " LEFT JOIN task_assignee a ON a.task_id = t.id"
+    } else {
+        ""
+    };
+    let group_expr = group.expression();
+    let grain = match interval {
+        Interval::Day => "day",
+        Interval::Week => "week",
+        Interval::Month => "month",
+    };
+
+    // `DISTINCT t.id`: a task that completed, reopened and completed again has
+    // two `COMPLETED` intervals, and inside one bucket that is one delivery,
+    // not two.
+    let sql = format!(
+        "SELECT {group_expr} AS group_key, \
+                date_trunc('{grain}', i.entered_at) AS bucket_start, \
+                count(DISTINCT t.id) AS total \
+           FROM task t \
+           JOIN task_state_interval i ON i.task_id = t.id AND i.state = 'COMPLETED'{join} \
+          WHERE t.workspace_id = $1 \
+            AND t.project_id = ANY($2) \
+            AND t.deleted_at IS NULL \
+            AND ({predicate}) \
+          GROUP BY group_key, bucket_start \
+          ORDER BY bucket_start, total DESC, group_key NULLS LAST \
+          LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
 /// The single full-text term in a filter, if it has one.
 ///
 /// Only the first is honoured. Two `q` clauses would need two `tsquery`

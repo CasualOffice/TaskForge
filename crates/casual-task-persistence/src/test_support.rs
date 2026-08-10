@@ -1714,3 +1714,69 @@ pub async fn age_notifications(pool: &sqlx::PgPool, interval: &str) -> Result<u6
             .rows_affected(),
     )
 }
+
+/// Put a task in a state for a window, without driving a workflow to get there.
+///
+/// A measure test is about what the *aggregate* does with an interval, not
+/// about the transition path that produced one — and reaching `CANCELED`
+/// through a real workflow is a different test. Here rather than in the API
+/// suite because `docs/19` keeps every statement in this crate: SQL written in
+/// a test is SQL that drifts from the statements the repository actually runs.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_state_interval(
+    pool: &sqlx::PgPool,
+    task_id: Uuid,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    state: &str,
+    entered_days_ago: i32,
+    exited_days_ago: Option<i32>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO task_state_interval
+             (task_id, workspace_id, project_id, state, status_id, entered_at, exited_at)
+         VALUES ($1,$2,$3,$4::task_state,$5,
+                 now() - make_interval(days => $6),
+                 CASE WHEN $7::int IS NULL THEN NULL
+                      ELSE now() - make_interval(days => $7::int) END)",
+    )
+    .bind(task_id)
+    .bind(workspace_id)
+    .bind(project_id)
+    .bind(state)
+    .bind(Uuid::now_v7())
+    .bind(entered_days_ago)
+    .bind(exited_days_ago)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Move every interval a task has in one state into another.
+///
+/// The flip a measure test needs to show that a zero was the rule working
+/// rather than the query finding nothing.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn move_intervals(
+    pool: &sqlx::PgPool,
+    task_id: Uuid,
+    from_state: &str,
+    to_state: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE task_state_interval SET state = $3::task_state
+          WHERE task_id = $1 AND state = $2::task_state",
+    )
+    .bind(task_id)
+    .bind(from_state)
+    .bind(to_state)
+    .execute(pool)
+    .await?;
+    Ok(())
+}

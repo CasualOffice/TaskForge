@@ -372,7 +372,8 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-026 | **Reports** — a filter plus a grouped count (ADR-027), `count` only | **Gated** |
 | C-027 | **Stylesheet gate** — one spacing scale, no duplicate rules | `Built` |
 | C-028 | **Environments as configuration** — add, rename, reorder, remove | **Gated** |
-| C-029 | **State-occupancy projection** — `task_state_interval`, maintained and rebuildable | `Built` |
+| C-029 | **State-occupancy projection** — `task_state_interval`, maintained and rebuildable | **Gated** |
+| C-030 | **Duration measures** — cycle time, lead time, throughput | **Gated** |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -389,8 +390,7 @@ client — the transfer, promotion and verification forms — is not. It is the
 least risky of the four (a form that posts what was typed, with no derived
 scope in between), which is why it is last, not why it is fine.
 
-**C-029 is the foundation the duration measures need, and it is `Built` rather
-than `Gated` because the measures that read it are not written yet.** The
+**C-029 is `Gated` now that C-030 reads it.** The
 projection exists, the outbox maintains it, and
 `the_state_projection_is_rebuilt_from_history_and_survives_redelivery` pins the
 property everything else rests on: delivery is at-least-once, so a consumer that
