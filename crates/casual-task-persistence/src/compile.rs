@@ -248,6 +248,163 @@ pub fn compile(
     Compiled { sql, params }
 }
 
+/// A slice a report groups by (`docs/38` §The report model, `ADR-027`).
+///
+/// Closed, like everything else the filter grammar touches. A report that needs
+/// a sixth part is a signal the model is wrong, not that the report is special —
+/// and a user-defined group expression is exactly the unbounded query
+/// `docs/38` exists to prevent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dimension {
+    Status,
+    State,
+    Type,
+    Priority,
+    Project,
+    Team,
+    Environment,
+    Reporter,
+    Milestone,
+    /// Needs a join, and a task with two assignees counts in both slices.
+    /// That is right for "how much is on each person" and wrong for "how many
+    /// tasks are there" — which is why the answer names its dimension.
+    Assignee,
+}
+
+/// The time grain of a bucketed report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interval {
+    Day,
+    Week,
+    Month,
+}
+
+/// Which timestamp the buckets are cut on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BucketField {
+    CreatedAt,
+    UpdatedAt,
+    DueAt,
+}
+
+/// A time series, when a report asks for one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bucket {
+    pub field: BucketField,
+    pub interval: Interval,
+}
+
+impl Dimension {
+    /// The grouping expression, and whether it needs the assignee join.
+    ///
+    /// A `NULL` group is a real answer — unassigned, untriaged, on no
+    /// environment — and is returned rather than filtered out. `docs/45` makes
+    /// the triage queue a place; a report that dropped it would hide the one
+    /// slice a lead is looking for.
+    fn expression(self) -> &'static str {
+        match self {
+            Self::Status => "t.status_id::text",
+            Self::State => "t.state::text",
+            Self::Type => "t.type::text",
+            Self::Priority => "t.priority::text",
+            Self::Project => "t.project_id::text",
+            Self::Team => "t.team_id::text",
+            Self::Environment => "t.environment_id::text",
+            Self::Reporter => "t.reporter_id::text",
+            Self::Milestone => "t.milestone_id::text",
+            Self::Assignee => "a.user_id::text",
+        }
+    }
+
+    fn needs_assignees(self) -> bool {
+        matches!(self, Self::Assignee)
+    }
+}
+
+impl Bucket {
+    fn expression(self) -> String {
+        let grain = match self.interval {
+            Interval::Day => "day",
+            Interval::Week => "week",
+            Interval::Month => "month",
+        };
+        let column = match self.field {
+            BucketField::CreatedAt => "t.created_at",
+            BucketField::UpdatedAt => "t.updated_at",
+            BucketField::DueAt => "t.due_at",
+        };
+        format!("date_trunc('{grain}', {column})")
+    }
+}
+
+/// Compile a **validated** filter into a grouped count (`ADR-027`).
+///
+/// # Why this lives beside [`compile`] and not in a reporting module
+///
+/// The tenant predicate and the authorized project set are injected in exactly
+/// one place, and this is that place. A reporting module that assembled its own
+/// `WHERE` would be a second copy of the rule that keeps a report from
+/// answering across a tenant boundary — and the copy that drifts is always the
+/// one written second.
+///
+/// # Why `count` and nothing else, for now
+///
+/// `docs/38`'s measure set includes `cycle_time`, `lead_time` and `throughput`,
+/// and all three read state occupancy — which is a projection
+/// (`task_state_interval`) the outbox worker does not maintain yet. Computing
+/// them by scanning `activity_event` at query time is precisely the unbounded
+/// query that document exists to prevent, so they are absent rather than slow.
+///
+/// # Ordering
+///
+/// By count descending, then by the group key, so the answer is deterministic
+/// under ties. Without the tiebreaker two runs of the same report can disagree
+/// about which slices made the limit.
+pub fn compile_group_count(
+    filter: &Node,
+    workspace: WorkspaceId,
+    authorized: &AuthorizedProjectSet,
+    group: Dimension,
+    bucket: Option<Bucket>,
+    limit: u32,
+) -> Compiled {
+    let mut params: Vec<Param> = Vec::new();
+    params.push(Param::Workspace(workspace));
+    params.push(Param::Projects(authorized.as_slice().to_vec()));
+
+    let predicate = emit(filter, &mut params);
+    let join = if group.needs_assignees() {
+        " LEFT JOIN task_assignee a ON a.task_id = t.id"
+    } else {
+        ""
+    };
+    let group_expr = group.expression();
+    let (bucket_select, bucket_group, bucket_order) = match bucket {
+        None => (
+            String::from("NULL::timestamptz"),
+            String::new(),
+            String::new(),
+        ),
+        Some(b) => {
+            let expr = b.expression();
+            (expr.clone(), format!(", {expr}"), format!(", {expr}"))
+        }
+    };
+
+    let sql = format!(
+        "SELECT {group_expr} AS group_key, {bucket_select} AS bucket_start, count(*) AS total \
+         FROM task t{join} \
+         WHERE t.workspace_id = $1 \
+           AND t.project_id = ANY($2) \
+           AND t.deleted_at IS NULL \
+           AND ({predicate}) \
+         GROUP BY {group_expr}{bucket_group} \
+         ORDER BY count(*) DESC, {group_expr} NULLS LAST{bucket_order} \
+         LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
 /// The single full-text term in a filter, if it has one.
 ///
 /// Only the first is honoured. Two `q` clauses would need two `tsquery`

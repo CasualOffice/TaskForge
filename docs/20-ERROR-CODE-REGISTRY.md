@@ -248,6 +248,7 @@ either: pending is a wait, and failed is a refusal (**D-061**).
 | `TF-SYS-0004` | Dependency unavailable | 503 |
 | `TF-SYS-0005` | Request timed out | 504 |
 | `TF-SYS-0006` | Load shedding — retry later | 503 |
+| `TF-SYS-0007` | Designed but not built in this deployment | 501 |
 
 ## Rules
 

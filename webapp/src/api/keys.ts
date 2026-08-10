@@ -96,6 +96,13 @@ export const keys = {
    */
   queue: (workspaceId: string) => ['ws', workspaceId, 'queue'] as const,
 
+  /**
+   * One run of a report. Keyed by the whole question — filter and dimension —
+   * because two reports differing only in `group_by` are two answers, and a key
+   * that ignored it would show the second the first one's numbers.
+   */
+  report: (workspaceId: string, spec: unknown) => ['ws', workspaceId, 'report', spec] as const,
+
   /** Administration. All under the tenant prefix, so a switch clears them. */
   workspaceSettings: (workspaceId: string) => ['ws', workspaceId, 'settings'] as const,
   invitations: (workspaceId: string) => ['ws', workspaceId, 'invitations'] as const,

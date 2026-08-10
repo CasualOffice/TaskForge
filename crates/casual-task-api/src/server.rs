@@ -297,6 +297,13 @@ pub fn router(state: AppState) -> Router {
             get(crate::releases::list).post(crate::releases::cut),
         )
         .route("/api/v1/releases/{id}", get(crate::releases::read))
+        // Reports (ADR-027). A filter plus an aggregation, over the same closed
+        // field set as every list — which is what keeps the index contract true
+        // when reporting arrives instead of making it the exception.
+        .route(
+            "/api/v1/reports/run",
+            axum::routing::post(crate::reports::run),
+        )
         // Roles (`docs/04` §API). Authoring is workspace-scoped and is a
         // different permission from assigning (D-049) — anyone who could do
         // both could mint a role carrying more than they hold and grant it to
@@ -751,6 +758,7 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/tasks/{id}/environment",
     "/api/v1/projects/{id}/releases",
     "/api/v1/releases/{id}",
+    "/api/v1/reports/run",
     "/api/v1/me",
     "/api/v1/me/queue",
     "/api/v1/me/teams",

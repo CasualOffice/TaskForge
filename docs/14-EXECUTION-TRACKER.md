@@ -369,6 +369,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-023 | **Releases** — what went out together, cut from the pipeline | **Gated** |
 | C-024 | **Team scope** — team as a place to stand, beside project and workspace | **Gated** |
 | C-025 | **Who may raise what** — `task_type_in`, decoded, enforced and offered | **Gated** |
+| C-026 | **Reports** — a filter plus a grouped count (ADR-027), `count` only | **Gated** |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -384,6 +385,22 @@ nobody has seen fail is a suite nobody should trust.
 client — the transfer, promotion and verification forms — is not. It is the
 least risky of the four (a form that posts what was typed, with no derived
 scope in between), which is why it is last, not why it is fine.
+
+**C-026 is a Phase 4 row built in Phase 1, and that is a scheduling decision
+rather than a design one.** `docs/38` places reports in Phase 4; ADR-027 already
+fixes what a report *is*, so nothing here was invented — but the sequence was
+brought forward because the product's stated purpose includes generating a
+report, and the nav item said "not built" while claiming the capability existed.
+
+Its measure set is **`count` alone**. `cycle_time`, `lead_time`, `time_in_state`
+and `throughput` all read state occupancy, which `docs/38` maintains as the
+`task_state_interval` projection that the outbox worker does not build yet.
+Computing them by replaying `activity_event` per request is the unbounded query
+that document exists to prevent, so the endpoint refuses them **by name** with
+`TF-SYS-0007` — answering a request for `p50 cycle_time` with a count would hand
+someone a figure that is wrong in a way nothing on the page reveals. The
+projection, its worker consumer and its rebuild are the next row, not a
+follow-up to this one.
 
 **C-025 is `Gated`, and it is a repair.** `task_type_in` has been in the closed
 constraint set since `docs/04` with its own unit tests, and `explain` has known
