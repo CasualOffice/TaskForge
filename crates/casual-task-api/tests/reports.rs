@@ -461,24 +461,23 @@ async fn cancelled_work_never_counts_as_completed() -> Result<()> {
 
     // Written straight into the projection: driving a task through a real
     // workflow to CANCELED takes a transition path this test is not about, and
-    // the assertion is about what the *measure* does with the interval.
-    let scope = WorkspaceScope::for_job(WorkspaceId::from_uuid(workspace));
-    let mut tx = db.pool.begin().await?;
-    let mut scoped = Scoped::apply(&mut tx, &scope).await?;
-    sqlx::query(
-        "INSERT INTO task_state_interval
-             (task_id, workspace_id, project_id, state, status_id, entered_at, exited_at)
-         VALUES ($1,$2,$3,'ACTIVE'::task_state,$4, now() - interval '2 days',
-                 now() - interval '1 day'),
-                ($1,$2,$3,'CANCELED'::task_state,$4, now() - interval '1 day', NULL)",
+    // the assertion is about what the *measure* does with the interval. The
+    // statements live in `test_support` because `docs/19` keeps SQL in the
+    // persistence crate.
+    test_support::insert_state_interval(
+        &db.pool,
+        task_id,
+        workspace,
+        project_id,
+        "ACTIVE",
+        2,
+        Some(1),
     )
-    .bind(task_id)
-    .bind(workspace)
-    .bind(project_id)
-    .bind(Uuid::now_v7())
-    .execute(scoped.conn())
     .await?;
-    tx.commit().await?;
+    test_support::insert_state_interval(
+        &db.pool, task_id, workspace, project_id, "CANCELED", 1, None,
+    )
+    .await?;
 
     // A day of "cycle time" is sitting in the table, and it must not be counted.
     let (status, cycle) = caller
@@ -512,13 +511,7 @@ async fn cancelled_work_never_counts_as_completed() -> Result<()> {
 
     // The same task completed instead is counted, so the zeros above are the
     // rule working rather than the query finding nothing.
-    let mut tx = db.pool.begin().await?;
-    let mut scoped = Scoped::apply(&mut tx, &scope).await?;
-    sqlx::query("UPDATE task_state_interval SET state = 'COMPLETED'::task_state WHERE task_id = $1 AND state = 'CANCELED'::task_state")
-        .bind(task_id)
-        .execute(scoped.conn())
-        .await?;
-    tx.commit().await?;
+    test_support::move_intervals(&db.pool, task_id, "CANCELED", "COMPLETED").await?;
 
     let (_, now_counted) = caller
         .send_json(
@@ -544,6 +537,7 @@ async fn cancelled_work_never_counts_as_completed() -> Result<()> {
 
     // And `state_interval` still owns the series: rebuilding from history
     // replaces what this test wrote by hand.
+    let scope = WorkspaceScope::for_job(WorkspaceId::from_uuid(workspace));
     let mut tx = db.pool.begin().await?;
     let mut scoped = Scoped::apply(&mut tx, &scope).await?;
     state_interval::rebuild(&mut scoped, task_id).await?;

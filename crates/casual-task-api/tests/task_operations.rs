@@ -462,7 +462,16 @@ async fn a_transition_moves_the_task_and_writes_its_history() -> Result<()> {
     let (activity, audit, outbox, deliveries) =
         test_support::history_counts(&db.pool, task).await?;
     assert_eq!((activity, audit, outbox), (2, 2, 2), "create + transition");
-    assert_eq!(deliveries, 2 * 6, "one delivery row per consumer per event");
+    // Derived from the registry, not a literal. As a literal this said `2 * 6`
+    // and adding a seventh consumer broke it here — in a Docker-only suite,
+    // after the unit test that pins the same list had already been updated. The
+    // property is "one row per consumer per event"; the number of consumers is
+    // not this test's business.
+    assert_eq!(
+        deliveries,
+        2 * i64::try_from(casual_task_persistence::CONSUMERS.len()).expect("consumer count"),
+        "one delivery row per consumer per event"
+    );
     assert_eq!(
         test_support::outbox_event_types(&db.pool, task).await?,
         vec!["task.created".to_owned(), "task.status.changed".to_owned()]
