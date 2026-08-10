@@ -32,7 +32,7 @@ import { keys } from '../api/keys'
 import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, NeedsPermission, Section, useWrite, WriteError } from './parts'
+import { Field, Form, Loading, NeedsPermission, useWrite, WriteError, PageHead } from './parts'
 
 export function TeamsSettings(): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -58,7 +58,7 @@ export function TeamsSettings(): ReactElement {
   const rows = teams.data?.data ?? []
 
   return (
-    <Section
+    <PageHead
       title="Teams"
       description="A team is something a role can be granted to. Everyone in it inherits that grant."
     >
@@ -95,7 +95,7 @@ export function TeamsSettings(): ReactElement {
           <TeamRow key={team.id} team={team} mayManage={mayManage} />
         ))}
       </ul>
-    </Section>
+    </PageHead>
   )
 }
 

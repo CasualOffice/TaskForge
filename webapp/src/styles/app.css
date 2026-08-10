@@ -63,17 +63,17 @@ body {
  * to reach the list they came for (WCAG 2.2 §2.4.1). */
 .skip-link {
   position: absolute;
-  left: var(--space-2);
+  left: var(--tf-gap-hair);
   top: -100px;
   z-index: 100;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--tf-gap-hair) var(--tf-gap-tight);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   transition: top var(--motion-fast) var(--easing);
 }
 .skip-link:focus {
-  top: var(--space-2);
+  top: var(--tf-gap-hair);
 }
 
 /* ── App frame ───────────────────────────────────────────────────────────── */
@@ -99,8 +99,8 @@ body {
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: var(--tf-space-3);
-  padding: 0 var(--tf-space-4);
+  gap: var(--tf-gap-field);
+  padding: 0 var(--tf-gap-section);
   border-bottom: 1px solid var(--tf-border);
   background: var(--tf-surface);
 }
@@ -111,7 +111,7 @@ body {
 .shell__brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
   color: inherit;
   text-decoration: none;
 }
@@ -120,7 +120,7 @@ body {
   letter-spacing: -0.01em;
   color: var(--tf-text);
   /* VISUAL-IDENTITY §5: clear space of at least 25% of the mark's width. */
-  padding-right: var(--tf-space-2);
+  padding-right: var(--tf-gap-tight);
 }
 
 /* Nothing in the header wraps. It is a single row of controls, and a control
@@ -143,11 +143,11 @@ body {
 .shell__search {
   display: inline-flex;
   align-items: center;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
   min-width: 260px;
   max-width: 420px;
   min-height: var(--tf-control-default);
-  padding: 0 var(--tf-space-2);
+  padding: 0 var(--tf-gap-tight);
   border: 1px solid var(--tf-border-strong);
   border-radius: var(--tf-radius-control);
   background: var(--tf-surface-subtle);
@@ -171,7 +171,7 @@ body {
 }
 .shell__search kbd {
   flex: none;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border: 1px solid var(--tf-border);
   border-radius: var(--tf-radius-badge);
   background: var(--tf-surface);
@@ -184,7 +184,7 @@ body {
 .shell__account {
   display: inline-flex;
   align-items: center;
-  padding: 2px;
+  padding: 4px;
   border: 1px solid transparent;
   border-radius: 50%;
   background: transparent;
@@ -203,20 +203,20 @@ body {
   grid-area: rail;
   display: flex;
   flex-direction: column;
-  gap: var(--tf-space-1);
-  padding: var(--tf-space-3) var(--tf-space-2);
+  gap: var(--tf-gap-hair);
+  padding: var(--tf-gap-field) var(--tf-gap-tight);
   background: var(--tf-surface-sunken);
   border-right: 1px solid var(--tf-border);
   overflow-y: auto;
 }
 
 .side__scope {
-  padding: 0 var(--tf-space-2) var(--tf-space-2);
+  padding: 0 var(--tf-gap-tight) var(--tf-gap-tight);
 }
 
 .side__heading {
-  margin: var(--tf-space-3) 0 var(--tf-space-1);
-  padding: 0 var(--tf-space-2);
+  margin: var(--tf-gap-field) 0 var(--tf-gap-hair);
+  padding: 0 var(--tf-gap-tight);
   font: var(--tf-meta);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -236,16 +236,16 @@ body {
    you go to change the product rather than to use it. */
 .side__group--foot {
   margin-top: auto;
-  padding-top: var(--tf-space-2);
+  padding-top: var(--tf-gap-tight);
 }
 
 .side__link {
   display: flex;
   align-items: center;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
   width: 100%;
   min-height: var(--tf-control-default);
-  padding: 0 var(--tf-space-2);
+  padding: 0 var(--tf-gap-tight);
   border: 0;
   border-radius: var(--tf-radius-control);
   background: transparent;
@@ -286,7 +286,7 @@ body {
 .side__key {
   flex: none;
   min-width: 34px;
-  padding: 1px var(--tf-space-1);
+  padding: 1px var(--tf-gap-hair);
   border-radius: var(--tf-radius-badge);
   background: var(--tf-surface);
   border: 1px solid var(--tf-border);
@@ -295,7 +295,7 @@ body {
   color: var(--tf-text-muted);
 }
 .side__more {
-  margin: var(--tf-space-1) var(--tf-space-2) 0;
+  margin: var(--tf-gap-hair) var(--tf-gap-tight) 0;
   font: var(--tf-meta);
   color: var(--tf-text-muted);
 }
@@ -313,6 +313,17 @@ body {
   .shell__search-text {
     display: none;
   }
+  /* `docs/47` §3: one scrolling region per route. On the narrow composition
+     that region is the page, so the routes stop scrolling inside themselves and
+     this does it instead. */
+  .shell__main {
+    min-height: 0;
+    overflow-y: auto;
+    /* The bottom bar is in the grid rather than fixed, so it does not overlay
+       the composer — but the padding stays as the guarantee `docs/47` asks for
+       if it ever becomes fixed. */
+    padding-bottom: var(--tf-gap-hair);
+  }
 }
 
 @media (max-width: 860px) {
@@ -325,11 +336,22 @@ body {
     border-top: 1px solid var(--tf-border);
     overflow: visible;
   }
+  /* Destinations only. The projects and teams lists belong to the sidebar, and
+     on a bottom bar they overflowed it — "Onboarding", "Backend", "Platform"
+     spilling off the right edge of a 390 px phone. `docs/47` §8: the narrow
+     chrome carries navigation, not workspace administration. */
   .side__scope,
   .side__heading,
   .side__more,
-  .side__key {
+  .side__key,
+  .side__group[aria-labelledby='side-projects'],
+  .side__group[aria-labelledby='side-teams'] {
     display: none;
+  }
+  /* WCAG 2.2 §2.5.8, and the repository's own 44 px tier. */
+  .side__link {
+    min-width: 44px;
+    min-height: 44px;
   }
   .side__group {
     flex-direction: row;
@@ -343,7 +365,7 @@ body {
   }
   .side__link {
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     min-height: var(--tf-control-touch);
     font: var(--tf-meta);
   }
@@ -365,7 +387,7 @@ body {
    controls draws the eye to the one thing nobody should press by accident. */
 .textarea {
   width: 100%;
-  padding: 0 var(--tf-space-2);
+  padding: 0 var(--tf-gap-tight);
   border: 1px solid var(--tf-border-strong);
   background: var(--tf-surface);
   color: var(--tf-text);
@@ -379,7 +401,7 @@ body {
 .textarea {
   resize: vertical;
   min-height: 72px;
-  padding: var(--tf-space-2);
+  padding: var(--tf-gap-tight);
   font: var(--tf-body);
 }
 
@@ -393,8 +415,8 @@ body {
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  gap: var(--tf-gap-hair);
+  margin-bottom: var(--tf-gap-tight);
   /* A name is not 700 characters long, and a field as wide as the window says
    * it might be. The cap is the field's promise about the answer's size. */
   max-width: 44ch;
@@ -416,7 +438,7 @@ body {
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 1px var(--space-2);
+  padding: 1px var(--tf-gap-hair);
   border-radius: 999px;
   font-size: var(--text-xs);
   font-weight: 650;
@@ -457,7 +479,7 @@ body {
 kbd {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  padding: 1px 5px;
+  padding: 1px 4px;
   border: 1px solid var(--color-border-strong);
   border-bottom-width: 2px;
   border-radius: var(--radius-sm);
@@ -470,8 +492,8 @@ kbd {
 .notice {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
+  gap: var(--tf-gap-hair);
+  padding: var(--tf-gap-tight);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface-alt);
@@ -495,7 +517,7 @@ kbd {
 }
 
 .empty {
-  padding: var(--space-6);
+  padding: var(--tf-gap-section);
   text-align: center;
   color: var(--color-text-muted);
 }
@@ -508,13 +530,13 @@ kbd {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--tf-space-2);
-  padding: var(--tf-space-8) var(--tf-space-6);
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-page) var(--tf-gap-page);
   max-width: 46ch;
 }
 .empty-state--compact {
-  padding: var(--tf-space-4) var(--tf-space-3);
-  gap: var(--tf-space-1);
+  padding: var(--tf-gap-section) var(--tf-gap-field);
+  gap: var(--tf-gap-hair);
 }
 .empty-state__icon {
   display: grid;
@@ -540,8 +562,8 @@ kbd {
 .empty-state__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--tf-space-2);
-  margin-top: var(--tf-space-1);
+  gap: var(--tf-gap-tight);
+  margin-top: var(--tf-gap-hair);
 }
 
 /* ── Skeletons (§1.7, §10) ───────────────────────────────────────────────── */
@@ -552,7 +574,7 @@ kbd {
 .skeleton__row {
   display: flex;
   align-items: center;
-  padding: 0 var(--tf-space-4);
+  padding: 0 var(--tf-gap-section);
   border-bottom: 1px solid var(--tf-border);
 }
 .skeleton__bar {
@@ -605,8 +627,8 @@ kbd {
 .view__bar {
   display: flex;
   align-items: center;
-  gap: var(--tf-space-2);
-  padding: var(--tf-space-2) var(--tf-content-pad);
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-tight) var(--tf-content-pad);
   border-bottom: 1px solid var(--tf-border);
   background: var(--tf-surface);
   flex-wrap: wrap;
@@ -626,14 +648,14 @@ kbd {
  * it. A heading alone names the list; the sentence is what makes it actionable
  * at a glance, which is the whole budget this surface has. */
 .court {
-  margin-bottom: var(--tf-space-6);
+  margin-bottom: var(--tf-gap-page);
 }
 .court__head {
   display: flex;
   align-items: baseline;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
   flex-wrap: wrap;
-  margin-bottom: var(--tf-space-2);
+  margin-bottom: var(--tf-gap-tight);
 }
 .court__title {
   margin: 0;
@@ -642,7 +664,7 @@ kbd {
 }
 .court__count {
   min-width: 20px;
-  padding: 0 6px;
+  padding: 0 8px;
   border-radius: 999px;
   background: var(--tf-surface-sunken);
   font: var(--tf-meta);
@@ -658,7 +680,7 @@ kbd {
 .court__cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
 }
 
 /* ── Page header ──────────────────────────────────────────────────────────
@@ -668,7 +690,7 @@ kbd {
  * was a control rather than a subject. */
 
 .page {
-  padding: var(--tf-space-3) var(--tf-content-pad) 0;
+  padding: var(--tf-gap-field) var(--tf-content-pad) 0;
   background: var(--tf-surface);
 }
 
@@ -677,7 +699,7 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--tf-space-1);
+  gap: var(--tf-gap-hair);
   margin: 0;
   padding: 0;
   font: var(--tf-meta);
@@ -687,7 +709,7 @@ kbd {
    remember to draw a slash after itself. */
 .page__crumbs li + li::before {
   content: '/';
-  margin-right: var(--tf-space-1);
+  margin-right: var(--tf-gap-hair);
   color: var(--tf-border-strong);
 }
 .page__crumbs a {
@@ -705,8 +727,8 @@ kbd {
 .page__head {
   display: flex;
   align-items: center;
-  gap: var(--tf-space-2);
-  margin: var(--tf-space-1) 0 var(--tf-space-2);
+  gap: var(--tf-gap-tight);
+  margin: var(--tf-gap-hair) 0 var(--tf-gap-tight);
 }
 .page__title {
   margin: 0;
@@ -724,11 +746,11 @@ kbd {
    mutually exclusive, and the underline is what says which one you are on. */
 .page__tabs {
   display: flex;
-  gap: var(--tf-space-3);
+  gap: var(--tf-gap-field);
   margin-bottom: -1px;
 }
 .page__tab {
-  padding: var(--tf-space-1) 2px var(--tf-space-2);
+  padding: var(--tf-gap-hair) 4px var(--tf-gap-tight);
   border-bottom: 2px solid transparent;
   color: var(--tf-text-secondary);
   font: var(--tf-control-text);
@@ -748,7 +770,7 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--tf-content-pad) var(--tf-space-6);
+  padding: 0 var(--tf-content-pad) var(--tf-gap-page);
 }
 
 /* ── Sign in ─────────────────────────────────────────────────────────────── */
@@ -757,11 +779,11 @@ kbd {
   display: grid;
   place-items: center;
   height: 100%;
-  padding: var(--space-4);
+  padding: var(--tf-gap-tight);
 }
 .signin__card {
   width: min(360px, 100%);
-  padding: var(--space-5);
+  padding: var(--tf-gap-field);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -775,7 +797,7 @@ kbd {
 .signin__submit {
   width: 100%;
   justify-content: center;
-  margin-top: var(--space-3);
+  margin-top: var(--tf-gap-tight);
 }
 
 .workspace__single {
@@ -820,18 +842,21 @@ kbd {
   display: grid;
   grid-template-columns: 76px 92px minmax(0, 1fr) 96px 112px 116px;
   align-items: center;
-  gap: var(--tf-space-2);
-  padding: 0 var(--tf-space-3);
+  gap: var(--tf-gap-tight);
+  padding: 0 var(--tf-gap-field);
 }
 .list__cell {
   text-align: left;
-  font-weight: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font: var(--tf-body);
+  /* After the shorthand, not before it. `font:` resets every longhand it does
+     not name, so this sat above it doing nothing and a cell never inherited the
+     weight its row set — which is why a bold row had unbold cells. */
+  font-weight: inherit;
   color: var(--tf-text-secondary);
-  padding: var(--tf-space-2) 0;
+  padding: var(--tf-gap-tight) 0;
 }
 .list__head .list__cell {
   font: var(--tf-meta);
@@ -839,7 +864,7 @@ kbd {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--tf-text-muted);
-  padding: var(--tf-space-2) 0;
+  padding: var(--tf-gap-tight) 0;
 }
 .list__row {
   border-bottom: 1px solid var(--tf-border);
@@ -881,7 +906,7 @@ kbd {
   letter-spacing: inherit;
 }
 .list__notice {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
 }
 
 /* ── Board ───────────────────────────────────────────────────────────────── */
@@ -904,15 +929,15 @@ kbd {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(240px, 1fr);
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
   overflow-x: auto;
   overflow-y: hidden;
   flex: 1;
   min-height: 0;
 }
 .board__notice {
-  padding: var(--space-2) var(--space-4) 0;
+  padding: var(--tf-gap-hair) var(--tf-gap-tight) 0;
 }
 .column {
   display: flex;
@@ -929,8 +954,8 @@ kbd {
 .column__head {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--tf-gap-hair);
+  padding: var(--tf-gap-hair) var(--tf-gap-tight);
   border-bottom: 1px solid var(--color-border);
 }
 .column__title {
@@ -954,23 +979,23 @@ kbd {
    * two-axis scroller inside another scroller. */
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-2);
+  padding: var(--tf-gap-hair);
 }
 .column__empty {
-  padding: var(--space-3);
+  padding: var(--tf-gap-tight);
 }
 .column__slot {
-  padding-bottom: var(--space-2);
+  padding-bottom: var(--tf-gap-hair);
 }
 
 .card {
   background: var(--tf-surface);
   border: 1px solid var(--tf-border);
   border-radius: var(--tf-radius-control);
-  padding: var(--tf-space-2) var(--tf-space-3);
+  padding: var(--tf-gap-tight) var(--tf-gap-field);
   display: flex;
   flex-direction: column;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
   transition: border-color var(--tf-motion-hover) var(--tf-ease);
 }
 /* The card is a target, so it responds to the pointer as one. Without this the
@@ -981,7 +1006,7 @@ kbd {
 .card__top {
   display: flex;
   align-items: flex-start;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
 }
 .card__key,
 .card__title,
@@ -998,7 +1023,7 @@ kbd {
   margin-left: auto;
   color: var(--color-text-muted);
   cursor: grab;
-  padding: 0 var(--space-1);
+  padding: 0 var(--tf-gap-hair);
 }
 .card__title {
   flex: 1;
@@ -1018,7 +1043,7 @@ kbd {
 .card__foot {
   display: flex;
   align-items: center;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
   font: var(--tf-meta);
   color: var(--tf-text-muted);
 }
@@ -1028,7 +1053,7 @@ kbd {
 .card__signals {
   display: flex;
   align-items: center;
-  gap: var(--tf-space-2);
+  gap: var(--tf-gap-tight);
 }
 .card__due--late {
   color: var(--color-danger);
@@ -1038,24 +1063,24 @@ kbd {
 /* ── My Work ─────────────────────────────────────────────────────────────── */
 
 .mywork {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
 }
 .lenses {
   display: flex;
-  gap: var(--space-1);
+  gap: var(--tf-gap-hair);
 }
 .mywork__list {
   list-style: none;
-  margin: var(--space-3) 0 0;
+  margin: var(--tf-gap-tight) 0 0;
   padding: 0;
 }
 .mywork__row {
   display: grid;
   grid-template-columns: 88px 88px minmax(0, 1fr) 92px 140px;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
   width: 100%;
-  padding: var(--space-2) var(--space-2);
+  padding: var(--tf-gap-hair) var(--tf-gap-hair);
   border: 0;
   border-bottom: 1px solid var(--color-divider);
   background: none;
@@ -1081,7 +1106,7 @@ kbd {
   font-weight: 600;
 }
 .reports {
-  padding: var(--space-4);
+  padding: var(--tf-gap-tight);
 }
 
 /* ── Drawer ──────────────────────────────────────────────────────────────── */
@@ -1111,26 +1136,26 @@ kbd {
 .drawer__head {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  gap: var(--tf-gap-hair);
+  padding: var(--tf-gap-hair) var(--tf-gap-tight);
   border-bottom: 1px solid var(--color-border);
 }
 .drawer__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4);
+  padding: var(--tf-gap-tight);
 }
 .drawer__section {
-  padding-bottom: var(--space-4);
-  margin-bottom: var(--space-4);
+  padding-bottom: var(--tf-gap-tight);
+  margin-bottom: var(--tf-gap-tight);
   border-bottom: 1px solid var(--color-divider);
 }
 .drawer__section:last-child {
   border-bottom: 0;
 }
 .drawer__section-title {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--tf-gap-hair);
   font-size: var(--text-xs);
   font-weight: 650;
   letter-spacing: 0.04em;
@@ -1142,12 +1167,12 @@ kbd {
   font-weight: 600;
 }
 .drawer__status {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--tf-gap-tight);
 }
 .drawer__transitions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
 }
 .drawer__disclose {
   padding-left: 0;
@@ -1155,18 +1180,18 @@ kbd {
 .drawer__details {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0 var(--space-3);
-  margin-top: var(--space-2);
+  gap: 0 var(--tf-gap-tight);
+  margin-top: var(--tf-gap-hair);
 }
 .field__actions {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
   align-items: center;
 }
 .meta {
   display: grid;
   grid-template-columns: 96px 1fr;
-  gap: var(--space-1) var(--space-3);
+  gap: var(--tf-gap-hair) var(--tf-gap-tight);
   margin: 0;
   font-size: var(--text-sm);
 }
@@ -1180,15 +1205,15 @@ kbd {
 }
 .assignees {
   list-style: none;
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--tf-gap-tight);
   padding: 0;
 }
 .assignees__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-1) 0;
+  gap: var(--tf-gap-hair);
+  padding: var(--tf-gap-hair) 0;
 }
 
 .thread,
@@ -1198,12 +1223,12 @@ kbd {
   padding: 0;
 }
 .thread--replies {
-  margin-left: var(--space-4);
+  margin-left: var(--tf-gap-tight);
   border-left: 2px solid var(--color-divider);
-  padding-left: var(--space-3);
+  padding-left: var(--tf-gap-tight);
 }
 .thread__item {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--tf-gap-tight);
 }
 .thread__reply {
   font-size: var(--text-xs);
@@ -1211,7 +1236,7 @@ kbd {
 }
 .comment__head {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
   align-items: baseline;
   font-size: var(--text-sm);
 }
@@ -1220,15 +1245,15 @@ kbd {
   color: var(--color-text-muted);
 }
 .comment__body {
-  margin: var(--space-1) 0 0;
+  margin: var(--tf-gap-hair) 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .thread__composer {
-  margin-top: var(--space-3);
+  margin-top: var(--tf-gap-tight);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
 }
 
 /* ── Palette ─────────────────────────────────────────────────────────────── */
@@ -1246,7 +1271,7 @@ kbd {
 .palette__panel {
   position: relative;
   margin: 12vh auto 0;
-  width: min(560px, calc(100% - var(--space-5)));
+  width: min(560px, calc(100% - var(--tf-gap-field)));
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
@@ -1255,7 +1280,7 @@ kbd {
 }
 .palette__input {
   width: 100%;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
   border: 0;
   border-bottom: 1px solid var(--color-border);
   background: transparent;
@@ -1269,15 +1294,15 @@ kbd {
 .palette__list {
   list-style: none;
   margin: 0;
-  padding: var(--space-1);
+  padding: var(--tf-gap-hair);
   max-height: 46vh;
   overflow-y: auto;
 }
 .palette__option {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-hair) var(--tf-gap-tight);
   border-radius: var(--radius-md);
   cursor: pointer;
 }
@@ -1297,7 +1322,7 @@ kbd {
 }
 .palette__empty,
 .palette__foot {
-  padding: var(--space-3);
+  padding: var(--tf-gap-tight);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
@@ -1305,7 +1330,7 @@ kbd {
   border-top: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--tf-gap-hair);
 }
 
 .palette__option--off {
@@ -1319,19 +1344,19 @@ kbd {
   text-align: right;
 }
 .drawer__heading {
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--tf-gap-tight);
   font-size: var(--text-xl);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
 .assignees-panel {
-  margin-top: var(--space-4);
+  margin-top: var(--tf-gap-tight);
 }
 
 .create {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
   flex: 1;
   min-width: 240px;
 }
@@ -1376,7 +1401,7 @@ kbd {
   min-width: 200px;
   max-height: 320px;
   overflow-y: auto;
-  padding: var(--space-1);
+  padding: var(--tf-gap-hair);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
@@ -1390,8 +1415,8 @@ kbd {
 .filter__option {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-2);
+  gap: var(--tf-gap-hair);
+  padding: var(--tf-gap-hair) var(--tf-gap-hair);
   border-radius: var(--radius-md);
   cursor: pointer;
   white-space: nowrap;
@@ -1425,8 +1450,8 @@ kbd {
   overflow: hidden;
 }
 .card__foot {
-  gap: var(--space-2);
-  margin-top: 2px;
+  gap: var(--tf-gap-hair);
+  margin-top: 4px;
 }
 .card__due {
   font-size: var(--text-xs);
@@ -1459,14 +1484,14 @@ kbd {
 
 .empty__actions {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
   justify-content: center;
-  margin-top: var(--space-3);
+  margin-top: var(--tf-gap-tight);
 }
 /* A gap is a footnote. Above the content it would outrank the content, which is
  * the mistake the board's old "choose a project" banner made. */
 .mywork__footnote {
-  margin-top: var(--space-6);
+  margin-top: var(--tf-gap-section);
   opacity: 0.75;
   font-size: var(--text-xs);
 }
@@ -1521,9 +1546,9 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   height: 34px;
-  padding: 0 15px;
+  padding: 0 16px;
   border-radius: var(--radius-md);
   font: var(--tf-control-text);
   font-weight: 500;
@@ -1634,7 +1659,7 @@ kbd {
   gap: 8px;
   width: 100%;
   min-height: 32px;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 0;
   border-radius: 6px;
   background: none;
@@ -1696,14 +1721,14 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--tf-border, var(--color-border));
 }
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   height: 24px;
   padding: 0 8px;
   border: 1px solid var(--tf-border-strong, var(--color-border-strong));
@@ -1756,10 +1781,10 @@ kbd {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
 }
 .lane__pick > label {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 /* ── Cutting a release ─────────────────────────────────────────────────── */
@@ -1768,9 +1793,9 @@ kbd {
   bottom: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  margin: 0 var(--space-4);
-  padding: var(--space-3);
+  gap: var(--tf-gap-hair);
+  margin: 0 var(--tf-gap-tight);
+  padding: var(--tf-gap-tight);
   border: 1px solid var(--color-accent);
   border-radius: var(--radius-lg);
   background: var(--tf-surface, var(--color-surface-raised));
@@ -1780,7 +1805,7 @@ kbd {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--tf-gap-hair);
 }
 .relbar__count {
   font-size: var(--text-sm);
@@ -1793,10 +1818,10 @@ kbd {
 
 /* ── What has gone out ─────────────────────────────────────────────────── */
 .rel2 {
-  padding: var(--space-4);
+  padding: var(--tf-gap-tight);
 }
 .rel2__heading {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--tf-gap-hair);
   font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1818,7 +1843,7 @@ kbd {
 .rel2__row {
   display: flex;
   align-items: baseline;
-  gap: var(--space-3);
+  gap: var(--tf-gap-tight);
 }
 .rel2__when,
 .rel2__note {
@@ -1826,12 +1851,12 @@ kbd {
   color: var(--color-text-muted);
 }
 .rel2__contents {
-  padding: 0 0 var(--space-2) var(--space-3);
+  padding: 0 0 var(--tf-gap-hair) var(--tf-gap-tight);
 }
 .rel2__task {
   display: block;
   width: 100%;
-  padding: 3px 6px;
+  padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-md);
   background: none;
@@ -1851,7 +1876,7 @@ kbd {
  * why it is `aria-hidden` and why it costs no dependency.
  */
 .rep {
-  padding: var(--space-4);
+  padding: var(--tf-gap-tight);
   overflow-y: auto;
 }
 .rep__table {
@@ -1861,7 +1886,7 @@ kbd {
 }
 .rep__table th,
 .rep__table td {
-  padding: 6px 12px 6px 0;
+  padding: 8px 12px 8px 0;
   text-align: left;
   font-weight: 400;
 }
@@ -1891,7 +1916,7 @@ kbd {
   background: var(--color-accent);
 }
 .rep__scope {
-  margin: var(--space-4) 0 0;
+  margin: var(--tf-gap-tight) 0 0;
   max-width: 60ch;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);

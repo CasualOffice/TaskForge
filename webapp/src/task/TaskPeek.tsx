@@ -140,7 +140,7 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
               {current.title}
             </h2>
 
-            {/* `docs/46` §4.1: the standing line before any field. The two
+            {/* `docs/47` §4.1: the standing line before any field. The two
                 clocks are what this product knows that a status column cannot
                 say, so they get the line under the title rather than a row in a
                 list of eight. */}
@@ -164,7 +164,7 @@ export function TaskPeek({ taskId }: { taskId: string }): ReactElement {
               )}
             </p>
 
-            {/* A property band, not eight label/value rows. `docs/46` §2: it is
+            {/* A property band, not eight label/value rows. `docs/47` §2: it is
                 what lets four facts occupy one line instead of four, and the
                 peek's whole budget is about five seconds. */}
             <div className="peek__signals">

@@ -20,13 +20,7 @@
  * would be a second design system to unpick. These carry class names and no
  * decoration.
  */
-import {
-  useCallback,
-  useState,
-  type FormEvent,
-  type ReactElement,
-  type ReactNode,
-} from 'react'
+import { useCallback, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
 import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query'
 
 import { asApiError } from '../api/problem'
@@ -43,6 +37,45 @@ import { ErrorNotice } from '../shell/notice'
  */
 export function Loading({ rows = 3, label }: { rows?: number; label: string }): ReactElement {
   return <SkeletonRows rows={rows} height={44} label={label} />
+}
+
+/**
+ * The page's own header (`docs/49` §4).
+ *
+ * Every settings route used to inherit one `<h1>` — the word "Settings", which
+ * lives in the navigation — so no page ever named itself. A reader who followed
+ * "your admin can change that under Roles" arrived somewhere whose only heading
+ * said "Settings", and had to read the list on the left to work out where they
+ * were.
+ *
+ * The primary action sits with the heading rather than below the list it adds
+ * to, which is where every product this one is measured against puts it.
+ */
+export function PageHead({
+  title,
+  description,
+  children,
+  actions,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+  actions?: ReactNode
+}): ReactElement {
+  return (
+    <section className="settings__section">
+      <header className="settings__section-head">
+        <div>
+          <h1 className="settings__page-title">{title}</h1>
+          {description === undefined ? null : (
+            <p className="settings__section-desc">{description}</p>
+          )}
+        </div>
+        {actions === undefined ? null : <div className="settings__section-actions">{actions}</div>}
+      </header>
+      {children}
+    </section>
+  )
 }
 
 export function Section({
@@ -193,8 +226,8 @@ export function Field({
 export function NeedsPermission({ permission }: { permission: string }): ReactElement {
   return (
     <p className="empty">
-      You do not have <code>{permission}</code> in this workspace. Someone with
-      it can grant it to you under Roles.
+      You do not have <code>{permission}</code> in this workspace. Someone with it can grant it to
+      you under Roles.
     </p>
   )
 }

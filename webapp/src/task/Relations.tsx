@@ -61,7 +61,7 @@ export function RelationsPanel({
   const nothing = set !== undefined && set.blocked_by.length === 0 && set.blocks.length === 0
 
   return (
-    <section className="rel" aria-labelledby="relations-heading">
+    <section className="rel dsec" aria-labelledby="relations-heading">
       <h2 id="relations-heading" className="narr__heading">
         Blockers
       </h2>

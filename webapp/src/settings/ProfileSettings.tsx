@@ -32,7 +32,7 @@ import {
   type LiveSession,
 } from '../api/me'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, Section, useWrite, WriteError } from './parts'
+import { Field, Form, Loading, Section, useWrite, WriteError, PageHead } from './parts'
 
 export function ProfileSettings(): ReactElement {
   const me = useQuery({ queryKey: keys.me(), queryFn: ({ signal }) => readMe(signal) })
@@ -82,7 +82,7 @@ function Identity({
   const unchanged = name.trim() === displayName && zone.trim() === (timeZone ?? '')
 
   return (
-    <Section
+    <PageHead
       title="Your profile"
       description={
         email === null
@@ -130,7 +130,7 @@ function Identity({
           {save.pending ? 'Saving…' : 'Save profile'}
         </Button>
       </Form>
-    </Section>
+    </PageHead>
   )
 }
 
@@ -250,16 +250,37 @@ function Sessions(): ReactElement {
           No sessions — which should be impossible while you are reading this.
         </p>
       ) : null}
-      <ul className="settings__rows">
-        {rows.map((row) => (
-          <SessionRow
-            key={row.id}
-            session={row}
-            onRevoke={() => revoke.submit(row.id)}
-            busy={revoke.pending}
-          />
-        ))}
-      </ul>
+      {/* A table, because this is tabular data and it was a list.
+          The row was a flex line whose first cell is the user-agent string —
+          which is as long as the client decides — so "Sign out" landed at a
+          different x on every row and a reader had to find the button again
+          each time. Columns put it in one place. */}
+      {rows.length === 0 ? null : (
+        <div className="settings__tablewrap">
+          <table className="settings__table">
+            <thead>
+              <tr>
+                <th scope="col">Client</th>
+                <th scope="col">Last seen</th>
+                <th scope="col">Signed in with</th>
+                <th scope="col">
+                  <span className="visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <SessionRow
+                  key={row.id}
+                  session={row}
+                  onRevoke={() => revoke.submit(row.id)}
+                  busy={revoke.pending}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Section>
   )
 }
@@ -274,25 +295,31 @@ function SessionRow({
   busy: boolean
 }): ReactElement {
   return (
-    <li className="settings__row">
-      <span className="settings__row-main">
+    <tr>
+      <td>
         {/* The agent string is what a person recognizes — "that is my phone" —
             and it is attacker-controlled text, so React escapes it and nothing
             here parses it into a friendly name it might be lying about. */}
-        {session.user_agent ?? 'An unnamed client'}
-        {session.current ? <Badge tone="accent">this session</Badge> : null}
-      </span>
-      <span className="settings__row-meta">
-        {session.ip_address ?? 'no address recorded'} · last seen{' '}
-        <time dateTime={session.last_seen_at}>{when(session.last_seen_at)}</time> · signed in with{' '}
-        {session.auth_method.toLowerCase()}
-      </span>
-      {session.current ? null : (
-        <Button variant="subtle" onClick={onRevoke} disabled={busy}>
-          Sign out
-        </Button>
-      )}
-    </li>
+        <span className="settings__cell-main">
+          {session.user_agent ?? 'An unnamed client'}
+          {session.current ? <Badge tone="accent">this session</Badge> : null}
+        </span>
+        <span className="settings__cell-sub">
+          {session.ip_address ?? 'no address recorded'}
+        </span>
+      </td>
+      <td>
+        <time dateTime={session.last_seen_at}>{when(session.last_seen_at)}</time>
+      </td>
+      <td>{session.auth_method.toLowerCase()}</td>
+      <td className="settings__cell-action">
+        {session.current ? null : (
+          <Button variant="subtle" onClick={onRevoke} disabled={busy}>
+            Sign out
+          </Button>
+        )}
+      </td>
+    </tr>
   )
 }
 

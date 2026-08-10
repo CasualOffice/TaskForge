@@ -20,35 +20,70 @@
 import type { ReactElement } from 'react'
 import { Link, Outlet } from '@tanstack/react-router'
 
-const SECTIONS: ReadonlyArray<{ to: string; label: string; detail: string }> = [
-  { to: '/settings/profile', label: 'Your profile', detail: 'Name, time zone, password, sessions' },
-  { to: '/settings/workspace', label: 'Workspace', detail: 'Name and identity' },
-  { to: '/settings/members', label: 'Members', detail: 'People and invitations' },
-  { to: '/settings/teams', label: 'Teams', detail: 'Groups a grant can name' },
-  { to: '/settings/roles', label: 'Roles', detail: 'What each role carries, and who holds it' },
-  { to: '/settings/workflow', label: 'Workflow', detail: 'Statuses and the moves between them' },
-  { to: '/settings/tags', label: 'Tags', detail: 'The shared vocabulary' },
+/**
+ * Two groups, because there are exactly two scopes (`docs/49` §3).
+ *
+ * A person needs to know whether they are about to change something for
+ * themselves or for everybody, and one flat list could not say it. The headings
+ * are the whole mechanism: *Account* affects only you, *Workspace* affects
+ * everyone and mostly needs a permission.
+ *
+ * The descriptions that used to sit under every entry are gone from here. They
+ * belong on the page they describe, not in the list you scan to find it — seven
+ * entries of two lines each is a wall of text where a menu should be.
+ */
+const GROUPS: ReadonlyArray<{
+  heading: string
+  sections: ReadonlyArray<{ to: string; label: string }>
+}> = [
+  {
+    heading: 'Account',
+    sections: [{ to: '/settings/profile', label: 'Your profile' }],
+  },
+  {
+    heading: 'Workspace',
+    sections: [
+      { to: '/settings/workspace', label: 'General' },
+      { to: '/settings/members', label: 'Members' },
+      { to: '/settings/teams', label: 'Teams' },
+      { to: '/settings/roles', label: 'Roles' },
+      { to: '/settings/workflow', label: 'Workflow' },
+      { to: '/settings/tags', label: 'Tags' },
+    ],
+  },
 ]
 
 export function SettingsLayout(): ReactElement {
   return (
     <div className="settings">
       <nav className="settings__nav" aria-label="Settings">
-        <h1 className="settings__title">Settings</h1>
-        <ul className="settings__list">
-          {SECTIONS.map((section) => (
-            <li key={section.to}>
-              <Link
-                to={section.to}
-                className="settings__link"
-                activeProps={{ 'aria-current': 'page' }}
-              >
-                <span className="settings__link-label">{section.label}</span>
-                <span className="settings__link-detail">{section.detail}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {/* A label, not an `<h1>`. The heading belongs to the page, which is
+            what names the section a reader is actually on — every settings
+            route used to have "Settings" as its only heading, so no page ever
+            said what it was (`docs/49` §1). */}
+        <p className="settings__title">Settings</p>
+        {GROUPS.map((group) => (
+          <div className="settings__group" key={group.heading}>
+            <h2 className="settings__grouphead" id={`settings-${group.heading}`}>
+              {group.heading}
+            </h2>
+            <ul className="settings__list" aria-labelledby={`settings-${group.heading}`}>
+              {group.sections.map((section) => (
+                <li key={section.to}>
+                  <Link
+                    to={section.to}
+                    className="settings__link"
+                    // Exactly, so one entry is current and never two.
+                    activeOptions={{ exact: true }}
+                    activeProps={{ 'aria-current': 'page' }}
+                  >
+                    {section.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
       <div className="settings__panel">
         <Outlet />

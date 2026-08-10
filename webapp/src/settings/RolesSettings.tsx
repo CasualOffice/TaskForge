@@ -47,7 +47,16 @@ import {
 import { useAuthority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
 import { ErrorNotice } from '../shell/notice'
-import { Field, Form, Loading, NeedsPermission, Section, useWrite, WriteError } from './parts'
+import {
+  Field,
+  Form,
+  Loading,
+  NeedsPermission,
+  Section,
+  useWrite,
+  WriteError,
+  PageHead,
+} from './parts'
 
 export function RolesSettings(): ReactElement {
   const workspaceId = useWorkspaceId()
@@ -69,18 +78,22 @@ export function RolesSettings(): ReactElement {
 
   return (
     <>
-      <Section
+      <PageHead
         title="Roles"
         description="A role is a named set of permissions. It does nothing until it is granted to someone, at some scope."
       >
         {roles.isPending ? <Loading rows={4} label="Loading roles" /> : null}
+        {/* Before the list it adds to, not after it (`docs/49` §4). Not yet in
+            the header's top-right, because this control owns the form it opens
+            and hoisting the trigger alone would put the button at the top and
+            its fields at the bottom. */}
+        {mayAuthor ? <NewRole /> : null}
         <ul className="settings__rows">
           {list.map((role) => (
             <RoleRow key={role.id} role={role} mayAuthor={mayAuthor} />
           ))}
         </ul>
-        {mayAuthor ? <NewRole /> : null}
-      </Section>
+      </PageHead>
       <Grants roles={list} mayAssign={mayAssign} />
     </>
   )
@@ -112,7 +125,7 @@ function RoleRow({ role, mayAuthor }: { role: Role; mayAuthor: boolean }): React
         <p className="settings__row-meta">
           {role.permissions.length === 0
             ? 'Anyone holding this role can do nothing with it.'
-            : role.permissions.join(', ')}
+            : summarise(role.permissions)}
         </p>
       )}
     </li>
@@ -435,4 +448,31 @@ function Grants({
       ) : null}
     </Section>
   )
+}
+
+/**
+ * What a role can do, in words (`docs/49` §5).
+ *
+ * This used to print the permission keys — `task.dependency.override`,
+ * `workspace.manage`, twenty-nine of them in one paragraph. A key is an
+ * identifier, not language: an owner deciding who may do what could read all of
+ * it and act on none of it.
+ *
+ * Grouped by the thing acted on, with a count, because the question a list
+ * answers is "roughly how much power is this" — the exact set is in the editor,
+ * where somebody is deliberately reading it one line at a time with its
+ * explanation beside it.
+ */
+function summarise(permissions: readonly string[]): string {
+  const held = new Set(permissions)
+  const parts = PERMISSION_GROUPS.map((group) => {
+    const count = group.keys.filter((key) => held.has(key)).length
+    return count === 0 ? undefined : `${group.title} ${count}/${group.keys.length}`
+  }).filter((part): part is string => part !== undefined)
+  // A key this build does not group is still power somebody holds, and silently
+  // dropping it would understate the role.
+  const grouped = PERMISSION_GROUPS.flatMap((group) => group.keys)
+  const ungrouped = permissions.filter((key) => !grouped.includes(key)).length
+  if (ungrouped > 0) parts.push(`${ungrouped} other`)
+  return parts.join(' · ')
 }
