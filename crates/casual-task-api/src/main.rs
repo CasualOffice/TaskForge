@@ -476,6 +476,9 @@ async fn start_embedded_worker(
     let search = std::sync::Arc::new(casual_task_worker::projection::SearchProjection::new(
         state.pool.clone(),
     ));
+    let intervals = std::sync::Arc::new(
+        casual_task_worker::state_interval::StateIntervalProjection::new(state.pool.clone()),
+    );
 
     for (name, spawn) in [
         (
@@ -487,6 +490,13 @@ async fn start_embedded_worker(
         // nothing — while every task write succeeds and every gate passes,
         // because the projection's own tests drive the consumer directly.
         (casual_task_worker::projection::NAME, Loop::Search(search)),
+        // Without this loop every duration measure reads an empty table and
+        // reports zero — which looks like a quiet team rather than a missing
+        // consumer.
+        (
+            casual_task_worker::state_interval::NAME,
+            Loop::Intervals(intervals),
+        ),
     ] {
         let pool = pool.clone();
         let cancel = cancel.clone();
@@ -527,6 +537,17 @@ async fn start_embedded_worker(
                     )
                     .await
                 }
+                Loop::Intervals(consumer) => {
+                    dispatcher::run(
+                        &pool,
+                        consumer,
+                        &worker_id,
+                        dispatcher::Config::default(),
+                        cancel,
+                        metrics,
+                    )
+                    .await
+                }
             };
             match outcome {
                 Ok(stopped) => tracing::info!(consumer = name, ?stopped, "dispatch loop stopped"),
@@ -546,6 +567,7 @@ enum Loop {
     Notification(std::sync::Arc<casual_task_worker::consumers::NotificationFanout>),
     Sse(std::sync::Arc<casual_task_worker::consumers::SseFanout>),
     Search(std::sync::Arc<casual_task_worker::projection::SearchProjection>),
+    Intervals(std::sync::Arc<casual_task_worker::state_interval::StateIntervalProjection>),
 }
 
 /// Refuse to serve as a superuser (`docs/48`, migration 0012).
