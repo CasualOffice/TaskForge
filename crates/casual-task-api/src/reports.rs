@@ -48,7 +48,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use casual_task_model::{ProjectId, TeamId};
 use casual_task_persistence::compile::{
-    AuthorizedProjectSet, Bucket, BucketField, Dimension, Interval, compile_group_count,
+    AuthorizedProjectSet, Bucket, BucketField, Dimension, Interval, Reduce, Span, compile_duration,
+    compile_group_count, compile_throughput,
 };
 use casual_task_persistence::{project, report};
 use serde::{Deserialize, Serialize};
@@ -118,7 +119,7 @@ pub async fn run(
 ) -> Result<Response, ApiError> {
     let request_id = RequestId::of_parts(&headers);
     let dimension = dimension_of(&body.group_by, &request_id)?;
-    measure_of(&body.measure, &request_id)?;
+    let measure = measure_of(&body.measure, &request_id)?;
     let bucket = body
         .bucket
         .as_ref()
@@ -186,14 +187,36 @@ pub async fn run(
         )
     })?;
 
-    let compiled = compile_group_count(
-        &filter,
-        ctx.workspace,
-        &AuthorizedProjectSet::resolved(visible),
-        dimension,
-        bucket,
-        limit,
-    );
+    let authorized = AuthorizedProjectSet::resolved(visible);
+    let compiled = match measure {
+        Measure::Count => compile_group_count(
+            &filter,
+            ctx.workspace,
+            &authorized,
+            dimension,
+            bucket,
+            limit,
+        ),
+        Measure::Duration(span, reduce) => compile_duration(
+            &filter,
+            ctx.workspace,
+            &authorized,
+            dimension,
+            span,
+            reduce,
+            limit,
+        ),
+        // Throughput is always a series: "how much finished" without a period
+        // is a number nobody can act on. Weekly unless asked otherwise.
+        Measure::Throughput => compile_throughput(
+            &filter,
+            ctx.workspace,
+            &authorized,
+            dimension,
+            bucket.map_or(Interval::Week, |b| b.interval),
+            limit,
+        ),
+    };
     let rows = report::run(&mut scoped, &compiled).await.map_err(|error| {
         tracing::error!(%error, "running the report failed");
         ApiError::internal(&request_id)
@@ -205,7 +228,13 @@ pub async fn run(
         StatusCode::OK,
         axum::Json(serde_json::json!({
             "group_by": body.group_by,
-            "measure": "count",
+            "measure": body.measure,
+            // Seconds for a duration, tasks for a count. The client cannot
+            // format a number whose unit it has to guess.
+            "unit": match measure {
+                Measure::Duration(_, _) => "seconds",
+                _ => "tasks",
+            },
             "groups": rows
                 .into_iter()
                 .map(|row| GroupView {
@@ -251,21 +280,47 @@ fn dimension_of(name: &str, request_id: &str) -> Result<Dimension, ApiError> {
 /// The others are refused **by name** rather than ignored: a caller who asks
 /// for `p50 cycle_time` and silently receives counts has a number that is
 /// wrong in a way nothing on the page reveals.
-fn measure_of(name: &str, request_id: &str) -> Result<(), ApiError> {
+/// What the report is measuring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Measure {
+    Count,
+    /// A span reduced across the tasks in each group.
+    Duration(Span, Reduce),
+    Throughput,
+}
+
+/// The measure set this build maintains a bounded query for.
+///
+/// `time_in_state` is still refused **by name** rather than ignored: a caller
+/// who asks for it and silently receives counts has a number wrong in a way
+/// nothing on the page reveals. It needs a state named — "how long in Code
+/// Review" — and the request has nowhere to say which, so it waits for the
+/// parameter rather than guessing one.
+fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
     match name {
-        "count" => Ok(()),
-        "cycle_time" | "lead_time" | "time_in_state" | "throughput" => Err(ApiError::new(
+        "count" => Ok(Measure::Count),
+        "cycle_time" | "p50_cycle_time" => Ok(Measure::Duration(Span::CycleTime, Reduce::P50)),
+        "p90_cycle_time" => Ok(Measure::Duration(Span::CycleTime, Reduce::P90)),
+        "avg_cycle_time" => Ok(Measure::Duration(Span::CycleTime, Reduce::Avg)),
+        "lead_time" | "p50_lead_time" => Ok(Measure::Duration(Span::LeadTime, Reduce::P50)),
+        "p90_lead_time" => Ok(Measure::Duration(Span::LeadTime, Reduce::P90)),
+        "avg_lead_time" => Ok(Measure::Duration(Span::LeadTime, Reduce::Avg)),
+        "throughput" => Ok(Measure::Throughput),
+        "time_in_state" => Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
             codes::NOT_BUILT,
-            "That measure reads state occupancy, which this build does not \
-             maintain a projection for yet. Only `count` is available",
+            "That measure needs the state to be named, and the request has \
+             nowhere to say which",
             request_id,
         )
         .with_details(serde_json::json!({ "measure": name }))),
-        _ => Err(
-            ApiError::bad_request(codes::OUT_OF_RANGE, "measure must be `count`", request_id)
-                .with_details(serde_json::json!({ "measure": name })),
-        ),
+        _ => Err(ApiError::bad_request(
+            codes::OUT_OF_RANGE,
+            "measure must be count, cycle_time, lead_time or throughput \
+             (each duration also as avg_, p50_ or p90_)",
+            request_id,
+        )
+        .with_details(serde_json::json!({ "measure": name }))),
     }
 }
 
@@ -312,13 +367,22 @@ mod tests {
     }
 
     #[test]
-    fn an_unbuilt_measure_is_refused_by_name_rather_than_ignored() {
-        // The dangerous failure is not the 400 — it is answering a request for
+    fn the_duration_measures_are_available_and_the_unbuilt_one_is_still_named() {
+        // The dangerous failure is not the 501 — it is answering a request for
         // `p50 cycle_time` with a count and letting someone quote it.
-        assert!(measure_of("count", "r").is_ok());
-        for absent in ["cycle_time", "lead_time", "throughput", "time_in_state"] {
-            assert!(measure_of(absent, "r").is_err(), "{absent:?}");
+        assert!(matches!(measure_of("count", "r"), Ok(Measure::Count)));
+        for built in [
+            "cycle_time",
+            "p50_cycle_time",
+            "p90_cycle_time",
+            "avg_cycle_time",
+            "lead_time",
+            "throughput",
+        ] {
+            assert!(measure_of(built, "r").is_ok(), "{built:?}");
         }
+        // Still refused, and by name: it needs a state the request cannot say.
+        assert!(measure_of("time_in_state", "r").is_err());
         assert!(measure_of("sum", "r").is_err());
     }
 }

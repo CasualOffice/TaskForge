@@ -321,12 +321,13 @@ async fn an_unbuilt_measure_and_an_unknown_dimension_are_both_refused() -> Resul
     let caller = signed_in(&db.pool, "lead@example.test", workspace, MEMBER).await?;
 
     // Designed, scheduled, not built — and said so, rather than answered with a
-    // count somebody would quote.
+    // count somebody would quote. `cycle_time` used to be here and now works;
+    // `time_in_state` still needs a state named that the request cannot say.
     let (status, refused) = caller
         .send_json(
             "POST",
             "/api/v1/reports/run",
-            &json!({ "group_by": "assignee", "measure": "cycle_time" }),
+            &json!({ "group_by": "assignee", "measure": "time_in_state" }),
         )
         .await?;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{refused}");
@@ -421,6 +422,132 @@ async fn the_state_projection_is_rebuilt_from_history_and_survives_redelivery() 
         1,
         "redelivery left more than one open interval: {third:?}"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn cancelled_work_never_counts_as_completed() -> Result<()> {
+    // `docs/38`: "CANCELED never counts as completed. Cycle time and throughput
+    // exclude it entirely. Collapsing the two is the most common metric bug in
+    // trackers" — and it flatters, which is why nobody catches it: abandoned
+    // work is fast, so counting it makes a team look quick.
+    use casual_task_model::{WorkspaceId, WorkspaceScope};
+    use casual_task_persistence::{Scoped, state_interval};
+
+    let db = schema_harness::TestDatabase::start().await?;
+    let workspace = Uuid::now_v7();
+    test_support::insert_workspace(&db.pool, workspace, "acme").await?;
+    let caller = signed_in(&db.pool, "lead@example.test", workspace, MEMBER).await?;
+
+    let (_, project) = caller
+        .send_json(
+            "POST",
+            "/api/v1/projects",
+            &json!({ "key": "WR", "name": "Work", "visibility": "WORKSPACE" }),
+        )
+        .await?;
+    let project_id: Uuid = project["id"].as_str().context("project id")?.parse()?;
+
+    let (_, made) = caller
+        .send_json(
+            "POST",
+            &format!("/api/v1/projects/{project_id}/tasks"),
+            &json!({ "title": "Abandoned" }),
+        )
+        .await?;
+    let task_id: Uuid = made["id"].as_str().context("task id")?.parse()?;
+
+    // Written straight into the projection: driving a task through a real
+    // workflow to CANCELED takes a transition path this test is not about, and
+    // the assertion is about what the *measure* does with the interval.
+    let scope = WorkspaceScope::for_job(WorkspaceId::from_uuid(workspace));
+    let mut tx = db.pool.begin().await?;
+    let mut scoped = Scoped::apply(&mut tx, &scope).await?;
+    sqlx::query(
+        "INSERT INTO task_state_interval
+             (task_id, workspace_id, project_id, state, status_id, entered_at, exited_at)
+         VALUES ($1,$2,$3,'ACTIVE'::task_state,$4, now() - interval '2 days',
+                 now() - interval '1 day'),
+                ($1,$2,$3,'CANCELED'::task_state,$4, now() - interval '1 day', NULL)",
+    )
+    .bind(task_id)
+    .bind(workspace)
+    .bind(project_id)
+    .bind(Uuid::now_v7())
+    .execute(scoped.conn())
+    .await?;
+    tx.commit().await?;
+
+    // A day of "cycle time" is sitting in the table, and it must not be counted.
+    let (status, cycle) = caller
+        .send_json(
+            "POST",
+            "/api/v1/reports/run",
+            &json!({ "group_by": "type", "measure": "cycle_time" }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{cycle}");
+    assert_eq!(
+        cycle["groups"].as_array().context("groups")?.len(),
+        0,
+        "a cancelled task produced a cycle time: {cycle}"
+    );
+    assert_eq!(cycle["unit"], "seconds", "{cycle}");
+
+    // Nor as throughput.
+    let (status, shipped) = caller
+        .send_json(
+            "POST",
+            "/api/v1/reports/run",
+            &json!({ "group_by": "type", "measure": "throughput" }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{shipped}");
+    assert_eq!(
+        shipped["total"], 0,
+        "a cancelled task was counted as shipped: {shipped}"
+    );
+
+    // The same task completed instead is counted, so the zeros above are the
+    // rule working rather than the query finding nothing.
+    let mut tx = db.pool.begin().await?;
+    let mut scoped = Scoped::apply(&mut tx, &scope).await?;
+    sqlx::query("UPDATE task_state_interval SET state = 'COMPLETED'::task_state WHERE task_id = $1 AND state = 'CANCELED'::task_state")
+        .bind(task_id)
+        .execute(scoped.conn())
+        .await?;
+    tx.commit().await?;
+
+    let (_, now_counted) = caller
+        .send_json(
+            "POST",
+            "/api/v1/reports/run",
+            &json!({ "group_by": "type", "measure": "cycle_time" }),
+        )
+        .await?;
+    let seconds = now_counted["groups"][0]["total"].as_i64().unwrap_or(0);
+    assert!(
+        seconds > 60_000,
+        "a day of cycle time should be about 86400 seconds: {now_counted}"
+    );
+
+    let (_, throughput) = caller
+        .send_json(
+            "POST",
+            "/api/v1/reports/run",
+            &json!({ "group_by": "type", "measure": "throughput" }),
+        )
+        .await?;
+    assert_eq!(throughput["total"], 1, "{throughput}");
+
+    // And `state_interval` still owns the series: rebuilding from history
+    // replaces what this test wrote by hand.
+    let mut tx = db.pool.begin().await?;
+    let mut scoped = Scoped::apply(&mut tx, &scope).await?;
+    state_interval::rebuild(&mut scoped, task_id).await?;
+    tx.commit().await?;
 
     Ok(())
 }
