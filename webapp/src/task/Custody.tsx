@@ -52,9 +52,12 @@ import { formatRelative } from '../tasks/present'
 export function Custody({
   task,
   authority,
+  part,
 }: {
   task: Task
   authority: Authority
+  /** `standing` opens the page; `trail` sits with the conversation. */
+  part: 'standing' | 'trail'
 }): ReactElement | null {
   const workspaceId = useWorkspaceId()
 
@@ -93,45 +96,131 @@ export function Custody({
   const teamName = (id: string | null): string =>
     id === null ? 'nobody' : (teamList.find((t) => t.id === id)?.name ?? 'a team')
 
+  const mayMove = authority.can(PERMISSIONS.taskUpdate)
+  const mayVerify = authority.can(PERMISSIONS.taskTransition)
+
+  if (part === 'trail') {
+    return (
+      <section className="dsec" aria-labelledby="custody-heading">
+        <h2 id="custody-heading" className="narr__heading">
+          Chain of custody
+        </h2>
+        <Trail data={data} envName={envName} teamName={teamName} nameOf={nameOf} />
+      </section>
+    )
+  }
+
   return (
-    <section className="cust" aria-labelledby="custody-heading">
-      <h2 id="custody-heading" className="narr__heading">
-        Custody
-      </h2>
+    <>
+      {/* The sentence a reader came for, before any control. `docs/45` makes
+          "whose turn is it" the question a task page answers, and it was
+          previously a definition list under three open forms — findable, but
+          only after the reader had scrolled past the machinery. */}
+      <p className="standing">
+        {data.team_id === null ? (
+          /* Not an error state. A task nobody has routed is the triage queue,
+             and saying "unassigned" here would hide that it needs a decision. */
+          <span className="standing__untriaged">Untriaged — nobody owns this yet</span>
+        ) : (
+          <>
+            In <strong>{teamName(data.team_id)}</strong>&rsquo;s court
+          </>
+        )}
+        <span className="standing__sep" aria-hidden="true">
+          ·
+        </span>
+        {data.environment_id === null ? (
+          <span className="standing__quiet">not deployed anywhere</span>
+        ) : (
+          <>
+            reached <strong>{envName(data.environment_id)}</strong>
+          </>
+        )}
+        {latest(data, envName) === undefined ? null : (
+          <>
+            <span className="standing__sep" aria-hidden="true">
+              ·
+            </span>
+            {latest(data, envName)}
+          </>
+        )}
+      </p>
 
-      <dl className="cust__now">
-        <dt>Owned by</dt>
-        <dd>
-          {data.team_id === null ? (
-            /* Not an error state. A task nobody has routed is the triage queue,
-               and saying "unassigned" here would hide that it needs a decision. */
-            <span className="cust__untriaged">Untriaged — nobody owns this yet</span>
-          ) : (
-            teamName(data.team_id)
-          )}
-        </dd>
-        <dt>On</dt>
-        <dd>
-          {data.environment_id === null ? (
-            <span className="meta2__unset">No environment</span>
-          ) : (
-            envName(data.environment_id)
-          )}
-        </dd>
-      </dl>
-
-      {authority.can(PERMISSIONS.taskUpdate) ? (
-        <>
-          <Handoff task={task} teams={teamList} current={data.team_id} />
-          <Promote task={task} environments={envs} />
-        </>
+      {/* One row of deliberate acts, each opening its own form. They used to
+          be three forms held open at once, which made a page somebody opened
+          to *read* into a page that was two-thirds machinery — and put the
+          rarest action (hand over) above the description. */}
+      {mayMove || mayVerify ? (
+        <div className="acts">
+          {mayMove ? (
+            <>
+              <Act label="Hand over…" icon="swap_horiz">
+                {() => <Handoff task={task} teams={teamList} current={data.team_id} />}
+              </Act>
+              <Act label="Record promotion…" icon="rocket_launch">
+                {() => <Promote task={task} environments={envs} />}
+              </Act>
+            </>
+          ) : null}
+          {mayVerify ? (
+            <Act label="Verify…" icon="fact_check">
+              {() => <Verify task={task} on={data.environment_id} envName={envName} />}
+            </Act>
+          ) : null}
+        </div>
       ) : null}
-      {authority.can(PERMISSIONS.taskTransition) ? (
-        <Verify task={task} on={data.environment_id} envName={envName} />
-      ) : null}
+    </>
+  )
+}
 
-      <Trail data={data} envName={envName} teamName={teamName} nameOf={nameOf} />
-    </section>
+/**
+ * The most recent thing that happened to this task, as a phrase.
+ *
+ * Only verifications, because a pass or a fail is the fact that changes what
+ * someone does next. "Promoted to qa" is already said by "reached qa"; saying
+ * it twice would spend the line without adding anything.
+ */
+function latest(data: CustodyData, envName: (id: string) => string): ReactElement | undefined {
+  const [last] = [...data.verifications].sort((a, b) => (a.verified_at < b.verified_at ? 1 : -1))
+  if (last === undefined) return undefined
+  return last.verdict === 'PASS' ? (
+    <span className="standing__pass">passed on {envName(last.environment_id)}</span>
+  ) : (
+    <span className="standing__fail">failed on {envName(last.environment_id)}</span>
+  )
+}
+
+/**
+ * One act, closed until asked for.
+ *
+ * A disclosure and not a popover: the forms are two and three controls tall and
+ * carry a consequence sentence each, and a popover that size is a dialog
+ * pretending not to be one. Opening in place also leaves the standing line
+ * above it visible, which is what the reader is deciding against.
+ */
+function Act({
+  label,
+  icon,
+  children,
+}: {
+  label: string
+  icon: string
+  children: () => ReactElement
+}): ReactElement {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`acts__one${open ? ' acts__one--open' : ''}`}>
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={icon}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {label}
+      </Button>
+      {open ? <div className="acts__body">{children()}</div> : null}
+    </div>
   )
 }
 

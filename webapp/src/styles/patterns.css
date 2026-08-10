@@ -593,13 +593,19 @@
   flex-direction: column;
   gap: 6px;
 }
+/* A section heading, not a label.
+ *
+ * It was 12 px uppercase muted — smaller and fainter than the form labels
+ * underneath it, so the controls read as more important than the sections that
+ * contained them. A heading has to win against its own contents or the page
+ * has no hierarchy, which is what "the layout is messy" describes. */
 .narr__heading {
   margin: 0;
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--tf-text-muted, var(--color-text-muted));
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--tf-text, var(--color-text));
 }
 .narr__body {
   margin: 0;
@@ -822,4 +828,128 @@
 .mywork__row {
   color: inherit;
   text-decoration: none;
+}
+
+/* ── A section of the task page ──────────────────────────────────────────
+ *
+ * The complaint was "no separation between things", and it was accurate: the
+ * description, the custody forms, the subtasks, the blockers and the comments
+ * were all flush left at one indent on one background, divided by hairlines
+ * that grouped nothing. A boundary and a ground is what tells a reader where
+ * one thing ends.
+ */
+.dsec {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--tf-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--tf-surface, var(--color-surface));
+}
+.dsec + .dsec,
+.acts + .dsec {
+  margin-top: var(--space-3);
+}
+
+/* ── Where it stands ─────────────────────────────────────────────────────
+ *
+ * `docs/45` makes "whose turn is it" the question a task page answers. It used
+ * to be a definition list below three open forms. It is the first line now.
+ */
+.standing {
+  /* Prose, not a row of boxes. As a flex line the gap landed between every
+     child, so "Backend" and "'s court" were two words apart. */
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+}
+.standing strong {
+  color: var(--tf-text, var(--color-text));
+  font-weight: 600;
+}
+.standing__sep {
+  margin: 0 6px;
+  color: var(--tf-border-strong, var(--color-border-strong));
+}
+.standing__quiet {
+  color: var(--color-text-muted);
+}
+.standing__untriaged {
+  font-weight: 600;
+  color: var(--color-warning, var(--color-text));
+}
+.standing__pass {
+  color: var(--color-success);
+  font-weight: 600;
+}
+.standing__fail {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+/* ── The acts ────────────────────────────────────────────────────────────
+ *
+ * Three forms held open at once made a page somebody opened to *read* into a
+ * page that was two-thirds machinery, and put the rarest action above the
+ * description. Each is a button now, and opens where it stands.
+ */
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.acts__one--open {
+  flex: 1 1 100%;
+}
+.acts__body {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+}
+
+/* Provenance, as a footnote rather than three rows the size of the status. */
+.meta2__foot {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--tf-border, var(--color-border));
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* ── The peek, per `docs/46` §4.1 ────────────────────────────────────────
+ *
+ * An overview, not a small page. Its budget is about five seconds from a list,
+ * so every element here answers "is this the one I mean, and where does it
+ * stand" — and anything that would need a second decision belongs on the page.
+ */
+.peek__standing {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+}
+/* A property band. Four facts on one line rather than four label/value rows,
+ * which is the difference between a glance and a read (`docs/46` §2). */
+.peek__signals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.peek__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--tf-border, var(--color-border));
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+/* Prose is capped near 70 characters wherever it runs long — a line that
+ * crosses a 1440 px window is a line nobody finishes (`docs/46` §3). */
+.peek__desc,
+.narr__body {
+  max-width: 70ch;
 }

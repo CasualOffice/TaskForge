@@ -126,32 +126,58 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
         <div className="detail__main">
           <TaskTitle task={current} authority={authority} />
 
+          {/* The order is the order someone reads in, and it was not.
+              Previously the page opened with three hand-off forms and reached
+              the description underneath them — machinery before meaning, and
+              the rarest act in the most valuable space.
+
+              Now: where it stands, what may be done about it, what it is, what
+              it contains, what it is waiting on, and then everything that has
+              happened. Each of the last four is a bounded region with its own
+              heading, because "no separation between things" is what a column
+              of flush-left sections at one indent actually looks like. */}
           <div className="detail__scrollable">
-            <TaskDescription task={current} authority={authority} />
+            <Custody task={current} authority={authority} part="standing" />
+
+            {/* The cards carry no headings of their own: every panel already
+                has one, and a card that repeats it tells the reader the same
+                word twice. What the card adds is the boundary — which is the
+                thing that was missing. */}
+            <div className="dsec">
+              <TaskDescription task={current} authority={authority} />
+            </div>
 
             {/* §12: blockers and subtasks are two lists, never one. A blocker
                 gates this task's transitions; a subtask is part of its scope and
                 gates nothing. */}
-            {/* Custody first among the panels: the moment someone opens a task
-                is usually the moment they are about to pass it on. */}
-            <Custody task={current} authority={authority} />
-            <Subtasks taskId={current.id} />
-            <RelationsPanel taskId={current.id} taskKey={current.key} authority={authority} />
-            <Activity taskId={current.id} authority={authority} />
+            <div className="dsec">
+              <Subtasks taskId={current.id} />
+            </div>
 
-            {/* Whatever the registry declares and nothing serves. One line, not
-                one box each. */}
-            {missing === undefined ? null : <GapNotice what={missing} />}
+            <div className="dsec">
+              <RelationsPanel taskId={current.id} taskKey={current.key} authority={authority} />
+            </div>
 
-            {/* Inside the scroll region, not below it. A conversation is the
-                end of the page, and a second scroller pinned under the first
-                only ever cut the section above it in half. */}
-            <section className="detail__comments" aria-labelledby="comments-heading">
+            {/* One region for everything that has happened: the conversation
+                first, because it is what people come back for, and the field
+                history under it for when the conversation does not explain
+                something. */}
+            {/* History belongs with the conversation, not above the
+                description: it is what happened, and what happened is what a
+                reader reaches for after they know what the task is. */}
+            <Custody task={current} authority={authority} part="trail" />
+
+            <section className="dsec" aria-labelledby="comments-heading">
               <h2 id="comments-heading" className="narr__heading">
                 Comments
               </h2>
               <CommentThread taskId={current.id} authority={authority} />
+              <Activity taskId={current.id} authority={authority} />
             </section>
+
+            {/* Whatever the registry declares and nothing serves. One line, not
+                one box each. */}
+            {missing === undefined ? null : <GapNotice what={missing} />}
           </div>
         </div>
 

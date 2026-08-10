@@ -227,7 +227,10 @@ afterEach(() => {
 })
 
 function mount(path: string): ReactElement {
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) })
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })

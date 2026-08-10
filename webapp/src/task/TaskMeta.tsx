@@ -85,80 +85,85 @@ export function TaskMeta({
     )
   }
 
+  // Grouped by what the reader is asking, not by the order the endpoint
+  // returns. Ten equal rows is a property dump: it makes "who is on this" cost
+  // the same glance as "when was it created", and only one of those is why
+  // anybody opened the page.
   return (
-    <dl className="meta2">
-      <Row label="Status">
-        <StatusControl task={task} authority={authority} />
-      </Row>
+    <>
+      <dl className="meta2">
+        <Row label="Status">
+          <StatusControl task={task} authority={authority} />
+        </Row>
 
-      <Row label="Assignees">
-        <AssigneeField task={task} authority={authority} nameOf={nameOf} />
-      </Row>
+        <Row label="Assignees">
+          <AssigneeField task={task} authority={authority} nameOf={nameOf} />
+        </Row>
 
-      <Row label="Priority">
-        <Choice
-          value={task.priority}
-          render={priorityLabel}
-          options={PRIORITIES}
-          disabled={!mayEdit}
-          className={task.priority === 'NONE' ? 'meta2__unset' : `prio prio--${task.priority}`}
-          onChoose={(next) =>
-            save({ priority: next as Priority }, `Priority set to ${priorityLabel(next)}`)
-          }
-        />
-      </Row>
+        <Row label="Priority">
+          <Choice
+            value={task.priority}
+            render={priorityLabel}
+            options={PRIORITIES}
+            disabled={!mayEdit}
+            className={task.priority === 'NONE' ? 'meta2__unset' : `prio prio--${task.priority}`}
+            onChoose={(next) =>
+              save({ priority: next as Priority }, `Priority set to ${priorityLabel(next)}`)
+            }
+          />
+        </Row>
 
-      <Row label="Type">
-        <Choice
-          value={task.type}
-          render={typeLabel}
-          options={TASK_TYPES}
-          disabled={!mayEdit}
-          className=""
-          onChoose={(next) => save({ type: next as TaskType }, `Type set to ${typeLabel(next)}`)}
-        />
-      </Row>
+        <Row label="Type">
+          <Choice
+            value={task.type}
+            render={typeLabel}
+            options={TASK_TYPES}
+            disabled={!mayEdit}
+            className=""
+            onChoose={(next) => save({ type: next as TaskType }, `Type set to ${typeLabel(next)}`)}
+          />
+        </Row>
 
-      <Row label="Due">
-        <DateValue
-          id="meta-due"
-          value={task.due_at}
-          late={isOverdue(task)}
-          disabled={!mayEdit}
-          onChange={(next) =>
-            save({ due_at: next }, next === null ? 'Due date cleared' : 'Due date saved')
-          }
-        />
-      </Row>
+        <Row label="Due">
+          <DateValue
+            id="meta-due"
+            value={task.due_at}
+            late={isOverdue(task)}
+            disabled={!mayEdit}
+            onChange={(next) =>
+              save({ due_at: next }, next === null ? 'Due date cleared' : 'Due date saved')
+            }
+          />
+        </Row>
 
-      <Row label="Start">
-        <DateValue
-          id="meta-start"
-          value={task.start_at}
-          late={false}
-          disabled={!mayEdit}
-          onChange={(next) =>
-            save({ start_at: next }, next === null ? 'Start date cleared' : 'Start date saved')
-          }
-        />
-      </Row>
+        <Row label="Start">
+          <DateValue
+            id="meta-start"
+            value={task.start_at}
+            late={false}
+            disabled={!mayEdit}
+            onChange={(next) =>
+              save({ start_at: next }, next === null ? 'Start date cleared' : 'Start date saved')
+            }
+          />
+        </Row>
 
-      <Row label="Project">
-        <span>{projectName ?? '—'}</span>
-      </Row>
+        <Row label="Project">
+          <span>{projectName ?? '—'}</span>
+        </Row>
+      </dl>
 
-      <Row label="Reporter">
-        <span>{nameOf(task.reporter_id)}</span>
-      </Row>
-
-      <Row label="Created">
+      {/* Provenance. True, rarely the reason anyone came, and previously given
+          the same weight as the status — so it is a footnote now rather than
+          three more rows of the same size. Outside the list, because a `<dl>`
+          holds terms and definitions and nothing else. */}
+      <p className="meta2__foot">
+        Raised by {nameOf(task.reporter_id)}{' '}
         <span title={task.created_at}>{formatRelative(task.created_at)}</span>
-      </Row>
-
-      <Row label="Updated">
+        {' · last changed '}
         <span title={task.updated_at}>{formatRelative(task.updated_at)}</span>
-      </Row>
-    </dl>
+      </p>
+    </>
   )
 }
 
