@@ -366,20 +366,24 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
 | C-020 | Rate limiting at the edge | `Building` |
 | C-022 | **Chain of custody** — team transfer, environment promotion, verification, `/me/queue` | `Built` |
-| C-023 | **Releases** — what went out together, cut from the pipeline | `Built` |
-| C-024 | **Team scope** — team as a place to stand, beside project and workspace | `Built` |
+| C-023 | **Releases** — what went out together, cut from the pipeline | **Gated** |
+| C-024 | **Team scope** — team as a place to stand, beside project and workspace | **Gated** |
 | C-025 | **Who may raise what** — `task_type_in`, decoded, enforced and offered | **Gated** |
 
-**C-022 and C-023 are `Built`, and the missing half of `Gated` is the client.**
-Both servers are protected: `cargo test --workspace -- --ignored` runs in CI, and
-`crates/casual-task-api/tests/custody.rs` and `tests/releases.rs` assert the
-properties the lifecycle depends on rather than that a row was written — a
-transfer clears the assignees, a promotion writes a log row as well as the
-column, a release with a task from another project moves *nothing*. What has no
-acceptance gate is the surface: the pipeline board, the selection, and the
-release bar are covered by `tsc`, `eslint` and the a11y suite, none of which
-would notice if cutting a release stopped invalidating the board. A Playwright
-path — select two, cut, assert both moved column — is what would close it.
+**C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
+`cargo test --workspace -- --ignored`, which CI runs; the clients by
+`webapp/src/requests.test.tsx`, which renders the real views against a stub
+server and asserts **the request that leaves the client** — the query string a
+scope produces, the body a release cut posts, the types the create menu offers.
+The assertion is on the outgoing request rather than the rendered rows because
+the rows come from the stub, and asserting a stub asserts nothing. Each of those
+tests was checked by breaking the code it covers and watching it fail; a suite
+nobody has seen fail is a suite nobody should trust.
+
+**C-022 is still `Built`.** Its server is gated by `tests/custody.rs`; its
+client — the transfer, promotion and verification forms — is not. It is the
+least risky of the four (a form that posts what was typed, with no derived
+scope in between), which is why it is last, not why it is fine.
 
 **C-025 is `Gated`, and it is a repair.** `task_type_in` has been in the closed
 constraint set since `docs/04` with its own unit tests, and `explain` has known
