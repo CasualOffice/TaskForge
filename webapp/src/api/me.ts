@@ -16,7 +16,7 @@
  * arise and the server requires no precondition. A client that invented one
  * would be sending a header the endpoint refuses to understand.
  */
-import { request } from './http'
+import { request, requestNoContent } from './http'
 
 /** `me::MeView`. `email` is `null` once the account is anonymized (ADR-026). */
 export interface Me {
@@ -74,7 +74,7 @@ export function updateMe(patch: {
  * it afterwards.
  */
 export function changePassword(current: string, next: string): Promise<void> {
-  return request<void>('/api/v1/me/password', {
+  return requestNoContent('/api/v1/me/password', {
     method: 'POST',
     body: { current_password: current, new_password: next },
   })
@@ -85,10 +85,10 @@ export function listSessions(signal?: AbortSignal): Promise<{ data: readonly Liv
 }
 
 export function revokeSession(id: string): Promise<void> {
-  return request<void>(`/api/v1/me/sessions/${id}`, { method: 'DELETE' })
+  return requestNoContent(`/api/v1/me/sessions/${id}`, { method: 'DELETE' })
 }
 
 /** Sign out everywhere else, keeping this one. The "I lost my laptop" button. */
 export function revokeOtherSessions(): Promise<void> {
-  return request<void>('/api/v1/me/sessions', { method: 'DELETE' })
+  return requestNoContent('/api/v1/me/sessions', { method: 'DELETE' })
 }

@@ -218,6 +218,18 @@ export class ApiError extends Error {
   }
 
   /**
+   * A success with no body, on a route whose caller was promised one.
+   *
+   * `TF-SYS-0001` rather than a new code: `docs/20` owns the registry, this is
+   * a server fault the user did not cause, and that is precisely what the
+   * generic system code already says. Inventing `TF-SYS-0003` here would put a
+   * code on screen that the error catalogue has never heard of.
+   */
+  static emptyBody(path: string, status: number): ApiError {
+    return new ApiError({ code: 'TF-SYS-0001', status, message: `empty body from ${path}` })
+  }
+
+  /**
    * Parse a non-2xx response.
    *
    * Tolerates a body that is not the envelope: a reverse proxy returning its own

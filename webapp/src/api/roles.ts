@@ -17,7 +17,7 @@
  * response to the call that created it, and authority could be given but never
  * taken back.
  */
-import { query, request } from './http'
+import { query, request, requestNoContent } from './http'
 import type { Paged } from './page'
 
 export interface Role {
@@ -137,7 +137,7 @@ export function assignRole(
 
 /** Take a grant back. The id comes from [`listAssignments`]. */
 export function revokeAssignment(workspaceId: string, id: string): Promise<void> {
-  return request<void>(`/api/v1/role-assignments/${id}`, { method: 'DELETE', workspaceId })
+  return requestNoContent(`/api/v1/role-assignments/${id}`, { method: 'DELETE', workspaceId })
 }
 
 /**

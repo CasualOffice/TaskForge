@@ -18,7 +18,7 @@
  * server answers `TF-WFL-0001` to anything else — a client type that *could*
  * express it would turn a compile error into a runtime refusal.
  */
-import { idempotencyKey, request } from './http'
+import { idempotencyKey, request, requestNoContent } from './http'
 import type { Paged } from './page'
 
 /** `crates/casual-task-api/src/tasks/wire.rs` — `TaskView`. */
@@ -279,14 +279,14 @@ export function assignTask(
 }
 
 export function unassignTask(workspaceId: string, taskId: string, userId: string): Promise<void> {
-  return request<void>(`/api/v1/tasks/${taskId}/assignees/${userId}`, {
+  return requestNoContent(`/api/v1/tasks/${taskId}/assignees/${userId}`, {
     method: 'DELETE',
     workspaceId,
   })
 }
 
 export function deleteTask(workspaceId: string, taskId: string, version: number): Promise<void> {
-  return request<void>(`/api/v1/tasks/${taskId}`, {
+  return requestNoContent(`/api/v1/tasks/${taskId}`, {
     method: 'DELETE',
     workspaceId,
     ifMatch: version,
