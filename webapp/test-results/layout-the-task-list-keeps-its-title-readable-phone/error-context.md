@@ -77,8 +77,6 @@ Call log:
       - option "ONB — Onboarding"
     - text: Search tasks
     - searchbox "Search tasks"
-    - button "Priority"
-    - button "Type"
     - text: Assignee
     - combobox "Assignee":
       - option "Anyone" [selected]
@@ -116,7 +114,7 @@ Call log:
       - option "Identifier ↑"
     - table:
       - rowgroup:
-        - row "Bug ONB-12 Fix the mobile task layout so the title survives a narrow screen instead of collapsing High — Jan 2, 2026":
+        - row "Bug ONB-12 Fix the mobile task layout so the title survives a narrow screen instead of collapsing Active — High — Jan 2, 2026":
           - cell "Bug"
           - cell "ONB-12":
             - link "ONB-12":
@@ -124,6 +122,8 @@ Call log:
           - cell "Fix the mobile task layout so the title survives a narrow screen instead of collapsing":
             - link "Fix the mobile task layout so the title survives a narrow screen instead of collapsing":
               - /url: /tasks/019fe000-0000-7000-8000-000000000004
+          - cell "Active"
+          - cell "—"
           - cell "High"
           - cell "—"
           - cell "Jan 2, 2026":
@@ -260,4 +260,25 @@ Call log:
   123 |   expect(scrollers.length, `more than one scroller: ${scrollers.join(', ')}`).toBeLessThanOrEqual(1)
   124 | })
   125 | 
+  126 | test('the list shows status and assignee, and filters on the column', async ({
+  127 |   page,
+  128 |   isMobile,
+  129 | }) => {
+  130 |   // Desktop only: the narrow composition is a stacked summary with no column
+  131 |   // headings at all, so there is nothing here to hang a column filter on.
+  132 |   test.skip(isMobile, 'the narrow row is a stacked summary, not a table')
+  133 |   // Both columns were absent, and they are the two fields people scan a list
+  134 |   // for: what state is this in, and whose is it. A list that cannot say either
+  135 |   // has to be opened row by row to answer them.
+  136 |   await page.goto('/')
+  137 |   await page.waitForLoadState('networkidle')
+  138 | 
+  139 |   const headings = await page.evaluate(() =>
+  140 |     [...document.querySelectorAll('.list__head th')].map((th) => th.textContent?.trim() ?? ''),
+  141 |   )
+  142 |   expect(headings.join(' ')).toContain('Status')
+  143 |   expect(headings.join(' ')).toContain('Assignee')
+  144 | 
+  145 |   // And the filter is on the column it narrows, not in a toolbar somewhere
+  146 |   // else. Hidden until the heading is hovered, so it is found by hovering.
 ```

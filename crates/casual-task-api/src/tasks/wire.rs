@@ -32,6 +32,12 @@ pub struct TaskView {
     /// in the same statement, so it can never disagree with it (`docs/23`).
     pub state: String,
     pub reporter_id: Uuid,
+    /// Who is on it. Empty rather than absent when nobody is, and empty on the
+    /// endpoints that do not resolve it — a list that had to ask per row could
+    /// not afford to show this at all, so the list attaches it for the whole
+    /// page in one query.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignees: Vec<Uuid>,
     /// The owning team, or `null` for the triage queue (`docs/45`).
     ///
     /// On the task rather than behind `GET /tasks/{id}/custody` because
@@ -77,6 +83,7 @@ pub fn view(row: &TaskRow, project_key: &str) -> TaskView {
         status_id: row.status_id,
         state: row.state.clone(),
         reporter_id: row.reporter_id,
+        assignees: Vec::new(),
         team_id: row.team_id,
         environment_id: row.environment_id,
         milestone_id: row.milestone_id,

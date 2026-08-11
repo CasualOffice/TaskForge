@@ -840,7 +840,10 @@ kbd {
 .list__head tr,
 .list__row {
   display: grid;
-  grid-template-columns: 76px 92px minmax(0, 1fr) 96px 112px 116px;
+  /* Type, key, title, status, assignee, priority, due, updated. The title keeps
+     the only flexible track: `docs/47` §5 makes it the one column that must
+     never be what shrinks. */
+  grid-template-columns: 76px 84px minmax(0, 1fr) 116px 132px 88px 92px 96px;
   align-items: center;
   gap: var(--tf-gap-tight);
   padding: 0 var(--tf-gap-field);

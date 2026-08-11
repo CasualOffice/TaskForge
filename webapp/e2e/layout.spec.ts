@@ -122,3 +122,30 @@ test('one scrolling region per route', async ({ page }) => {
   })
   expect(scrollers.length, `more than one scroller: ${scrollers.join(', ')}`).toBeLessThanOrEqual(1)
 })
+
+test('the list shows status and assignee, and filters on the column', async ({
+  page,
+  isMobile,
+}) => {
+  // Desktop only: the narrow composition is a stacked summary with no column
+  // headings at all, so there is nothing here to hang a column filter on.
+  test.skip(isMobile, 'the narrow row is a stacked summary, not a table')
+  // Both columns were absent, and they are the two fields people scan a list
+  // for: what state is this in, and whose is it. A list that cannot say either
+  // has to be opened row by row to answer them.
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+
+  const headings = await page.evaluate(() =>
+    [...document.querySelectorAll('.list__head th')].map((th) => th.textContent?.trim() ?? ''),
+  )
+  expect(headings.join(' ')).toContain('Status')
+  expect(headings.join(' ')).toContain('Assignee')
+
+  // And the filter is on the column it narrows, not in a toolbar somewhere
+  // else. Hidden until the heading is hovered, so it is found by hovering.
+  const status = page.locator('.colhead', { hasText: 'Status' }).first()
+  await status.hover()
+  const funnel = status.locator('.colhead__filter')
+  await expect(funnel).toBeVisible()
+})

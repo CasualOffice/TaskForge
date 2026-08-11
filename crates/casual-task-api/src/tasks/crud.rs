@@ -476,6 +476,26 @@ pub async fn list(
         tracing::error!(%error, "listing tasks failed");
         ApiError::internal(&request_id)
     })?;
+
+    // Who is on each task, for the whole page in one query, and inside the same
+    // transaction as the page itself. Resolved per row this would be fifty
+    // requests for a page of fifty — the difference between a list that can
+    // show whose work this is and one that cannot afford to, and "what is mine"
+    // is the question a list is opened with.
+    //
+    // The extra row the keyset fetches to answer "has more" is looked up too
+    // and then dropped with it; one id is cheaper than a second round trip.
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let mut by_task: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for (task_id, user_id) in task::assignees_for(&mut scoped, &ids)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "reading the page's assignees failed");
+            ApiError::internal(&request_id)
+        })?
+    {
+        by_task.entry(task_id).or_default().push(user_id);
+    }
     unit::commit(tx, &request_id).await?;
 
     let has_more = rows.len() > limit as usize;
@@ -493,7 +513,9 @@ pub async fn list(
         .iter()
         .map(|row| {
             let key = keys.get(&row.project_id).map_or("", String::as_str);
-            view(row, key)
+            let mut built = view(row, key);
+            built.assignees = by_task.remove(&row.id).unwrap_or_default();
+            built
         })
         .collect();
 

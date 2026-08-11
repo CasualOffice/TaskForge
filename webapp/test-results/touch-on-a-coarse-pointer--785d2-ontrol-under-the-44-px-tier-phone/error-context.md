@@ -12,12 +12,12 @@
 # Error details
 
 ```
-Error: controls under 44 px: A.skip-link h=31 | A.shell__brand h=22 | BUTTON.shell__search h=32 | BUTTON. h=28 | BUTTON.shell__account h=38 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | INPUT. h=23 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | A.list__open list__open--t h=38
+Error: controls under 44 px: A.skip-link h=31 | A.shell__brand h=22 | BUTTON.shell__search h=32 | BUTTON. h=28 | BUTTON.shell__account h=38 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | INPUT. h=23 | SELECT. h=34 | SELECT. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | A.list__open list__open--t h=38
 
 expect(received).toEqual(expected) // deep equality
 
 - Expected  -  1
-+ Received  + 19
++ Received  + 17
 
 - Array []
 + Array [
@@ -30,8 +30,6 @@ expect(received).toEqual(expected) // deep equality
 +   "BUTTON. h=34",
 +   "SELECT. h=34",
 +   "INPUT. h=23",
-+   "BUTTON. h=34",
-+   "BUTTON. h=34",
 +   "SELECT. h=34",
 +   "SELECT. h=34",
 +   "BUTTON. h=34",
@@ -113,41 +111,37 @@ expect(received).toEqual(expected) // deep equality
           - generic [ref=e78]:
             - generic [ref=e79]: Search tasks
             - searchbox "Search tasks" [ref=e82]
-            - button "Priority" [ref=e84] [cursor=pointer]:
-              - generic [ref=e86]: expand_more
-            - button "Type" [ref=e88] [cursor=pointer]:
-              - generic [ref=e90]: expand_more
-            - generic [ref=e91]: Assignee
-            - generic [ref=e93]:
-              - combobox "Assignee" [ref=e94] [cursor=pointer]:
+            - generic [ref=e83]: Assignee
+            - generic [ref=e85]:
+              - combobox "Assignee" [ref=e86] [cursor=pointer]:
                 - option "Anyone" [selected]
                 - option "Me"
                 - option "Unassigned"
                 - option
               - generic: arrow_drop_down
-            - generic [ref=e95]: Due
-            - generic [ref=e97]:
-              - combobox "Due" [ref=e98] [cursor=pointer]:
+            - generic [ref=e87]: Due
+            - generic [ref=e89]:
+              - combobox "Due" [ref=e90] [cursor=pointer]:
                 - option "Any due date" [selected]
                 - option "Overdue"
                 - option "Due today or earlier"
                 - option "Due within a week"
                 - option "Due within a month"
               - generic: arrow_drop_down
-            - button "More" [ref=e100] [cursor=pointer]:
-              - generic [ref=e102]: expand_more
-          - generic [ref=e103]: Group by
-          - generic [ref=e105]:
-            - combobox "Group by" [ref=e106] [cursor=pointer]:
+            - button "More" [ref=e92] [cursor=pointer]:
+              - generic [ref=e94]: expand_more
+          - generic [ref=e95]: Group by
+          - generic [ref=e97]:
+            - combobox "Group by" [ref=e98] [cursor=pointer]:
               - option "No grouping" [selected]
               - option "Group by status — needs a project" [disabled]
               - option "Group by state"
               - option "Group by type"
               - option "Group by priority"
             - generic: arrow_drop_down
-          - generic [ref=e107]: Sort by
-          - generic [ref=e109]:
-            - combobox "Sort by" [ref=e110] [cursor=pointer]:
+          - generic [ref=e99]: Sort by
+          - generic [ref=e101]:
+            - combobox "Sort by" [ref=e102] [cursor=pointer]:
               - option "Last updated ↓" [selected]
               - option "Last updated ↑"
               - option "Created ↓"
@@ -161,21 +155,23 @@ expect(received).toEqual(expected) // deep equality
               - option "Identifier ↓"
               - option "Identifier ↑"
             - generic: arrow_drop_down
-        - table [ref=e112]:
-          - rowgroup [ref=e113]:
-            - row [ref=e114]:
-              - cell "Bug" [ref=e115]
-              - cell [ref=e117]:
-                - link "ONB-12" [ref=e118] [cursor=pointer]:
+        - table [ref=e104]:
+          - rowgroup [ref=e105]:
+            - row [ref=e106]:
+              - cell "Bug" [ref=e107]
+              - cell [ref=e109]:
+                - link "ONB-12" [ref=e110] [cursor=pointer]:
                   - /url: /tasks/019fe000-0000-7000-8000-000000000004
+              - cell [ref=e111]:
+                - link "Fix the mobile task layout so the title survives a narrow screen instead of collapsing" [ref=e112] [cursor=pointer]:
+                  - /url: /tasks/019fe000-0000-7000-8000-000000000004
+              - cell "Active" [ref=e113]
+              - cell "—" [ref=e115]
+              - cell "High" [ref=e116]
+              - cell "—" [ref=e118]
               - cell [ref=e119]:
-                - link "Fix the mobile task layout so the title survives a narrow screen instead of collapsing" [ref=e120] [cursor=pointer]:
-                  - /url: /tasks/019fe000-0000-7000-8000-000000000004
-              - cell "High" [ref=e121]
-              - cell "—" [ref=e123]
-              - cell [ref=e124]:
-                - time [ref=e125]: Jan 2, 2026
-  - status [ref=e126]
+                - time [ref=e120]: Jan 2, 2026
+  - status [ref=e121]
 ```
 
 # Test source
@@ -226,7 +222,7 @@ expect(received).toEqual(expected) // deep equality
   43 |       })
   44 | 
 > 45 |       expect(small, `controls under 44 px: ${small.join(' | ')}`).toEqual([])
-     |                                                                   ^ Error: controls under 44 px: A.skip-link h=31 | A.shell__brand h=22 | BUTTON.shell__search h=32 | BUTTON. h=28 | BUTTON.shell__account h=38 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | INPUT. h=23 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | A.list__open list__open--t h=38
+     |                                                                   ^ Error: controls under 44 px: A.skip-link h=31 | A.shell__brand h=22 | BUTTON.shell__search h=32 | BUTTON. h=28 | BUTTON.shell__account h=38 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | INPUT. h=23 | SELECT. h=34 | SELECT. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | A.list__open list__open--t h=38
   46 |     })
   47 |   }
   48 | })

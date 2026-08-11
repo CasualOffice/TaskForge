@@ -90,41 +90,37 @@ Received:    583
           - generic [ref=e78]:
             - generic [ref=e79]: Search tasks
             - searchbox "Search tasks" [ref=e82]
-            - button "Priority" [ref=e84] [cursor=pointer]:
-              - generic [ref=e86]: expand_more
-            - button "Type" [ref=e88] [cursor=pointer]:
-              - generic [ref=e90]: expand_more
-            - generic [ref=e91]: Assignee
-            - generic [ref=e93]:
-              - combobox "Assignee" [ref=e94] [cursor=pointer]:
+            - generic [ref=e83]: Assignee
+            - generic [ref=e85]:
+              - combobox "Assignee" [ref=e86] [cursor=pointer]:
                 - option "Anyone" [selected]
                 - option "Me"
                 - option "Unassigned"
                 - option
               - generic: arrow_drop_down
-            - generic [ref=e95]: Due
-            - generic [ref=e97]:
-              - combobox "Due" [ref=e98] [cursor=pointer]:
+            - generic [ref=e87]: Due
+            - generic [ref=e89]:
+              - combobox "Due" [ref=e90] [cursor=pointer]:
                 - option "Any due date" [selected]
                 - option "Overdue"
                 - option "Due today or earlier"
                 - option "Due within a week"
                 - option "Due within a month"
               - generic: arrow_drop_down
-            - button "More" [ref=e100] [cursor=pointer]:
-              - generic [ref=e102]: expand_more
-          - generic [ref=e103]: Group by
-          - generic [ref=e105]:
-            - combobox "Group by" [ref=e106] [cursor=pointer]:
+            - button "More" [ref=e92] [cursor=pointer]:
+              - generic [ref=e94]: expand_more
+          - generic [ref=e95]: Group by
+          - generic [ref=e97]:
+            - combobox "Group by" [ref=e98] [cursor=pointer]:
               - option "No grouping" [selected]
               - option "Group by status — needs a project" [disabled]
               - option "Group by state"
               - option "Group by type"
               - option "Group by priority"
             - generic: arrow_drop_down
-          - generic [ref=e107]: Sort by
-          - generic [ref=e109]:
-            - combobox "Sort by" [ref=e110] [cursor=pointer]:
+          - generic [ref=e99]: Sort by
+          - generic [ref=e101]:
+            - combobox "Sort by" [ref=e102] [cursor=pointer]:
               - option "Last updated ↓" [selected]
               - option "Last updated ↑"
               - option "Created ↓"
@@ -138,21 +134,23 @@ Received:    583
               - option "Identifier ↓"
               - option "Identifier ↑"
             - generic: arrow_drop_down
-        - table [ref=e112]:
-          - rowgroup [ref=e113]:
-            - row [ref=e114]:
-              - cell "Bug" [ref=e115]
-              - cell [ref=e117]:
-                - link "ONB-12" [ref=e118] [cursor=pointer]:
+        - table [ref=e104]:
+          - rowgroup [ref=e105]:
+            - row [ref=e106]:
+              - cell "Bug" [ref=e107]
+              - cell [ref=e109]:
+                - link "ONB-12" [ref=e110] [cursor=pointer]:
                   - /url: /tasks/019fe000-0000-7000-8000-000000000004
+              - cell [ref=e111]:
+                - link "Fix the mobile task layout so the title survives a narrow screen instead of collapsing" [ref=e112] [cursor=pointer]:
+                  - /url: /tasks/019fe000-0000-7000-8000-000000000004
+              - cell "Active" [ref=e113]
+              - cell "—" [ref=e115]
+              - cell "High" [ref=e116]
+              - cell "—" [ref=e118]
               - cell [ref=e119]:
-                - link "Fix the mobile task layout so the title survives a narrow screen instead of collapsing" [ref=e120] [cursor=pointer]:
-                  - /url: /tasks/019fe000-0000-7000-8000-000000000004
-              - cell "High" [ref=e121]
-              - cell "—" [ref=e123]
-              - cell [ref=e124]:
-                - time [ref=e125]: Jan 2, 2026
-  - status [ref=e126]
+                - time [ref=e120]: Jan 2, 2026
+  - status [ref=e121]
 ```
 
 # Test source
@@ -284,4 +282,12 @@ Received:    583
   123 |   expect(scrollers.length, `more than one scroller: ${scrollers.join(', ')}`).toBeLessThanOrEqual(1)
   124 | })
   125 | 
+  126 | test('the list shows status and assignee, and filters on the column', async ({
+  127 |   page,
+  128 |   isMobile,
+  129 | }) => {
+  130 |   // Desktop only: the narrow composition is a stacked summary with no column
+  131 |   // headings at all, so there is nothing here to hang a column filter on.
+  132 |   test.skip(isMobile, 'the narrow row is a stacked summary, not a table')
+  133 |   // Both columns were absent, and they are the two fields people scan a list
 ```

@@ -106,10 +106,10 @@ Received:    583
               - heading "Your profile" [level=1] [ref=e85]
               - paragraph [ref=e86]: Signed in as test@example.test. The address cannot be changed here.
             - generic [ref=e87]:
-              - paragraph [ref=e88]:
+              - generic [ref=e88]:
                 - generic [ref=e89]: Display name
                 - textbox "Display name" [ref=e92]: Test Person
-              - paragraph [ref=e93]:
+              - generic [ref=e93]:
                 - generic [ref=e94]: Time zone
                 - textbox "Time zone" [ref=e97]:
                   - /placeholder: Asia/Calcutta
@@ -121,14 +121,14 @@ Received:    583
               - heading "Password" [level=2] [ref=e104]
               - paragraph [ref=e105]: Changing it signs out every other session, including your other devices. This one stays.
             - generic [ref=e106]:
-              - paragraph [ref=e107]:
+              - generic [ref=e107]:
                 - generic [ref=e108]: Current password
                 - textbox "Current password" [ref=e111]
-              - paragraph [ref=e112]:
+              - generic [ref=e112]:
                 - generic [ref=e113]: New password
                 - textbox "New password" [ref=e116]
                 - generic [ref=e117]: At least 12 characters.
-              - paragraph [ref=e118]:
+              - generic [ref=e118]:
                 - generic [ref=e119]: New password again
                 - textbox "New password again" [ref=e122]
               - button "Change password" [disabled] [ref=e123]
@@ -286,4 +286,12 @@ Received:    583
   123 |   expect(scrollers.length, `more than one scroller: ${scrollers.join(', ')}`).toBeLessThanOrEqual(1)
   124 | })
   125 | 
+  126 | test('the list shows status and assignee, and filters on the column', async ({
+  127 |   page,
+  128 |   isMobile,
+  129 | }) => {
+  130 |   // Desktop only: the narrow composition is a stacked summary with no column
+  131 |   // headings at all, so there is nothing here to hang a column filter on.
+  132 |   test.skip(isMobile, 'the narrow row is a stacked summary, not a table')
+  133 |   // Both columns were absent, and they are the two fields people scan a list
 ```

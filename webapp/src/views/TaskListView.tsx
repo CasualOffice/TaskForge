@@ -22,13 +22,18 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
-import type { Sort, SortKey, TaskQuery } from '../api/tasks'
+import { PRIORITIES, TASK_TYPES, type Sort, type SortKey, type TaskQuery } from '../api/tasks'
 import { ErrorNotice } from '../shell/notice'
 import { useAppSearch, useOpenTask } from '../shell/navigation'
 import { useWorkspaceId } from '../shell/session'
 import { useLiveUpdates } from '../live/useLiveUpdates'
 import { useTaskFeed } from '../tasks/feed'
 import { filterFromSearch } from '../tasks/query'
+import { priorityLabel, typeLabel } from '../tasks/present'
+import { FilterHeader } from './list/FilterHeader'
+import { listMembers, directory } from '../api/workspaces'
+import { keys } from '../api/keys'
+import { useQuery } from '@tanstack/react-query'
 import { useProjectWorkflow } from '../tasks/useWorkflow'
 import { CreateTask } from './CreateTask'
 import { PageHeader } from '../shell/PageHeader'
@@ -50,6 +55,25 @@ export function TaskListView(): ReactElement {
   const [sort, setSort] = useSortPreference()
   const [group, setGroup] = useState<GroupKey | undefined>(undefined)
   const { workflow } = useProjectWorkflow(search.project)
+
+  // The vocabularies the column filters offer. Statuses belong to the scoped
+  // project's workflow; at workspace scope there is no single set to offer, so
+  // that column filters on nothing rather than on a list that is wrong for most
+  // of the rows in front of the reader.
+  const statusOptions = (workflow?.statuses ?? []).map((status) => ({
+    value: status.id,
+    label: status.name,
+  }))
+  const statusName = (id: string): string | undefined =>
+    (workflow?.statuses ?? []).find((status) => status.id === id)?.name
+
+  const members = useQuery({
+    queryKey: keys.members(workspaceId),
+    queryFn: ({ signal }) => listMembers(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+  const nameOf = directory(members.data?.data ?? [])
   // Empty unless grouping is on. Each group runs its own keyset-paged query —
   // see `list/grouping.ts` for why the page is never grouped in the browser.
   const groups = group === undefined ? [] : groupsFor(group, workflow)
@@ -88,7 +112,14 @@ export function TaskListView(): ReactElement {
         count={`${feed.rows.length}${feed.hasMore ? '+' : ''} shown`}
         actions={<CreateTask projectId={search.project} />}
       />
-      <WorkToolbar sort={sort} onSort={setSort} group={group} onGroup={setGroup} workflow={workflow} />
+      <WorkToolbar
+        sort={sort}
+        onSort={setSort}
+        group={group}
+        onGroup={setGroup}
+        workflow={workflow}
+        onColumns={['status', 'priority', 'type']}
+      />
 
       <div className="view__body" ref={scrollRef}>
         {feed.error !== null && feed.error !== undefined ? (
@@ -100,14 +131,37 @@ export function TaskListView(): ReactElement {
         <table className="list" role="table">
           <thead className="list__head">
             <tr>
-              <th scope="col" className="list__cell list__cell--type">
-                Type
-              </th>
+              <FilterHeader
+                label="Type"
+                field="type"
+                options={TASK_TYPES.map((t) => ({ value: t, label: typeLabel(t) }))}
+                className="list__cell--type"
+              />
               <SortableHeader label="Key" column="key" sort={sort} onSort={setSort} />
               <th scope="col" className="list__cell list__cell--title">
                 Title
               </th>
-              <SortableHeader label="Priority" column="priority" sort={sort} onSort={setSort} />
+              {/* Filters live on the column they narrow, which is where every
+                  application of this kind puts them. A toolbar of dropdowns
+                  makes a reader map "Status" in one place onto a column in
+                  another, and the mapping is the work. */}
+              <FilterHeader label="Status" field="status" options={statusOptions} />
+              {/* Display only. The assignee filter stays in the toolbar because
+                  it carries three meanings a checkbox list cannot — anyone, me,
+                  and *unassigned*, which the grammar spells as a
+                  present-and-empty value. A column filter here would silently
+                  drop the one of those people use most. */}
+              <th scope="col" className="list__cell">
+                Assignee
+              </th>
+              <FilterHeader
+                label="Priority"
+                field="priority"
+                options={PRIORITIES.map((p) => ({ value: p, label: priorityLabel(p) }))}
+                sortColumn="priority"
+                sort={sort}
+                onSort={setSort}
+              />
               <SortableHeader label="Due" column="due_at" sort={sort} onSort={setSort} />
               <SortableHeader label="Updated" column="updated_at" sort={sort} onSort={setSort} />
             </tr>
@@ -121,6 +175,8 @@ export function TaskListView(): ReactElement {
                 key={entry.id}
                 workspaceId={workspaceId}
                 group={entry}
+                statusName={statusName}
+                nameOf={nameOf}
                 search={search}
                 sort={sort}
                 onOpen={openTask}
@@ -138,6 +194,8 @@ export function TaskListView(): ReactElement {
                   <TaskRow
                     key={task.id}
                     task={task}
+                    statusName={statusName}
+                    nameOf={nameOf}
                     onOpen={openTask}
                     style={{
                       position: 'absolute',

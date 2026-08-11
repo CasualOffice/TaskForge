@@ -528,6 +528,32 @@ pub async fn may_be_assigned(
 /// # Errors
 ///
 /// Any database error.
+/// Who is on each of these tasks — one query for a page, not one per row.
+///
+/// The same shape `activity::actor_names` uses, and for the same reason: a list
+/// that resolved this per row would make a page of fifty tasks fifty requests,
+/// which is the difference between a list that shows who is on the work and a
+/// list that cannot afford to.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn assignees_for(
+    scoped: &mut Scoped<'_>,
+    task_ids: &[Uuid],
+) -> Result<Vec<(Uuid, Uuid)>, sqlx::Error> {
+    if task_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT task_id, user_id FROM task_assignee WHERE task_id = ANY($1) ORDER BY task_id",
+    )
+    .bind(task_ids)
+    .fetch_all(scoped.conn())
+    .await?;
+    Ok(rows)
+}
+
 pub async fn assignees(scoped: &mut Scoped<'_>, task_id: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
     sqlx::query_scalar(
         "SELECT user_id FROM task_assignee

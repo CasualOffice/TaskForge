@@ -45,12 +45,17 @@ export function TaskGroup({
   search,
   sort,
   onOpen,
+  statusName,
+  nameOf,
 }: {
   workspaceId: string
   group: Group
   search: AppSearch
   sort: Sort
   onOpen: (id: string) => void
+  /** Passed through so a grouped row reads exactly like an ungrouped one. */
+  statusName?: (id: string) => string | undefined
+  nameOf?: (id: string) => string
 }): ReactElement {
   const [open, setOpen] = useState(true)
 
@@ -111,7 +116,13 @@ export function TaskGroup({
             : null}
 
           {feed.rows.map((task) => (
-            <TaskRow key={task.id} task={task} onOpen={onOpen} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              onOpen={onOpen}
+              statusName={statusName}
+              nameOf={nameOf}
+            />
           ))}
 
           {feed.hasMore ? (
