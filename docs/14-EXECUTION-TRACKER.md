@@ -375,6 +375,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-029 | **State-occupancy projection** — `task_state_interval`, maintained and rebuildable | **Gated** |
 | C-030 | **Duration measures** — cycle time, lead time, throughput | **Gated** |
 | C-031 | **Popover placement and the narrow list row** — two release blockers | `Built` |
+| C-032 | **The browser layer** — geometry, reflow and touch targets, measured | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -390,6 +391,28 @@ nobody has seen fail is a suite nobody should trust.
 client — the transfer, promotion and verification forms — is not. It is the
 least risky of the four (a form that posts what was typed, with no derived
 scope in between), which is why it is last, not why it is fine.
+
+**C-032 exists because three changes in a row shipped with "not visually
+verified" in their descriptions.** jsdom has no layout and no painting, so a
+popover positioned off-screen, a metadata rail stacked above the title it
+belonged under, and a list row whose title collapsed to nothing all passed
+`tsc`, `eslint` and the axe suite on their way out. The browser layer asserts
+geometry: what is on the screen, how wide it is, whether anything overflows, and
+how big a control is under a finger.
+
+It found three of the audit's open items on its first run, and they are recorded
+as **expected failures** rather than skipped — the assertion still runs, and the
+day the layout is fixed the suite reports an *unexpected pass* and forces the
+marker to be deleted. A skipped test is a test nobody removes.
+
+- **item 2** — the shell is wider than a 390 px viewport on several routes
+- **item 3** — the stacked list row does not hold at 390 px
+- **item 5** — controls under the 44 px tier
+
+`/settings/roles` and the task detail route are **not** covered: both need a
+much fuller fixture than a layout suite should carry, and a stub grown to
+satisfy them is a stub nobody trusts. Their behaviour is covered by the jsdom
+suite; their geometry is not.
 
 **C-029 is `Gated` now that C-030 reads it.** The
 projection exists, the outbox maintains it, and

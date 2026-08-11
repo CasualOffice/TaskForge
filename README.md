@@ -48,7 +48,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 <!-- phase-1-landed:begin -->
-**Phase 1 is under way.** 30 items started, 9 gated:
+**Phase 1 is under way.** 31 items started, 9 gated:
 
 - **Projects, membership, visibility** (C-006) — `Gated`
 - **SSE + fan-out** (C-015) — `Gated`
@@ -67,6 +67,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **Chain of custody — team transfer, environment promotion, verification, `/me/queue`** (C-022) — `Built`
 - **Stylesheet gate — one spacing scale, no duplicate rules** (C-027) — `Built`
 - **Popover placement and the narrow list row — two release blockers** (C-031) — `Built`
+- **The browser layer — geometry, reflow and touch targets, measured** (C-032) — `Built`
 - **Identity, sessions, MFA, invitations** (C-001) — `Building`
 - **Permission resolver + `/explain`** (C-003) — `Building`
 - **Permission matrix + escalation suites** (C-004) — `Building`
@@ -146,7 +147,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
 | **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
-| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 9/31 (8 built, 13 building) | `███░░░░░░░` 29% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 9/32 (9 built, 13 building) | `███░░░░░░░` 28% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
 *Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*
