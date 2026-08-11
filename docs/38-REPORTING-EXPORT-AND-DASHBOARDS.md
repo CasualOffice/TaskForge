@@ -170,10 +170,11 @@ query's own pipeline** — `compile_group_count` sits beside `compile` in the sa
 module, so the tenant predicate and the authorized project set are injected in
 exactly one place.
 
-The remaining measures wait on `task_state_interval` below and are refused by
-name (`TF-SYS-0007`) rather than approximated. Saved reports and dashboards are
-not built; a run is ad-hoc, and its "saved" form is the URL the toolbar already
-produces.
+`cycle_time`, `lead_time` and `throughput` joined it in C-030, reading the
+projection below; `age`, `time_in_state` and `created_vs_completed` are still
+refused **by name** (`TF-SYS-0007`) rather than approximated. Saved reports are
+not built — a run is ad-hoc, and its "saved" form is the URL the toolbar already
+produces. Dashboards ship as the four built-ins (C-035, §Dashboards below).
 
 ### Report execution limits
 
@@ -247,6 +248,46 @@ sufficient:
 If a built-in dashboard needed a capability the model lacks, that is the signal
 the model is under-specified. That is why they are defined this way rather than
 hand-built.
+
+### What is built today (C-035)
+
+All four dashboards ship, as **data** — `webapp/src/views/dashboard/builtin.ts`
+holds nothing but `filter` + `measure` + `group_by` + `bucket` per tile, posted
+to the same `POST /reports/run` a user-composed dashboard will use. There is no
+private path a built-in tile can take that a saved report could not.
+
+Writing them out did what this section predicted it would, and the model came
+up short in four places. They are **absent rather than approximated** — a wrong
+number on a dashboard gets quoted in a meeting, where a missing one gets asked
+about:
+
+| Tile | Blocked on |
+| --- | --- |
+| Created vs completed | `created_vs_completed` — two series in one answer |
+| Age of oldest open | `age` |
+| Reopen rate | a measure over `COMPLETED → ACTIVE` transitions |
+| Time in state | `time_in_state` (server refuses it by name) |
+
+Five of the six visualizations are built: `number`, `bar`, `line`,
+`stacked_bar`, `table`. `heatmap` is not, because no built-in tile needs one and
+a menu is a promise.
+
+**There is no charting library.** The closed visualization set is what makes
+that possible — six shapes is a set you can draw, and the whole dashboard route
+including its stylesheet is 5.1 KiB gzip against the ~95 KiB a chart library
+would have cost. Every chart renders its SVG `aria-hidden` beside a
+visually-hidden `<table>` of the same numbers, per [47](47-TASK-SURFACE-TEMPLATE.md):
+the drawing is decoration, the table is the content.
+
+Saved reports and user-composed dashboards are still not built. A dashboard is
+selected by URL (`/dashboards/{id}`) and its tiles are fixed.
+
+**Tile concurrency is bounded in the browser.** Nine tiles mounting together
+sent nine reports at once and a run of them came back `503`. §Report execution
+limits caps concurrency at 5 per workspace, and the edge's answer to breaching
+it is a refusal — which renders as an error in a tile whose number was
+perfectly computable. So the client queues its own tiles at 4, leaving a slot
+for a second tab.
 
 ## What this deliberately is not
 

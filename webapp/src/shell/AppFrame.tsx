@@ -154,6 +154,7 @@ function Sidebar(): ReactElement {
         <SideLink to="/" label="All tasks" icon="checklist" exact />
         <SideLink to="/board" label="Board" icon="view_kanban" />
         <SideLink to="/environments" label="Environments" icon="lan" />
+        <SideLink to="/dashboards" label="Dashboards" icon="dashboard" />
         <SideLink to="/reports" label="Reports" icon="monitoring" />
       </ul>
 

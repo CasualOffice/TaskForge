@@ -19,7 +19,13 @@
  * target.
  */
 import { lazy, Suspense, type ReactElement } from 'react'
-import { createRootRoute, createRoute, createRouter, type AnyRoute } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+  type AnyRoute,
+} from '@tanstack/react-router'
 
 import { SettingsLayout } from './settings/SettingsLayout'
 import { AppFrame } from './shell/AppFrame'
@@ -30,6 +36,15 @@ import { MyWorkView } from './views/MyWorkView'
 import { TaskListView } from './views/TaskListView'
 
 const ReportsView = lazy(() => import('./views/ReportsView'))
+/**
+ * Dashboards are lazy, and take the charts with them.
+ *
+ * `docs/38`: "The dashboard route is a lazy chunk; the charting library is not
+ * in the core bundle." There is no charting library — the shapes are drawn by
+ * hand — but the rule holds for the drawing code and its stylesheet all the
+ * same: someone who lives in the board should not pay for five chart types.
+ */
+const DashboardView = lazy(() => import('./views/dashboard/DashboardView'))
 /** The second clock's surface. Lazy for the same reason Reports is. */
 const EnvironmentView = lazy(() => import('./views/EnvironmentView'))
 
@@ -286,6 +301,38 @@ const environmentsRoute = createRoute({
     )
   },
 })
+/**
+ * `/dashboards` redirects to the first one rather than being a chooser.
+ *
+ * A landing page whose only content is four links to the real pages is a click
+ * someone pays on every visit. The switcher lives *on* a dashboard, so arriving
+ * always lands on numbers.
+ */
+const dashboardsIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboards',
+  beforeLoad: () => {
+    throw redirect({ to: '/dashboards/$id', params: { id: 'my-work' } })
+  },
+})
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboards/$id',
+  component: function DashboardRoute(): ReactElement {
+    const { id } = dashboardRoute.useParams()
+    return (
+      <Suspense
+        fallback={
+          <p className="empty" role="status">
+            Loading the dashboard…
+          </p>
+        }
+      >
+        <DashboardView id={id} />
+      </Suspense>
+    )
+  },
+})
 const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reports',
@@ -372,6 +419,8 @@ export const routeTree = rootRoute.addChildren([
   myWorkRoute,
   taskRoute,
   reportsRoute,
+  dashboardsIndexRoute,
+  dashboardRoute,
   environmentsRoute,
   settingsRoute.addChildren(settingsChildren),
 ])
