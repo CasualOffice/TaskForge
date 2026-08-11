@@ -267,4 +267,12 @@ Received:    583
   123 |   expect(scrollers.length, `more than one scroller: ${scrollers.join(', ')}`).toBeLessThanOrEqual(1)
   124 | })
   125 | 
+  126 | test('the list shows status and assignee, and filters on the column', async ({
+  127 |   page,
+  128 |   isMobile,
+  129 | }) => {
+  130 |   // Desktop only: the narrow composition is a stacked summary with no column
+  131 |   // headings at all, so there is nothing here to hang a column filter on.
+  132 |   test.skip(isMobile, 'the narrow row is a stacked summary, not a table')
+  133 |   // Both columns were absent, and they are the two fields people scan a list
 ```

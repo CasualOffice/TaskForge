@@ -376,6 +376,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-030 | **Duration measures** — cycle time, lead time, throughput | **Gated** |
 | C-031 | **Popover placement and the narrow list row** — two release blockers | `Built` |
 | C-032 | **The browser layer** — geometry, reflow and touch targets, measured | `Built` |
+| C-033 | **The list, to its own spec** — status, assignee, column filters, grouping | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by

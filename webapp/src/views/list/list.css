@@ -13,6 +13,25 @@
  * this file introduces no palette of its own.
  */
 
+/* A group body fills the table.
+ *
+ * `.list` is `display: block`, so a `<tbody>` inside it is a block box that
+ * shrinks to its content — and the grid rows inside it sized against *that*
+ * rather than against the table. Measured: with grouping on, the header row was
+ * 1127 px with a 571 px title column while every data row was 657 px with a
+ * 101 px title. The columns stopped lining up with their own headings, which is
+ * the whole point of a table.
+ *
+ * The ungrouped body never showed it because the virtualizer gives that
+ * `<tbody>` an explicit width and height of its own. */
+.group {
+  display: block;
+  width: 100%;
+}
+.group .list__row {
+  width: 100%;
+}
+
 /* The list's rows are `display: grid` — that is what lets the virtualized body
  * position them absolutely while keeping columns aligned. A group header and a
  * group note are single-cell rows inside that same table, so without opting out
@@ -77,4 +96,117 @@
 .group .list__row {
   position: static;
   transform: none;
+}
+
+/* ── A column that filters itself ────────────────────────────────────────
+ *
+ * The control sits on the column it narrows. A toolbar of dropdowns makes a
+ * reader map "Status" in one place onto a column somewhere else, and that
+ * mapping is the work.
+ */
+.colhead__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-hair);
+  min-width: 0;
+}
+.colhead__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.colhead__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  /* Hidden until the column is hovered, focused, or actually filtering — a
+     funnel on every heading is eight funnels competing with eight labels. */
+  opacity: 0;
+}
+.colhead__row:hover .colhead__filter,
+.colhead__filter:focus-visible,
+.colhead__filter--on {
+  opacity: 1;
+}
+.colhead__filter--on {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.colhead__count {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.colhead__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 200px;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: var(--tf-gap-tight);
+  border: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 10px;
+  background: var(--tf-surface, var(--color-surface));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  text-transform: none;
+  font-weight: 400;
+}
+.colhead__options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.colhead__option {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-hair) var(--tf-gap-hair);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.colhead__option:hover {
+  background: var(--color-hover);
+}
+
+/* Status, as a word with its state's colour behind it. Never colour alone:
+ * WCAG 2.2 §1.4.1, and a reader who cannot tell green from amber still needs to
+ * know what state the work is in. */
+.statuspill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--tf-gap-tight);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  background: var(--color-surface-alt);
+  color: var(--color-text-secondary);
+}
+.statuspill--active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+.statuspill--completed {
+  background: var(--color-success-soft, var(--color-surface-alt));
+  color: var(--color-success);
+}
+.statuspill--canceled {
+  text-decoration: line-through;
+}
+.list__cell--who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list__nobody {
+  color: var(--color-text-muted);
 }

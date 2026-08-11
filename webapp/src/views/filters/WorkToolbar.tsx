@@ -83,6 +83,7 @@ export function WorkToolbar({
   group,
   onGroup,
   workflow: groupWorkflow,
+  onColumns,
   children,
 }: {
   /** Absent on the board, which is ordered by board rank and by nothing else. */
@@ -93,11 +94,23 @@ export function WorkToolbar({
   onGroup?: (next: GroupKey | undefined) => void
   /** Needed to name the status groups, and to say why they are unavailable. */
   workflow?: Workflow | undefined
+  /**
+   * Fields the surface filters on its own column headings.
+   *
+   * The list puts its filters on the columns they narrow, which is where every
+   * application of this kind puts them — a toolbar dropdown makes a reader map
+   * "Status" in one place onto a column somewhere else. The board and the
+   * report have no column headings, so they keep theirs here, and the toolbar
+   * is told rather than guessing which surface it is on.
+   */
+  onColumns?: readonly ('status' | 'priority' | 'type')[]
   /** The create control, which the ordering puts last. */
   children?: ReactNode
 }): ReactElement {
   const workspaceId = useWorkspaceId()
   const search = useAppSearch()
+  const owns = (field: 'status' | 'priority' | 'type'): boolean =>
+    onColumns?.includes(field) ?? false
   const update = useUpdateSearch()
   const { workflow } = useProjectWorkflow(search.project)
 
@@ -204,7 +217,7 @@ export function WorkToolbar({
           onChange={(event) => setTerm(event.target.value)}
         />
 
-        {statusOptions.length === 0 ? null : (
+        {statusOptions.length === 0 || owns('status') ? null : (
           <FilterMenu
             label="Status"
             options={statusOptions}
@@ -213,19 +226,23 @@ export function WorkToolbar({
           />
         )}
 
-        <FilterMenu
-          label="Priority"
-          options={priorityOptions}
-          selected={search.priority}
-          onChange={(next) => update({ priority: next })}
-        />
+        {owns('priority') ? null : (
+          <FilterMenu
+            label="Priority"
+            options={priorityOptions}
+            selected={search.priority}
+            onChange={(next) => update({ priority: next })}
+          />
+        )}
 
-        <FilterMenu
-          label="Type"
-          options={typeOptions}
-          selected={search.type}
-          onChange={(next) => update({ type: next })}
-        />
+        {owns('type') ? null : (
+          <FilterMenu
+            label="Type"
+            options={typeOptions}
+            selected={search.type}
+            onChange={(next) => update({ type: next })}
+          />
+        )}
 
         <label className="visually-hidden" htmlFor="filter-assignee">
           Assignee

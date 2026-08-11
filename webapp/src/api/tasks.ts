@@ -38,6 +38,12 @@ export interface Task {
   readonly reporter_id: string
   /** The owning team, or `null` for the triage queue (`docs/45`). */
   readonly team_id: string | null
+  /**
+   * Who is on it. Present on the list, which resolves it for the whole page in
+   * one query; absent elsewhere, because a caller that needs it for one task
+   * asks `GET /tasks/{id}/assignees`.
+   */
+  readonly assignees?: readonly string[]
   readonly environment_id: string | null
   readonly milestone_id: string | null
   readonly parent_id: string | null
