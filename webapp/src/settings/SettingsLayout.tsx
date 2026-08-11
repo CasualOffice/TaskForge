@@ -47,6 +47,9 @@ const GROUPS: ReadonlyArray<{
       { to: '/settings/members', label: 'Members' },
       { to: '/settings/teams', label: 'Teams' },
       { to: '/settings/roles', label: 'Roles' },
+      // Projects immediately above Workflow, because a workflow belongs to a
+      // project and the order is the sentence.
+      { to: '/settings/projects', label: 'Projects' },
       { to: '/settings/workflow', label: 'Workflow' },
       { to: '/settings/environments', label: 'Environments' },
       { to: '/settings/tags', label: 'Tags' },

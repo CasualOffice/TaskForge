@@ -182,3 +182,54 @@ test('the list shows status and assignee, and filters on the column', async ({
   expect(menu?.paintedOnTop).toBe(true)
   expect(menu?.escapesTheTable).toBe(true)
 })
+
+/**
+ * The rail and the header do not move.
+ *
+ * The defect this holds shut: `.shell__main` had no base rule at all, so it was
+ * `overflow: visible` and `display: block`. Its content grew the grid row, grew
+ * the document, and the *whole application* scrolled — the sidebar slid up out
+ * of view and the header slid away with it, on every route long enough to need
+ * scrolling. Two other rules in the same stylesheet already described
+ * `.shell__main` as `hidden`, and the narrow layout overrode it, so the one
+ * composition nobody had a rule for was the one everybody uses.
+ *
+ * Asserted on the document rather than on the shell: "does the page scroll" is
+ * the user-visible fact, and it stays true however the panes are rearranged.
+ */
+for (const path of ['/', '/board', '/reports', '/dashboards/project-health', '/settings/roles']) {
+  test(`${path} scrolls its content, not the whole application`, async ({ page, isMobile }) => {
+    // On a phone the page *is* the scrolling region by design (`docs/47` §3),
+    // so this invariant is a desktop one.
+    test.skip(isMobile, 'the narrow composition scrolls the page on purpose')
+    await page.goto(path)
+    await page.waitForLoadState('networkidle')
+
+    const result = await page.evaluate(() => {
+      // Tall content, injected. Waiting for a route to be long enough on its
+      // own makes the test a hostage to the fixtures: with the shell rule
+      // deleted only one of these five routes had enough stub rows to overflow,
+      // so four of them would have gone on passing through the regression. The
+      // invariant is "however tall the content, the application does not
+      // scroll", so the test supplies the height.
+      const host = document.querySelector('.view__body') ?? document.querySelector('.shell__main')
+      const filler = document.createElement('div')
+      filler.style.height = '3000px'
+      host?.appendChild(filler)
+
+      const doc = document.documentElement
+      return {
+        documentScrolls: doc.scrollHeight > doc.clientHeight + 1,
+        // And the content is reachable rather than merely clipped: something
+        // inside the shell has to have become the scroller.
+        innerScroller:
+          [...document.querySelectorAll('.shell__main, .shell__main *')].some(
+            (el) => el.scrollHeight > el.clientHeight + 1,
+          ),
+      }
+    })
+
+    expect(result.documentScrolls).toBe(false)
+    expect(result.innerScroller).toBe(true)
+  })
+}

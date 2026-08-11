@@ -436,3 +436,38 @@
 .settings__section-head + * {
   margin-top: 0;
 }
+
+/* The project key, as the chip the sidebar already draws it as. Same shape in
+   both places on purpose: it is the same identifier, and a reader matching a
+   row here to an entry in the rail should not have to translate. */
+.projectkey {
+  flex: none;
+  min-width: 34px;
+  padding: 1px var(--tf-gap-hair);
+  border-radius: var(--tf-radius-badge);
+  background: var(--tf-surface-sunken);
+  border: 1px solid var(--tf-border);
+  font: var(--tf-code);
+  text-align: center;
+  color: var(--tf-text-muted);
+}
+
+/* A row that has become a form needs to stack, not sit on one line beside a
+   button that is no longer there. */
+.settings__row--form {
+  display: block;
+}
+
+/* A statement of scope, above the thing it scopes. Bordered on the leading edge
+   rather than boxed: it qualifies the panel below it, and a full card would
+   read as a second, competing panel. */
+.settings__note {
+  margin: 0 0 var(--tf-gap-section);
+  padding: var(--tf-gap-field);
+  border-left: 3px solid var(--tf-warning);
+  background: var(--tf-warning-subtle);
+  border-radius: var(--tf-radius-badge);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--tf-text);
+}
