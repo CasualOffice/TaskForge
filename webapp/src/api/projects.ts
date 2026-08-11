@@ -5,7 +5,7 @@
  * project contract has moved twice for reasons that had nothing to do with tasks
  * (ADR-007 froze `key`; visibility gained `TEAM`).
  */
-import { query, request } from './http'
+import { idempotencyKey, query, request } from './http'
 import type { Paged } from './page'
 
 /** `crates/casual-task-api/src/projects.rs` — `ProjectView`. */
@@ -40,4 +40,65 @@ export function readProject(
   signal?: AbortSignal,
 ): Promise<Project> {
   return request<Project>(`/api/v1/projects/${projectId}`, { workspaceId, signal })
+}
+
+/**
+ * Create a project.
+ *
+ * `key` is required and **permanent** (ADR-007): it prefixes every task key
+ * this project will ever mint, and those keys end up in commit messages, chat
+ * and other people's tickets. The server refuses anything but 2–10 characters
+ * starting with an uppercase letter, and refuses a duplicate with a `409` — so
+ * the form says so before the attempt rather than translating a refusal after.
+ */
+export function createProject(
+  workspaceId: string,
+  project: {
+    key: string
+    name: string
+    description?: string | undefined
+    visibility?: ProjectVisibility | undefined
+  },
+): Promise<Project> {
+  return request<Project>('/api/v1/projects', {
+    method: 'POST',
+    workspaceId,
+    idempotencyKey: idempotencyKey(),
+    body: project,
+  })
+}
+
+/**
+ * The visibility values `docs/22`'s enum permits, in widening order.
+ *
+ * Ordered deliberately: a picker that listed them alphabetically would put
+ * `PRIVATE` between `TEAM` and `WORKSPACE` and make "who can see this" read as
+ * an arbitrary list rather than as a scale.
+ */
+export const VISIBILITIES = ['PRIVATE', 'TEAM', 'WORKSPACE'] as const
+export type ProjectVisibility = (typeof VISIBILITIES)[number]
+
+/**
+ * Rename a project, or change what it says and who can see it.
+ *
+ * `key` is deliberately absent from the type: the server answers `422`
+ * (`TF-PRJ-…`) to any attempt to change it, and a field that exists in the
+ * client type is a field someone will eventually send.
+ */
+export function updateProject(
+  workspaceId: string,
+  projectId: string,
+  version: number,
+  patch: {
+    name?: string | undefined
+    description?: string | null | undefined
+    visibility?: ProjectVisibility | undefined
+  },
+): Promise<Project> {
+  return request<Project>(`/api/v1/projects/${projectId}`, {
+    method: 'PATCH',
+    workspaceId,
+    ifMatch: version,
+    body: patch,
+  })
 }

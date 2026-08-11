@@ -27,6 +27,7 @@
 import { Badge, Button, Input, Select } from '@schnsrw/design-system'
 import { useState, type ReactElement } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 
 import { keys } from '../api/keys'
 import {
@@ -63,14 +64,19 @@ export function WorkflowSettings(): ReactElement {
   const mayManage = authority.can('project.workflow.manage')
 
   // The workflow is reached through a project: `GET /workflows/{id}` needs an
-  // id, and a project is where one is published. The first project's workflow
-  // is the default in every workspace this product creates.
+  // id, and a project is where one is published.
   const projects = useQuery({
     queryKey: keys.projects(workspaceId),
     queryFn: ({ signal }) => listProjects(workspaceId, signal),
     enabled: workspaceId !== '',
   })
-  const workflowId = projects.data?.data[0]?.workflow_id
+  // This page took `data[0]?.workflow_id` and said nothing about it, which read
+  // as "the first project's workflow, chosen by whatever order the list came
+  // back in". The truth is simpler and more important: every project in a
+  // workspace shares one default workflow, so editing it here edits every
+  // board. `scopeNote` below says so.
+  const all = projects.data?.data ?? []
+  const workflowId = all[0]?.workflow_id
 
   const workflow = useQuery({
     queryKey: keys.workflow(workspaceId, workflowId ?? ''),
@@ -89,18 +95,66 @@ export function WorkflowSettings(): ReactElement {
   if (workflowId === undefined) {
     return (
       <p className="empty">
-        There are no projects yet, and a workflow belongs to one. Create a project first.
+        There are no projects yet, and a workflow belongs to one.{' '}
+        <Link to="/settings/projects">Create a project</Link> first.
       </p>
     )
   }
-  if (workflow.isPending) return <Loading rows={5} label="Loading the workflow" />
-  if (workflow.error) return <ErrorNotice error={workflow.error} />
-  if (workflow.data === undefined) return <p className="empty">This workflow is unavailable.</p>
-
   const counts = new Map((usage.data?.data ?? []).map((row) => [row.id, row.task_count]))
+
+  // Which projects this workflow actually governs.
+  //
+  // Not a picker, because there is nothing to pick. `ensure_default_workflow`
+  // gives every project in a workspace the *same* default workflow, so a
+  // control offering a project per row would imply a choice that does not
+  // exist and, worse, imply that editing one project's statuses leaves the
+  // others alone — when in fact renaming a column here renames it on every
+  // board in the workspace. The schema is ready for per-project workflows
+  // (`project.workflow_id` is a real column) and nothing creates a second one
+  // yet; **D-066** carries that question. Until it is answered the page says
+  // what is true.
+  //
+  // Written as a comparison rather than as a constant, so the day a second
+  // workflow exists this turns into a picker on its own instead of quietly
+  // going on being wrong.
+  const sharing = all.filter((p) => p.workflow_id === workflowId)
+  const scopeNote =
+    sharing.length <= 1 ? null : (
+      <p className="settings__note" role="note">
+        <strong>Shared by every project.</strong> These statuses and moves are the workspace
+        default, so a change here applies to all {sharing.length} projects —{' '}
+        {sharing.map((p) => p.key).join(', ')}. Per-project workflows are not built yet.
+      </p>
+    )
+
+  if (workflow.isPending) {
+    return (
+      <>
+        {scopeNote}
+        <Loading rows={5} label="Loading the workflow" />
+      </>
+    )
+  }
+  if (workflow.error) {
+    return (
+      <>
+        {scopeNote}
+        <ErrorNotice error={workflow.error} />
+      </>
+    )
+  }
+  if (workflow.data === undefined) {
+    return (
+      <>
+        {scopeNote}
+        <p className="empty">This workflow is unavailable.</p>
+      </>
+    )
+  }
 
   return (
     <>
+      {scopeNote}
       <Statuses
         workflow={workflow.data.data}
         version={workflow.data.version}

@@ -97,6 +97,7 @@ The documentation phase. All complete unless noted.
 | D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Accepted — fail closed. Countersigned by the project owner on 2026-08-10.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
 | D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
 | D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
+| D-066 | **Whether a workflow belongs to a project or to a workspace** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [22](22-DATABASE-SCHEMA.md) | **Open** — surfaced by C-036. `project.workflow_id` is a real column and `ProjectView` has carried it since 0004, which reads as per-project workflows; but `ensure_default_workflow` hands every project in a workspace the *same* default and nothing creates a second one. So renaming a status renames a column on every board in the workspace, and the schema says otherwise. `/settings/workflow` states the shared reality rather than offering a project picker that would imply a choice the product does not have. Accept before a customer authors a second workflow |
 | D-065 | **A time-zone database, so an offset can be derived without a client** | [27](27-FILTER-AND-SAVED-VIEW-DSL.md), [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — `user_account.time_zone` stores an IANA name (migration 0030) and evaluation uses the offset the client sends, which a browser computes correctly including daylight saving. A server-side job has no client to ask, so digests and scheduled notifications cannot resolve `@today` for a user until a tz database is a dependency |
 
 Eight of those are new. **D-038** to **D-043** were opened by Phase 0 audits of
@@ -379,6 +380,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-033 | **The list, to its own spec** — status, assignee, column filters, grouping | `Built` |
 | C-034 | **An empty body is not a payload** — the transport refuses a silent `undefined` | **Gated** |
 | C-035 | **Dashboards** — the four built-ins, five visualizations, no charting library | **Gated** |
+| C-036 | **Projects, and the shell that stopped scrolling** — create and edit a project; the rail and header stay put | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -439,6 +441,42 @@ have started raising. `tsc` could not see it — `unknown` accepts `undefined` �
 which is the argument for the split being a *function* rather than a convention.
 Gated by four cases in `webapp/src/api/http.test.ts` covering both directions,
 each checked by removing the guard and watching them fail.
+
+**C-036 closes two holes that made the product unusable without going around
+it.**
+
+**There was no way to create a project.** A project is what tasks are created
+in, what the board is scoped to, what a workflow belongs to and what permissions
+are granted on — and the only way to get one was a seeding script. So the first
+thing a new workspace owner could do was nothing. `/settings/projects` creates
+and edits them. `key` is offered only at creation and shown read-only
+afterwards, because ADR-007 freezes it and the server answers `422` to any
+attempt to change it: a control that exists and always fails is worse than one
+never drawn. The key is uppercased as it is typed and the hint previews the task
+keys it will mint (`MOB-1, MOB-2`), so the permanence is legible before the
+decision rather than after it.
+
+**`/settings/workflow` was editing a project nobody had chosen.** It took
+`projects.data[0].workflow_id` and said nothing, so with five projects it edited
+one picked by list order. The first fix was a project picker — and that was
+wrong, because it implied a choice the product does not have: `ensure_default_workflow`
+gives every project in a workspace the *same* workflow, so renaming a status
+renames a column on every board. The page now states that instead, naming the
+projects affected. **D-066** carries the underlying question, since
+`project.workflow_id` is a real column and the schema disagrees with the
+behaviour.
+
+**The whole application scrolled.** `.shell__main` had no base rule at all — it
+was `overflow: visible` and `display: block`, so content grew the grid row, grew
+the document, and the sidebar slid up out of view with the header behind it on
+every route long enough to scroll. Two other rules in the same stylesheet
+already described `.shell__main` as `hidden`, and the narrow layout overrode it,
+so the one composition nobody had written a rule for was the one everybody uses.
+
+The gate for it injects 3000 px of content rather than waiting for a route to be
+long enough on its own: with the rule deleted only *one* of five routes had
+enough stub rows to overflow, so four of them would have gone on passing through
+the regression. Verified by deleting the rule and watching all five fail.
 
 **C-035 exists because the product had no dashboard at all.** Reports answered
 one question at a time and had to be driven to answer it; there was nowhere to
