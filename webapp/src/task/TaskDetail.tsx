@@ -42,6 +42,7 @@ import { readTask } from '../api/tasks'
 import { Activity } from './Activity'
 import { CommentThread } from './CommentThread'
 import { Custody } from './Custody'
+import { Attachments } from './Attachments'
 import { RelationsPanel } from './Relations'
 import { Subtasks } from './Subtasks'
 import { EmptyState } from '../shell/EmptyState'
@@ -154,6 +155,10 @@ export function TaskDetail({ taskId }: { taskId: string }): ReactElement {
             <Subtasks taskId={current.id} />
 
             <RelationsPanel taskId={current.id} taskKey={current.key} authority={authority} />
+            <Attachments
+              taskId={current.id}
+              mayUpload={authority.can('task.attachment.create')}
+            />
 
             {/* One region for everything that has happened: the conversation
                 first, because it is what people come back for, and the field

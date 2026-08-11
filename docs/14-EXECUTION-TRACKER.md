@@ -384,6 +384,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-037 | **The phone, to its own spec** — audit items 2, 3 and 5 closed, measured | `Built` |
 | C-038 | **A workspace you can start** — audit item 10; the first run is no longer a dead end | `Built` |
 | C-039 | **The create-task flow, and the workspace in the header** | `Built` |
+| C-040 | **Attachments reach the browser** — the preflight that made `docs/28` usable | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -2943,3 +2944,42 @@ every route under it and every request carry it — and in the rail it read as o
 more item *inside* the navigation, which inverts that. Creating one is a popover
 anchored to a plus beside the name: spelled out as "New workspace" it sat at the
 same weight as search, which is not what a once-a-year action deserves.
+
+**C-040 is one missing HTTP method.** `docs/28`'s pipeline has been complete on
+the server since C-010 — presign, a separate object origin, commit, scan,
+download — and the client had none of it. `task/unbuilt.ts` said attachments
+were unavailable and gave a reason that was *almost* right: it said the object
+origin was served by nothing. It is served, by `objects::object_router` on its
+own listener, and has been.
+
+The real reason is the separation the module exists for. The application is one
+origin and the attachment origin is deliberately another — that is the control
+that stops a stored HTML file executing in the application's origin — so a
+browser `PUT` carrying `Content-Type` is **not a simple request**. It is
+preflighted, the router had no `OPTIONS` route, and the preflight got `405`.
+Presign returned a URL and the browser refused to use it. The pipeline was
+complete and unreachable, and the note explaining why named the wrong cause.
+
+The preflight is served now, hand-written rather than by adding `tower-http`
+for four headers, and scoped to the one origin `TF_PUBLIC_URL` names rather
+than `*` — a presigned URL is already a narrow capability, but "narrow" and
+"anyone who obtains it may spend it" are different properties. The headers are
+on the real responses too, not only the preflight: a browser discards a
+cross-origin response that lacks them, so an upload would have failed *after*
+storing the bytes.
+
+Proved end to end from a browser against the running stack: presign `201`,
+`PUT` `200`, commit `202`.
+
+**What is still not there, and it is not the client.** No scanner exists —
+nothing in the worker sets `CLEAN`, and "Attachment virus scanning" is a task in
+the seeded backlog. `GET /tasks/{id}/attachments` returns only rows with
+`committed_at`, which only the `PENDING → CLEAN` transition sets, so an uploaded
+file is invisible and undownloadable until something scans it. That is D-062
+working as countersigned — fail closed — and the panel says so after an upload
+rather than showing "Nothing attached" over a file that arrived safely.
+
+**Also on the create form**, since a task you cannot attach to is half the
+request: files are chosen before the task exists and uploaded after it, because
+a presigned URL is minted per task. Sequentially, so ten files are ten uploads
+and not thirty requests racing one rate limit.

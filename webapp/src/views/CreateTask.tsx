@@ -59,6 +59,8 @@ import {
   type TaskType,
 } from '../api/tasks'
 import { listMembers } from '../api/workspaces'
+import { uploadAttachment } from '../api/attachments'
+import { fileSize } from '../task/Attachments'
 import { useAnnounce } from '../shell/announce'
 import { useOpenTask } from '../shell/navigation'
 import { ErrorNotice } from '../shell/notice'
@@ -127,6 +129,8 @@ function CreateForm({
   const [priority, setPriority] = useState<Priority>('NONE')
   const [due, setDue] = useState('')
   const [assignee, setAssignee] = useState('')
+  const [files, setFiles] = useState<readonly File[]>([])
+  const picker = useRef<HTMLInputElement>(null)
 
   // The workspace directory, for the assignee menu. Shared with every other
   // surface that turns an id into a name, so it is usually already cached.
@@ -197,17 +201,28 @@ function CreateForm({
         try {
           await assignTask(workspaceId, task.id, assignee)
         } catch (error) {
-          return { task, assignmentFailed: error }
+          return { task, followUpFailed: error }
         }
       }
-      return { task, assignmentFailed: undefined }
+      // After the task exists, because an attachment belongs to one: the
+      // presigned URL is minted per task and there is nothing to mint against
+      // until the row is there. Sequentially, so ten files are ten uploads and
+      // not thirty requests racing one rate limit.
+      for (const file of files) {
+        try {
+          await uploadAttachment(workspaceId, task.id, file)
+        } catch (error) {
+          return { task, followUpFailed: error }
+        }
+      }
+      return { task, followUpFailed: undefined }
     },
-    onSuccess: ({ task, assignmentFailed }) => {
+    onSuccess: ({ task, followUpFailed }) => {
       attempt.current = idempotencyKey()
       announce(
-        assignmentFailed === undefined
+        followUpFailed === undefined
           ? `Created ${task.key} — ${task.title}`
-          : `Created ${task.key}, but it could not be assigned.`,
+          : `Created ${task.key}, but not everything after it succeeded.`,
       )
       void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
       // The task exists either way. Opening it is how someone fixes the half
@@ -223,6 +238,7 @@ function CreateForm({
         setDescription('')
         setDue('')
         setAssignee('')
+        setFiles([])
         titleRef.current?.focus()
         return
       }
@@ -387,6 +403,44 @@ function CreateForm({
             value={due}
             onChange={(event) => setDue(event.target.value)}
           />
+        </div>
+      </div>
+
+      {/* Attached after the task is created, because an attachment belongs to
+          a task and there is nothing to attach to until the row exists. Named
+          here rather than left to be discovered: someone who picks three files
+          and then sees a task with none would reasonably think it silently
+          dropped them. */}
+      <div className="field">
+        <span className="field__label">
+          Attachments <span className="field__optional">optional</span>
+        </span>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          className="visually-hidden"
+          id="create-files"
+          onChange={(event) => {
+            setFiles([...(event.target.files ?? [])])
+            event.target.value = ''
+          }}
+        />
+        <div className="create__files">
+          <Button size="sm" onClick={() => picker.current?.click()}>
+            Choose files
+          </Button>
+          {files.length === 0 ? (
+            <span className="field__hint">Uploaded once the task is created.</span>
+          ) : (
+            <ul className="create__filelist">
+              {files.map((file) => (
+                <li key={`${file.name}-${file.size}`}>
+                  {file.name} <span className="field__hint">{fileSize(file.size)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

@@ -317,7 +317,7 @@ if [[ -f .dev/web.pid ]]; then pkill -P "$(cat .dev/web.pid)" 2>/dev/null || tru
 if command -v pnpm >/dev/null 2>&1; then
   (cd webapp && pnpm install --silent >/dev/null 2>&1 || true)
   env VITE_API_URL="http://127.0.0.1:${API_PORT}" \
-    nohup pnpm --dir webapp dev --port "${WEB_PORT}" > .dev/web.log 2>&1 &
+    nohup pnpm --dir webapp dev --host 127.0.0.1 --port "${WEB_PORT}" > .dev/web.log 2>&1 &
   echo $! > .dev/web.pid
   sleep 3
   green "web client starting"

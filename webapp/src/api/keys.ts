@@ -125,6 +125,10 @@ export const keys = {
    */
   report: (workspaceId: string, spec: unknown) => ['ws', workspaceId, 'report', spec] as const,
 
+  /** One task's attachments. A child of the task, so a task write can clear it. */
+  attachments: (workspaceId: string, taskId: string) =>
+    ['ws', workspaceId, 'task', taskId, 'attachments'] as const,
+
   /** Administration. All under the tenant prefix, so a switch clears them. */
   workspaceSettings: (workspaceId: string) => ['ws', workspaceId, 'settings'] as const,
   invitations: (workspaceId: string) => ['ws', workspaceId, 'invitations'] as const,

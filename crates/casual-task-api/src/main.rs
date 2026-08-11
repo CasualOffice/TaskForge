@@ -343,7 +343,11 @@ async fn run() -> ExitCode {
     // cannot tell it apart from a misconfigured one.
     let _objects = match (config.object_bind_addr, local_objects) {
         (Some(addr), Some(store)) => {
-            let router = casual_task_api::objects::object_router(store, &config.secret_key);
+            let router = casual_task_api::objects::object_router(
+                store,
+                &config.secret_key,
+                config.public_url.as_str(),
+            );
             match tokio::net::TcpListener::bind(addr).await {
                 Ok(listener) => {
                     tracing::info!(%addr, "attachment origin listening");

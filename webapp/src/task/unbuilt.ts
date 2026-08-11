@@ -32,13 +32,15 @@ import { contributions } from '../extensions/coreContributions'
 /**
  * Panels the client renders itself. Everything else declared is still to come.
  *
- * `attachments` is deliberately **not** here, and the reason is worth stating:
- * the pipeline exists — presign, commit, scan, download — but the presigned
- * upload URL points at an object origin (`{origin}/attachments/{key}`) that no
- * route in this deployment serves. A client could get a URL and would have
- * nowhere to PUT the bytes, so an upload control would be a button that always
- * fails. Better a line saying attachments are not available than a control that
- * looks built and is not.
+ * `attachments` was deliberately absent from this list for a long time, and the
+ * reason is worth keeping now that it is gone: the pipeline existed — presign,
+ * commit, scan, download — but the presigned upload URL pointed at an object
+ * origin the browser refused to `PUT` to, because that router served no
+ * `OPTIONS` and a cross-origin upload is preflighted. A client could get a URL
+ * and had nowhere to send the bytes, so an upload control would have been a
+ * button that always failed.
+ *
+ * The preflight is served, so the control is real and the panel is listed.
  */
 const IMPLEMENTED: ReadonlySet<string> = new Set([
   'details',
@@ -46,6 +48,7 @@ const IMPLEMENTED: ReadonlySet<string> = new Set([
   'relations',
   'activity',
   'subtasks',
+  'attachments',
 ])
 
 /** The declared-but-unserved section titles, lowercased for a sentence. */

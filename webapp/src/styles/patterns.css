@@ -1079,3 +1079,83 @@
   font: var(--tf-code);
   color: var(--tf-text-muted);
 }
+
+/* ── Attachments ─────────────────────────────────────────────────────────── */
+
+.attach__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tf-gap-field);
+}
+
+.attach__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-hair);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attach__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-hair) 0;
+  border-bottom: 1px solid var(--tf-border);
+  font-size: 0.8125rem;
+}
+
+.attach__row:last-child {
+  border-bottom: 0;
+}
+
+.attach__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach__meta {
+  color: var(--tf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A scan that has not finished, or a file that was blocked. Never colour alone:
+   the sentence is the signal and the tint only reinforces it. */
+.attach__status {
+  color: var(--tf-warning);
+}
+
+.create__files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-hair);
+  align-items: flex-start;
+}
+
+.create__filelist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+}
+
+/* Said after an upload, because the list will not show it: a file is served
+   only once it has been scanned, so a successful upload otherwise looks like
+   one that vanished. */
+.attach__pending {
+  margin: 0;
+  padding: var(--tf-gap-tight);
+  border-left: 3px solid var(--tf-warning);
+  background: var(--tf-warning-subtle);
+  border-radius: var(--tf-radius-badge);
+  font-size: 0.8125rem;
+  color: var(--tf-text);
+}

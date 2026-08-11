@@ -27,6 +27,10 @@ use anyhow::Result;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use casual_task_api::objects::object_router;
+
+/// The application's origin — the only one a browser may upload from. Distinct
+/// from the attachment origin below, which is the separation `docs/28` rests on.
+const APP_ORIGIN: &str = "http://127.0.0.1:5173";
 use casual_task_infra::FilesystemStore;
 use tower::ServiceExt;
 
@@ -40,7 +44,7 @@ fn origin() -> (Arc<FilesystemStore>, axum::Router, std::path::PathBuf) {
         "http://127.0.0.1:8081".to_owned(),
         SECRET.to_owned(),
     ));
-    let router = object_router(Arc::clone(&store), SECRET);
+    let router = object_router(Arc::clone(&store), SECRET, APP_ORIGIN);
     (store, router, root)
 }
 
@@ -262,4 +266,110 @@ async fn a_missing_object_is_404_and_not_an_error() -> Result<()> {
 
     let _ = std::fs::remove_dir_all(root);
     Ok(())
+}
+
+/// # The upload half was unreachable from a browser
+///
+/// These cover the defect that made `docs/28`'s pipeline complete on the server
+/// and unusable from the product. The application and the attachment origin are
+/// *deliberately* different origins — that separation is the control the module
+/// exists for — and a browser `PUT` carrying `Content-Type` is therefore not a
+/// simple request. It asks first, with `OPTIONS`, and a router with no such
+/// route answered `405`. Presign returned a URL, the client tried to use it, and
+/// the preflight failed before a byte moved.
+mod cross_origin {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_preflight_is_answered_with_the_application_origin() -> Result<()> {
+        let (_store, router, _root) = origin();
+        let (status, _body, headers) = send(
+            &router,
+            Request::builder()
+                .method("OPTIONS")
+                .uri(signed("w/t/a", "PUT"))
+                .header("origin", APP_ORIGIN)
+                .header("access-control-request-method", "PUT")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert_eq!(headers["access-control-allow-origin"], APP_ORIGIN);
+        assert!(
+            headers["access-control-allow-methods"]
+                .to_str()?
+                .contains("PUT"),
+            "the preflight must permit the method the upload uses",
+        );
+        assert_eq!(headers["access-control-allow-headers"], "content-type");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn one_origin_and_never_a_wildcard() -> Result<()> {
+        // `*` would let any page that obtained a presigned URL spend it. The
+        // capability is already narrow — one key, one method, minutes of life —
+        // but "narrow" and "anyone may use it" are different properties.
+        let (_store, router, _root) = origin();
+        let (_status, _body, headers) = send(
+            &router,
+            Request::builder()
+                .method("OPTIONS")
+                .uri(signed("w/t/a", "PUT"))
+                .header("origin", "https://evil.example")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+        assert_eq!(headers["access-control-allow-origin"], APP_ORIGIN);
+        assert_ne!(headers["access-control-allow-origin"], "*");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn the_upload_response_carries_the_headers_too() -> Result<()> {
+        // Not only the preflight: a browser discards a cross-origin *response*
+        // that lacks them, so the bytes would land on disk and the client would
+        // still see a failure.
+        let (_store, router, _root) = origin();
+        let (status, _body, headers) = send(
+            &router,
+            Request::builder()
+                .method("PUT")
+                .uri(signed("w/t/a", "PUT"))
+                .header("origin", APP_ORIGIN)
+                .body(Body::from("bytes"))?,
+        )
+        .await?;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(headers["access-control-allow-origin"], APP_ORIGIN);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn the_preflight_is_not_a_way_past_the_signature() -> Result<()> {
+        // It answers before any signature check, which is correct — a preflight
+        // carries none, and the browser has not sent the real request yet. What
+        // must stay true is that this buys nothing: the PUT it precedes is still
+        // refused without a valid signature.
+        let (_store, router, _root) = origin();
+        let (status, _body, _headers) = send(
+            &router,
+            Request::builder()
+                .method("PUT")
+                .uri("/attachments/w/t/a?expires=99999999999&signature=forged")
+                .header("origin", APP_ORIGIN)
+                .body(Body::from("bytes"))?,
+        )
+        .await?;
+
+        assert_ne!(
+            status,
+            StatusCode::OK,
+            "a forged signature must not store bytes"
+        );
+        Ok(())
+    }
 }

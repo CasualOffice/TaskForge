@@ -70,20 +70,81 @@ struct Signature {
 struct ObjectState {
     store: Arc<FilesystemStore>,
     secret: Arc<str>,
+    /// The application's origin — the only one allowed to upload from a browser.
+    app_origin: Arc<str>,
 }
 
 /// The attachment origin's router.
 ///
 /// Mounted on its own listener by `main`, never on the application's — see the
 /// module documentation.
-pub fn object_router(store: Arc<FilesystemStore>, secret: &str) -> Router {
+pub fn object_router(store: Arc<FilesystemStore>, secret: &str, app_origin: &str) -> Router {
     Router::new()
-        .route("/attachments/{*key}", get(fetch).put(store_object))
+        .route(
+            "/attachments/{*key}",
+            get(fetch).put(store_object).options(preflight),
+        )
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         .with_state(ObjectState {
             store,
             secret: Arc::from(secret),
+            app_origin: Arc::from(app_origin),
         })
+}
+
+/// `OPTIONS /attachments/{key}` — the preflight a cross-origin upload requires.
+///
+/// # Why this router needs CORS at all
+///
+/// Because the separation this module exists for *causes* it. The application
+/// is one origin, the attachment origin is deliberately another, and a browser
+/// `PUT` carrying `Content-Type` is not a simple request — so it asks first, and
+/// a router with no `OPTIONS` route answered `405`. The upload half of
+/// `docs/28` was therefore unreachable from a browser: presign returned a URL,
+/// the client PUT to it, and the preflight failed before a byte moved. The
+/// pipeline was complete on the server and unusable from the product.
+///
+/// # Why one origin and not `*`
+///
+/// `*` would let any page on the internet spend a presigned URL it had somehow
+/// obtained. The capability is already narrow — one key, one method, minutes of
+/// life — but "narrow" and "anyone may use it" are different properties, and
+/// the deployment already knows exactly which origin is allowed to: the one
+/// `TF_PUBLIC_URL` names.
+///
+/// **No `Access-Control-Allow-Credentials`.** The signature is the authority
+/// here (see the module docs), the session cookie would not travel to another
+/// origin anyway, and asking for credentials would be asking the browser to
+/// send one to a listener that has no business seeing it.
+async fn preflight(State(state): State<ObjectState>) -> Response {
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    cors(response.headers_mut(), &state.app_origin);
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("600"),
+    );
+    response
+}
+
+/// The three headers a cross-origin upload needs, on every answer this router
+/// gives. On the real responses too, not only the preflight: a browser drops a
+/// cross-origin response that lacks them, so an upload would fail *after*
+/// succeeding — bytes on disk and an error on screen.
+fn cors(headers: &mut HeaderMap, app_origin: &str) {
+    if let Ok(origin) = HeaderValue::from_str(app_origin) {
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    }
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, PUT, OPTIONS"),
+    );
+    headers.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("content-type"),
+    );
+    // The answer depends on the request's Origin, so a cache must not serve one
+    // origin's response to another.
+    headers.insert(header::VARY, HeaderValue::from_static("origin"));
 }
 
 /// `PUT /attachments/{key}?expires=&signature=` — the upload half of `docs/28`.
@@ -114,7 +175,11 @@ async fn store_object(
     // would notice is `commit`'s size check — a confusing refusal for a client
     // that did the right thing.
     match state.store.replace(&key, &bytes).await {
-        Ok(()) => StatusCode::OK.into_response(),
+        Ok(()) => {
+            let mut response = StatusCode::OK.into_response();
+            cors(response.headers_mut(), &state.app_origin);
+            response
+        }
         Err(error) => {
             tracing::error!(%error, "storing an object failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -146,6 +211,7 @@ async fn fetch(
     let mut response = Body::from_stream(chunks(file)).into_response();
     let headers = response.headers_mut();
     guard(headers);
+    cors(headers, &state.app_origin);
     // `application/octet-stream` and never the stored type: the browser is being
     // handed a file to save, and naming a renderable type here would invite it
     // to render one. The real type is on the attachment row, which the
