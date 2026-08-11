@@ -466,6 +466,24 @@ projects affected. **D-066** carries the underlying question, since
 `project.workflow_id` is a real column and the schema disagrees with the
 behaviour.
 
+**One query key, two shapes.** `/settings/workflow` and the board read the same
+workflow from the same URL, and cached it under the same key — but through
+different functions: `readWorkflow` returns a `Workflow`, `readWorkflowForEditing`
+returns `{ data, version }` because the editor needs the `ETag` to write.
+Whichever query ran last won, so opening settings and then *any* board crashed
+it with `workflow.statuses is not iterable`: the board had been handed the
+editor's envelope.
+
+Neither request was wrong and no type caught it — `useQuery` infers its data
+type from its own `queryFn`, so both screens type-checked against a cache entry
+only one of them could be right about. The rule now written into `keys.ts`:
+**two reads that return different shapes are two cache entries, even for the
+same resource behind the same URL.** The editor's key is a *child* of the
+board's rather than a sibling, so the prefix invalidation every workflow write
+already performs still repaints the board — splitting them into siblings would
+have traded the crash for a staleness bug, and `keys.test.ts` fails on both
+mistakes.
+
 **The whole application scrolled.** `.shell__main` had no base rule at all — it
 was `overflow: visible` and `display: block`, so content grew the grid row, grew
 the document, and the sidebar slid up out of view with the header behind it on

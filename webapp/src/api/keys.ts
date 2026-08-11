@@ -31,8 +31,30 @@ export const keys = {
 
   projects: (workspaceId: string) => ['ws', workspaceId, 'projects'] as const,
 
+  /**
+   * The workflow as the board reads it — a `Workflow`, statuses and all.
+   *
+   * # A key identifies a shape, not just a resource
+   *
+   * This key was shared with the settings editor, which reads the *same* URL
+   * through `requestWithVersion` and therefore caches `{ data, version }` —
+   * an envelope, not a `Workflow`. One key, two shapes, and whichever query ran
+   * last won: opening `/settings/workflow` and then a board crashed the board
+   * with `workflow.statuses is not iterable`, because the board was handed the
+   * editor's envelope. Nothing was wrong with either request.
+   *
+   * The rule this encodes: **two reads that return different shapes are two
+   * cache entries, even when they are the same resource behind the same URL.**
+   * `workflowForEditing` is a child of this key rather than a sibling, so the
+   * prefix invalidation every workflow write already performs still reaches
+   * both — a status renamed in settings must repaint the board.
+   */
   workflow: (workspaceId: string, workflowId: string) =>
     ['ws', workspaceId, 'workflow', workflowId] as const,
+
+  /** The same workflow with its `ETag`, which the editor needs and the board does not. */
+  workflowForEditing: (workspaceId: string, workflowId: string) =>
+    ['ws', workspaceId, 'workflow', workflowId, 'editing'] as const,
 
   /** Every task list. The prefix any task mutation invalidates. */
   taskLists: (workspaceId: string) => ['ws', workspaceId, 'tasks'] as const,
