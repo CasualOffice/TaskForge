@@ -1921,3 +1921,81 @@ kbd {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
+
+/* ── The list row on a narrow screen (`docs/47` §5) ──────────────────────
+ *
+ * A stacked summary, not a crushed table. The desktop grid puts 492 px of fixed
+ * columns before the title's `1fr`, so on a 390 px screen the fixed columns ate
+ * the row and the **title** — the one thing a person is scanning for — was the
+ * column that collapsed. Every other column is a detail; the title is the row.
+ *
+ * The cells reflow into three lines: identity and priority, then the title,
+ * then the dates. `docs/47`: no horizontal page scrolling, ever, and the title
+ * is never the thing that shrinks.
+ */
+@media (max-width: 860px) {
+  .list__head {
+    /* Column headings for columns that are no longer columns. */
+    display: none;
+  }
+  .list__row {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas:
+      'type key priority'
+      'title title title'
+      'dates dates dates';
+    gap: var(--tf-gap-hair) var(--tf-gap-tight);
+    padding: var(--tf-gap-field) var(--tf-gap-tight);
+    align-items: center;
+  }
+  .list__cell {
+    padding: 0;
+    white-space: normal;
+  }
+  .list__cell--type {
+    grid-area: type;
+  }
+  .list__cell--key {
+    grid-area: key;
+  }
+  .list__cell--title {
+    grid-area: title;
+    /* Two lines before it is cut, because a truncated title on a phone is a
+       row you have to open to identify. */
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .list__cell--title .list__open--title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    white-space: normal;
+    /* The row is a 44 px target; the title is prose inside it and sets its own
+       leading rather than inheriting the target's. */
+    line-height: 1.35;
+    min-height: 0;
+  }
+  /* The fourth cell is priority; the fifth and sixth are the dates, which share
+     the last line rather than each claiming one. */
+  .list__row > .list__cell:nth-child(4) {
+    grid-area: priority;
+    justify-self: end;
+  }
+  .list__row > .list__cell:nth-child(5),
+  .list__row > .list__cell:nth-child(6) {
+    grid-area: dates;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+  }
+  .list__row > .list__cell:nth-child(6) {
+    justify-self: end;
+  }
+  /* WCAG 2.2 §2.5.8: the row is the touch target. */
+  .list__open {
+    display: inline-block;
+    min-height: 44px;
+    line-height: 44px;
+  }
+}
