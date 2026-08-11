@@ -204,13 +204,19 @@ export function Field({
   id: string
 }): ReactElement {
   return (
-    <p className="field">
+    // A `div`, not a `p`. Every control the design system draws is a `div`
+    // wrapping an input, and a `div` inside a `p` is invalid: the browser closes
+    // the paragraph early, so the input becomes a *sibling* of the label rather
+    // than a child of the field, and React is left reconciling a tree the DOM
+    // never built. Every other field in the app already uses a `div`; this was
+    // the outlier.
+    <div className="field">
       <label className="field__label" htmlFor={id}>
         {label}
       </label>
       {children}
       {hint === undefined ? null : <span className="field__hint">{hint}</span>}
-    </p>
+    </div>
   )
 }
 
