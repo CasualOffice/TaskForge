@@ -142,10 +142,121 @@ export function BarChart({
   )
 }
 
+/**
+ * Composition, as a share of the whole.
+ *
+ * The chart a stacked bar cannot replace, which is why it is here rather than
+ * being called a duplicate of one: a stacked bar is read as a *length* and
+ * invites comparing segments to each other, while a ring is read as a
+ * *proportion* and answers "how much of the work is this" directly. "Half our
+ * open work is bugs" is a sentence a donut says and a bar does not.
+ *
+ * A donut rather than a pie: the hole carries the total, which is the number
+ * people actually want beside the shares, and it removes the centre — the part
+ * of a pie where every slice converges and none is readable.
+ *
+ * Drawn with `stroke-dasharray` on one circle per slice rather than as arc
+ * paths. Same picture, no trigonometry, and each slice is one element that can
+ * carry its own title — an arc path generator is the part of a charting library
+ * this would otherwise have been imported for.
+ */
+export function DonutChart({
+  points,
+  caption,
+  dimension,
+  measure,
+}: {
+  points: readonly Point[]
+  caption: string
+  dimension: string
+  measure: string
+}): ReactElement {
+  const total = points.reduce((sum, p) => sum + p.value, 0)
+  const shown = points.filter((p) => p.value > 0)
+  // A circle of radius 50 has a circumference of 2πr; using that as the
+  // dash-array total means a slice's dash length *is* its percentage.
+  const RADIUS = 50
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS
+
+  let consumed = 0
+  const slices = shown.map((point, i) => {
+    const share = point.value / Math.max(total, 1)
+    const slice = {
+      key: point.label,
+      length: share * CIRCUMFERENCE,
+      // Negative, because SVG strokes run clockwise from 3 o'clock and the
+      // offset counts backwards. Rotated -90° below so the first slice starts
+      // at the top, where a reader expects it.
+      offset: -consumed * CIRCUMFERENCE,
+      shade: 1 - i * (0.62 / Math.max(shown.length, 1)),
+      formatted: point.formatted,
+      percent: Math.round(share * 100),
+    }
+    consumed += share
+    return slice
+  })
+
+  return (
+    <div className="chart chart--donut">
+      <div className="chart__ring">
+        <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+          <g transform="rotate(-90 60 60)">
+            <circle className="chart__ringtrack" cx="60" cy="60" r={RADIUS} />
+            {slices.map((slice) => (
+              <circle
+                className="chart__slice"
+                key={slice.key}
+                cx="60"
+                cy="60"
+                r={RADIUS}
+                strokeDasharray={`${slice.length} ${CIRCUMFERENCE - slice.length}`}
+                strokeDashoffset={slice.offset}
+                style={{ opacity: slice.shade }}
+              />
+            ))}
+          </g>
+        </svg>
+        {/* The total, in the hole. A ring without it makes a reader estimate
+            the whole from the parts, which is the one thing a proportion chart
+            is bad at. */}
+        <p className="chart__ringtotal" aria-hidden="true">
+          <span className="chart__ringvalue">{total}</span>
+          <span className="chart__ringunit">total</span>
+        </p>
+      </div>
+
+      <ul className="chart__key" aria-hidden="true">
+        {slices.map((slice) => (
+          <li key={slice.key}>
+            <span className="chart__swatch" style={{ opacity: slice.shade }} />
+            {slice.key}
+            <span className="chart__keyvalue">
+              {slice.formatted} · {slice.percent}%
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <DataTable caption={caption} dimension={dimension} measure={measure} points={points} />
+    </div>
+  )
+}
+
 /** The drawing box. Fixed, with `preserveAspectRatio` off, so CSS sizes it. */
 const W = 320
 const H = 120
-const PAD = { top: 8, right: 8, bottom: 18, left: 8 }
+const PAD = { top: 10, right: 8, bottom: 18, left: 30 }
+
+/**
+ * An axis label, short enough for 30 px of gutter.
+ *
+ * Halves can land on `.5` for an odd peak, and a gridline reading "3.5 tasks"
+ * is noise — the midline exists to help you place a point, not to be quoted.
+ */
+function formatTick(value: number): string {
+  if (value >= 1000) return `${Math.round(value / 100) / 10}k`
+  return String(Math.round(value))
+}
 
 /**
  * A time series.
@@ -155,6 +266,20 @@ const PAD = { top: 8, right: 8, bottom: 18, left: 8 }
  * by timestamp would only matter for gaps, and a gap in a `date_trunc` series
  * is a bucket with no rows — which this fills as zero rather than skipping,
  * because a line that jumps a missing week is a line that lies about the trend.
+ *
+ * # Why it has a scale
+ *
+ * The first version drew the line and nothing else, which makes a trend
+ * *shape* legible and its *size* unknowable: the same picture means "eight a
+ * week" or "eighty a week" and a reader cannot tell which. Throughput and cycle
+ * time are the two numbers on this page anyone judges performance by, so the
+ * chart carries a zero baseline, a labelled peak, and a midline — three
+ * gridlines, which is enough to read a value off and few enough not to become
+ * the loudest thing in the tile.
+ *
+ * The baseline is always zero, never the minimum. A trend chart cropped to its
+ * own range turns a rise from 40 to 44 into a cliff, and that is the most
+ * common way a dashboard misleads without containing a single wrong number.
  */
 export function LineChart({
   points,
@@ -169,7 +294,13 @@ export function LineChart({
 }): ReactElement {
   const peak = Math.max(...points.map((p) => p.value), 1)
   const span = Math.max(points.length - 1, 1)
-  const x = (i: number): number => PAD.left + (i / span) * (W - PAD.left - PAD.right)
+  // A single bucket has no span to spread across, and dividing by one would pin
+  // it to the left edge looking like a series that failed to load. It is not a
+  // trend yet — it is one week — so it sits in the middle and says so below.
+  const x = (i: number): number =>
+    points.length === 1
+      ? (PAD.left + (W - PAD.right)) / 2
+      : PAD.left + (i / span) * (W - PAD.left - PAD.right)
   const y = (v: number): number => H - PAD.bottom - (v / peak) * (H - PAD.top - PAD.bottom)
 
   const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(p.value)}`).join(' ')
@@ -189,22 +320,47 @@ export function LineChart({
         aria-hidden="true"
         focusable="false"
       >
-        <line
-          className="chart__axis"
-          x1={PAD.left}
-          y1={H - PAD.bottom}
-          x2={W - PAD.right}
-          y2={H - PAD.bottom}
-        />
+        {/* Zero, half and peak. Drawn before the series so the data sits on top
+            of its own scale rather than under it. */}
+        {[0, peak / 2, peak].map((value) => (
+          <g key={value}>
+            <line
+              className={value === 0 ? 'chart__axis' : 'chart__grid'}
+              x1={PAD.left}
+              y1={y(value)}
+              x2={W - PAD.right}
+              y2={y(value)}
+            />
+            <text className="chart__tick" x={PAD.left - 5} y={y(value) + 3} textAnchor="end">
+              {formatTick(value)}
+            </text>
+          </g>
+        ))}
         <path className="chart__area" d={area} />
         <path className="chart__line" d={line} />
         {points.map((point, i) => (
-          <circle className="chart__dot" key={point.label} cx={x(i)} cy={y(point.value)} r={2.5} />
+          <circle
+            className="chart__dot"
+            key={point.label}
+            cx={x(i)}
+            cy={y(point.value)}
+            r={points.length === 1 ? 4 : 2.5}
+          />
         ))}
       </svg>
+      {/* First and last bucket. One bucket names itself once — repeating the
+          same date at both ends reads as a range that lasted no time. */}
       <p className="chart__span" aria-hidden="true">
-        <span>{points[0]?.label ?? ''}</span>
-        <span>{points.at(-1)?.label ?? ''}</span>
+        {points.length === 1 ? (
+          <span className="chart__single">
+            {points[0]?.label} — one week so far, not yet a trend
+          </span>
+        ) : (
+          <>
+            <span>{points[0]?.label ?? ''}</span>
+            <span>{points.at(-1)?.label ?? ''}</span>
+          </>
+        )}
       </p>
       <DataTable caption={caption} dimension={dimension} measure={measure} points={points} />
     </div>

@@ -57,6 +57,66 @@ export function filterFromSearch(search: AppSearch): TaskFilter {
   return filter as TaskFilter
 }
 
+/**
+ * Which address bar parameter carries each filter field.
+ *
+ * The two names differ in three places — `due_at`/`due`, `is_blocked`/`blocked`,
+ * `created_at`/`created` — because `docs/27`'s grammar names database fields and
+ * the address bar is written by hand. That mismatch is exactly the sort of thing
+ * a second, hand-written copy gets wrong in one direction only, so both
+ * directions read this one table.
+ *
+ * Typed as `Record<keyof TaskFilter, …>`, which makes it **exhaustive**: adding a
+ * field to `TaskFilter` fails the build here until someone decides whether it
+ * belongs in a URL. `null` means it deliberately does not — `key`, `milestone`
+ * and `environment` have no search parameter, so a view cannot link to them and
+ * this says so in the type rather than dropping them silently.
+ */
+const SEARCH_KEY_OF: Record<keyof TaskFilter, keyof AppSearch | null> = {
+  project: 'project',
+  team: 'team',
+  q: 'q',
+  status: 'status',
+  priority: 'priority',
+  type: 'type',
+  due_at: 'due',
+  reporter: 'reporter',
+  state: 'state',
+  created_at: 'created',
+  updated_at: 'updated',
+  title: 'title',
+  archived: 'archived',
+  is_blocked: 'blocked',
+  assignee: 'assignee',
+  tag: 'tag',
+  parent: 'parent',
+  key: null,
+  milestone: null,
+  environment: null,
+}
+
+/**
+ * The address that shows exactly these tasks.
+ *
+ * The inverse of [`filterFromSearch`], and the reason a dashboard tile is
+ * something you can *act on*: a number nobody can click through to is trivia.
+ * "Overdue: 3" becomes a link to the three tasks, in the list, with the filter
+ * already applied — the same list, reached the same way, so the count and the
+ * rows cannot disagree.
+ *
+ * Empty values survive, because `field=` is the grammar's `is_empty`: a tile
+ * counting unassigned work must link to `?assignee=`, not to everything.
+ */
+export function searchFromFilter(filter: TaskFilter): Partial<AppSearch> {
+  const search: Record<string, string> = {}
+  for (const [field, value] of Object.entries(filter)) {
+    const key = SEARCH_KEY_OF[field as keyof TaskFilter]
+    if (key === null || key === undefined || value === undefined) continue
+    search[key] = value
+  }
+  return search as Partial<AppSearch>
+}
+
 /** Whether anything is narrowing the view, so "Clear" can hide when there is nothing to clear. */
 export function hasFilters(search: AppSearch): boolean {
   return (

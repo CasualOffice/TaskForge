@@ -223,9 +223,16 @@ A dashboard is a **named layout of saved reports**. That is the whole model.
 }
 ```
 
-- **Visualizations are a closed set**: `number`, `line`, `bar`, `stacked_bar`,
-  `table`, `heatmap`. No chart builder, no arbitrary viz config. Six well-made
-  charts beat a chart builder nobody can use.
+- **Visualizations are a closed set**: `number`, `line`, `bar`, `donut`,
+  `stacked_bar`, `table`, `heatmap`. No chart builder, no arbitrary viz config.
+  Seven well-made charts beat a chart builder nobody can use.
+
+  `donut` was added to the set after the built-ins shipped, on request, and is
+  recorded here rather than left as a divergence in the client. It earns a place
+  because composition is a question a stacked bar answers badly: a bar is read
+  as a *length* and invites comparing segments to each other, while a ring is
+  read as a *proportion* and answers "how much of the open work is this". The
+  hole carries the total, which is the number people want beside the shares.
 - Tiles load **independently and lazily**. One slow report degrades its own tile,
   not the page.
 - The dashboard route is a **lazy chunk**; the charting library is not in the core
@@ -268,9 +275,30 @@ about:
 | Reopen rate | a measure over `COMPLETED → ACTIVE` transitions |
 | Time in state | `time_in_state` (server refuses it by name) |
 
-Five of the six visualizations are built: `number`, `bar`, `line`,
+Six of the seven visualizations are built: `number`, `bar`, `line`, `donut`,
 `stacked_bar`, `table`. `heatmap` is not, because no built-in tile needs one and
 a menu is a promise.
+
+**Every tile that counts tasks is a link to those tasks.** The tile's own filter
+is the list's address — `searchFromFilter` is the inverse of the translation
+every view already uses, so the count and the rows behind it are the same
+clause and cannot disagree. This is what makes the surface a workflow rather
+than a wall of numbers: notice, open, act. A *duration* tile is deliberately not
+a link — "cycle time by project" measures completed work, and a list behind it
+would have a row count with no relationship to the number above it.
+
+**Tiles are ranked, not uniform.** `number` tiles are *signals* and render in
+their own band above the charts, larger, and coloured by an `Intent` the tile
+declares: `alert` for a commitment already missed, `watch` for work stalled or
+unowned, `plain` for size. A signal at zero renders calm whatever its intent —
+colouring "0 overdue" red for its category trains people to stop reading the
+colour. No thresholds are invented: the product says what *kind* of number it
+is, never that 20 is fine and 21 is not.
+
+The first version of this surface had none of that — nine equal cards, each
+with two lines of explanatory prose above a small number, none of them
+clickable. It read as a page of text rather than a dashboard, which is the
+failure this section now exists to prevent.
 
 **There is no charting library.** The closed visualization set is what makes
 that possible — six shapes is a set you can draw, and the whole dashboard route

@@ -26,9 +26,10 @@ import type { ReactElement } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { PageHeader } from '../../shell/PageHeader'
+import { useAppSearch } from '../../shell/navigation'
 import { useWorkspaceId } from '../../shell/session'
 import { useVocabulary } from '../reports/vocabulary'
-import { DASHBOARDS, dashboardById } from './builtin'
+import { breakdownsOf, DASHBOARDS, dashboardById, signalsOf } from './builtin'
 import { Tile } from './Tile'
 
 // Imported here rather than from `app.css` so it ships in this route's own
@@ -38,7 +39,16 @@ import './dashboard.css'
 
 export default function DashboardView({ id }: { id: string }): ReactElement {
   const workspaceId = useWorkspaceId()
+  const search = useAppSearch()
   const dashboard = dashboardById(id)
+
+  // The project scope is the sidebar's, not this page's. Every other view
+  // narrows to it, and a dashboard that ignored it would report workspace
+  // totals under a heading that says one project — the kind of wrong that gets
+  // believed because nothing looks broken.
+  const scope = search.project === undefined ? {} : { project: search.project }
+  const signals = dashboard === undefined ? [] : signalsOf(dashboard)
+  const breakdowns = dashboard === undefined ? [] : breakdownsOf(dashboard)
 
   // Every dimension this dashboard slices by, resolved once for all its tiles
   // rather than once per tile. Twelve tiles grouped by assignee share a single
@@ -78,11 +88,20 @@ export default function DashboardView({ id }: { id: string }): ReactElement {
       </nav>
 
       <div className="view__body dash">
-        <p className="dash__lede">{dashboard.description}</p>
+        {/* The signals first, and visually louder than everything under them.
+            A dashboard where the exception and the background look alike is a
+            dashboard nobody scans — they read it, once, and then stop opening
+            it. These are the numbers that can demand action; the charts below
+            are the explanation you go to *after* one of them catches your eye. */}
+        <section className="dash__signals" aria-label="Signals">
+          {signals.map((tile) => (
+            <Tile key={tile.id} spec={tile} label={label} scope={scope} />
+          ))}
+        </section>
 
         <div className="dash__grid">
-          {dashboard.tiles.map((tile) => (
-            <Tile key={tile.id} spec={tile} label={label} />
+          {breakdowns.map((tile) => (
+            <Tile key={tile.id} spec={tile} label={label} scope={scope} />
           ))}
         </div>
 

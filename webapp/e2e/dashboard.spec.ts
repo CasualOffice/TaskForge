@@ -65,7 +65,7 @@ test('no chart draws outside the tile that owns it', async ({ page }) => {
     const out: string[] = []
     for (const tile of document.querySelectorAll('.tile')) {
       const box = tile.getBoundingClientRect()
-      for (const child of tile.querySelectorAll('.chart__fill, .chart__svg, .chart__stack')) {
+      for (const child of tile.querySelectorAll('.chart__fill, .chart__svg, .chart__stack, .chart__ring')) {
         const inner = child.getBoundingClientRect()
         if (inner.right > box.right + 1 || inner.left < box.left - 1) {
           out.push(`${child.className} in ${tile.className}`)
@@ -85,12 +85,29 @@ test('the grid collapses to one column on a phone', async ({ page, isMobile }) =
   // Measured rather than read off the CSS: `grid-column: span 2` inside a
   // one-column grid is the exact mistake that produces a page wider than the
   // phone, and the computed style would still say "1fr".
+  //
+  // The breakdowns only. Signals deliberately stay two-up on a phone: they are
+  // why the page exists, and four single-column cards would push every chart
+  // off the first screen — a summary you have to scroll to reach is not one.
   const lefts = await page.evaluate(() =>
-    [...document.querySelectorAll('.tile')].map((tile) =>
+    [...document.querySelectorAll('.dash__grid .tile')].map((tile) =>
       Math.round(tile.getBoundingClientRect().left),
     ),
   )
   expect(new Set(lefts).size).toBe(1)
+})
+
+test('the signals stay two-up on a phone', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'the two-up rule is a phone rule')
+  await page.goto('/dashboards/project-health')
+  await page.waitForLoadState('networkidle')
+
+  const lefts = await page.evaluate(() =>
+    [...document.querySelectorAll('.dash__signals .tile')].map((tile) =>
+      Math.round(tile.getBoundingClientRect().left),
+    ),
+  )
+  expect(new Set(lefts).size).toBe(2)
 })
 
 test('a line chart has real height', async ({ page }) => {
@@ -118,6 +135,46 @@ test('every chart carries its numbers as a table', async ({ page }) => {
       .map((chart) => chart.parentElement?.parentElement?.className ?? '?'),
   )
   expect(missing).toEqual([])
+})
+
+test('a signal opens the tasks it counted', async ({ page }) => {
+  // The whole point of the surface, and what the first version of it lacked:
+  // reading "Overdue 3" and then having to rebuild that filter by hand in the
+  // list is where a dashboard stops being useful. Asserted against the address,
+  // not the rows, because the rows come from the stub and asserting a stub
+  // asserts nothing — the address is what the client actually decided.
+  await page.goto('/dashboards/team-workload')
+  await page.waitForLoadState('networkidle')
+
+  const overdue = page.locator('.tile--open', { hasText: 'Overdue' }).first()
+  await expect(overdue).toBeVisible()
+  await overdue.click()
+
+  await expect(page).toHaveURL(/state=BACKLOG%2CPLANNED%2CACTIVE/)
+  await expect(page).toHaveURL(/due=%3C%40today/)
+})
+
+test('the signals band is the first thing on the page', async ({ page }) => {
+  // Hierarchy, measured: if a breakdown ever renders above the signals, the
+  // page has stopped answering "is anything wrong" first and gone back to being
+  // a wall of equal cards.
+  await page.goto('/dashboards/project-health')
+  await page.waitForLoadState('networkidle')
+
+  const signalTop = await page.locator('.dash__signals .tile').first().boundingBox()
+  const chartTop = await page.locator('.dash__grid .tile').first().boundingBox()
+  expect(signalTop?.y ?? 0).toBeLessThan(chartTop?.y ?? 0)
+})
+
+test('a duration tile is not a link', async ({ page }) => {
+  // "Cycle time by project" measures completed work; a list behind it would
+  // have a row count with no relationship to the number above it.
+  await page.goto('/dashboards/project-health')
+  await page.waitForLoadState('networkidle')
+
+  const cycle = page.locator('.tile', { hasText: 'Cycle time by project' }).first()
+  await expect(cycle).toBeVisible()
+  expect(await cycle.evaluate((el) => el.tagName)).toBe('SECTION')
 })
 
 test('the dashboard switcher is reachable under a finger', async ({ page, isMobile }) => {

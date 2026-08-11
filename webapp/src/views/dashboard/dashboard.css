@@ -10,13 +10,20 @@
 .dash {
   display: flex;
   flex-direction: column;
-  gap: var(--tf-gap-section);
+  gap: var(--tf-gap-page);
 }
 
-.dash__lede {
-  margin: 0;
-  color: var(--tf-text-secondary);
-  max-width: 68ch;
+/* ── the signals band ─────────────────────────────────────────────────────────
+ *
+ * The row you are meant to read first, and the reason the rest of the page is
+ * worth having. It is separated from the breakdowns by a full page gap rather
+ * than a section gap, because "these four things are the answer, everything
+ * below explains them" is a structural claim and the spacing should make it. */
+
+.dash__signals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--tf-gap-section);
 }
 
 /* The dashboard switcher. A row of links rather than a select, because the set
@@ -102,11 +109,83 @@
   gap: var(--tf-gap-hair);
 }
 
+/* A label, not a heading. The number is the heading — it is what the eye is
+   meant to land on, and the first version of this page lost that by giving the
+   title the same weight as the value and then putting two lines of prose
+   between them. */
 .tile__title {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--tf-text);
+  letter-spacing: 0.02em;
+  color: var(--tf-text-secondary);
+}
+
+/* ── severity ─────────────────────────────────────────────────────────────────
+ *
+ * Colour carries meaning here, so it never carries it alone: the number is
+ * also the largest thing in the tile, and the tile's own accent bar changes
+ * with it. `docs/47` — nothing may be encoded by hue only. */
+
+.tile--alert {
+  border-color: var(--tf-danger);
+  background: var(--tf-danger-subtle);
+}
+
+.tile--alert .chart__value {
+  color: var(--tf-danger);
+}
+
+.tile--watch {
+  border-color: var(--tf-warning);
+  background: var(--tf-warning-subtle);
+}
+
+.tile--watch .chart__value {
+  color: var(--tf-warning);
+}
+
+/* ── a tile you can open ──────────────────────────────────────────────────── */
+
+.tile--open {
+  position: relative;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 120ms ease;
+}
+
+.tile--open:hover {
+  border-color: var(--tf-border-strong);
+}
+
+.tile--open:focus-visible {
+  outline: 2px solid var(--tf-accent);
+  outline-offset: 2px;
+}
+
+/* The affordance. Low-contrast until the tile is hovered or focused, so a wall
+   of tiles is not a wall of arrows. */
+.tile__go {
+  position: absolute;
+  top: var(--tf-pad-panel);
+  right: var(--tf-pad-panel);
+  font-size: 16px;
+  color: var(--tf-text-muted);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.tile--open:hover .tile__go,
+.tile--open:focus-visible .tile__go {
+  opacity: 1;
+}
+
+/* Always visible where a pointer cannot hover: on a touch screen an affordance
+   that only appears on hover is an affordance that never appears. */
+@media (hover: none) {
+  .tile__go {
+    opacity: 1;
+  }
 }
 
 .tile__help {
@@ -116,12 +195,20 @@
   color: var(--tf-text-secondary);
 }
 
+/* A number sits at the bottom of its tile, so a row of signals aligns on the
+   numbers rather than on whichever label wrapped to two lines. A chart centres
+   instead: pinning a donut to the bottom of a tall tile leaves a band of dead
+   space above it, which is what made the breakdown row look unfinished. */
 .tile__body {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
   flex: 1;
   min-width: 0;
+}
+
+.tile--number .tile__body {
+  justify-content: flex-end;
 }
 
 .tile__pending,
@@ -141,9 +228,9 @@
 }
 
 .chart__value {
-  font-size: 2.25rem;
+  font-size: 2.75rem;
   font-weight: 650;
-  line-height: 1.1;
+  line-height: 1.05;
   /* Tabular figures so a number that ticks from 9 to 10 does not shift the
      unit beside it. */
   font-variant-numeric: tabular-nums;
@@ -332,7 +419,8 @@
 /* Two columns, and every tile is at most two wide — a `span4` table on a tablet
    would be the only thing on its row with nothing beside it. */
 @media (width <= 1100px) {
-  .dash__grid {
+  .dash__grid,
+  .dash__signals {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -349,6 +437,19 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Signals stay two-up on a phone. They are the reason the page exists and
+     four single-column cards would push the breakdowns off the first screen
+     entirely — a dashboard you have to scroll to get the summary of is not a
+     summary. Two short numbers fit 390 px comfortably. */
+  .dash__signals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chart--donut {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .tile--span1,
   .tile--span2,
   .tile--span4 {
@@ -358,4 +459,107 @@
   .dash__tabs {
     padding: 0 var(--tf-gap-section);
   }
+}
+
+/* ── donut ────────────────────────────────────────────────────────────────────
+ *
+ * Ring plus key, side by side where there is room. The ring alone is a picture;
+ * the key is what makes it a chart, because a proportion nobody can name is
+ * just a coloured circle. */
+
+.chart--donut {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--tf-gap-section);
+  flex-wrap: wrap;
+}
+
+.chart__ring {
+  position: relative;
+  flex: 0 0 auto;
+  width: 108px;
+  height: 108px;
+}
+
+.chart__ring svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart__ringtrack {
+  fill: none;
+  stroke: var(--tf-surface-sunken);
+  stroke-width: 14;
+}
+
+.chart__slice {
+  fill: none;
+  stroke: var(--tf-accent);
+  stroke-width: 14;
+}
+
+/* The total, in the hole. Absolutely positioned over the ring rather than an
+   SVG `<text>`, so it inherits the page's font and its own tabular figures. */
+.chart__ringtotal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+}
+
+.chart__ringvalue {
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--tf-text);
+}
+
+.chart__ringunit {
+  font-size: 0.625rem;
+  color: var(--tf-text-muted);
+}
+
+/* Beside the ring, the key gets a column of its own and stacks rather than
+   wrapping into a paragraph of names. */
+.chart--donut .chart__key {
+  flex: 1 1 140px;
+  flex-direction: column;
+  gap: var(--tf-gap-hair);
+}
+
+.chart--donut .chart__key li {
+  justify-content: flex-start;
+  gap: var(--tf-gap-tight);
+  width: 100%;
+}
+
+.chart--donut .chart__keyvalue {
+  margin-left: auto;
+}
+
+/* ── the trend's scale ────────────────────────────────────────────────────── */
+
+.chart__grid {
+  stroke: var(--tf-border);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__tick {
+  font-size: 9px;
+  fill: var(--tf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One bucket is a fact, not a trend, and the caption says so rather than
+   letting a lone dot imply a flat line. */
+.chart__single {
+  color: var(--tf-text-muted);
 }

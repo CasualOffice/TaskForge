@@ -41,6 +41,7 @@ import { SignIn } from './shell/SignIn'
 import { ApiError } from './api/problem'
 import {
   BarChart,
+  DonutChart,
   LineChart,
   NumberChart,
   StackedBarChart,
@@ -175,6 +176,7 @@ describe('the dashboard charts', () => {
     ['a bar chart', <BarChart key="bar" {...args} />],
     ['a line chart', <LineChart key="line" {...args} />],
     ['a stacked bar', <StackedBarChart key="stack" {...args} />],
+    ['a donut', <DonutChart key="donut" {...args} />],
     ['a table', <TableChart key="table" {...args} />],
   ] as const
 
