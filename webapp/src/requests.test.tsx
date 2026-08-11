@@ -272,8 +272,11 @@ describe('the create form offers the types the actor may raise', () => {
       </QueryClientProvider>,
     )
     fireEvent.click(await view.findByRole('button', { name: 'New task' }))
-    fireEvent.click(await view.findByRole('button', { name: 'Type and priority' }))
-    return view.getByLabelText('Type') as HTMLSelectElement
+    // No disclosure to open any more. Type, priority and due are on the form
+    // from the moment it appears: hiding them behind "Type and priority" meant
+    // that writing down what a task actually *is* took an extra click, and the
+    // description was not there at all.
+    return (await view.findByLabelText('Type')) as HTMLSelectElement
   }
 
   it('offers every type when the grant does not narrow by type', async () => {

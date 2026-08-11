@@ -67,6 +67,7 @@ export function AppFrame(): ReactElement {
           <img src="/brand/taskforge-mark.svg" alt="" width={22} height={22} />
           <span className="shell__wordmark">TaskForge</span>
         </Link>
+        <WorkspaceSwitcher />
         <SearchButton />
         <span className="shell__spacer" />
         <ThemeToggle />
@@ -161,10 +162,6 @@ function Sidebar(): ReactElement {
 
   return (
     <nav className="side" aria-label="Primary">
-      <div className="side__scope">
-        <WorkspaceSwitcher />
-      </div>
-
       <ul className="side__group">
         <SideLink to="/home" label="Home" icon="home" />
         <SideLink to="/my-work" label="My work" icon="person" />

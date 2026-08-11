@@ -1436,17 +1436,14 @@ kbd {
   margin-top: var(--tf-gap-tight);
 }
 
-.create {
-  display: flex;
-  align-items: center;
-  gap: var(--tf-gap-hair);
-  flex: 1;
-  min-width: 240px;
-}
-.create__title {
-  flex: 1;
-  min-width: 160px;
-}
+/* `.create` and `.create__title` used to be defined here as a flex **row**,
+ * left over from an inline composer that no longer exists — `.create__title` is
+ * referenced by no component at all. `patterns.css` defines the real create
+ * form as a flex *column*, and this rule loaded after it and won, which is why
+ * the "New task" form rendered as a cramped line of controls with its labels
+ * centred against its inputs. Deleted rather than renamed: a rule whose only
+ * effect is to break the component that shares its name is not worth keeping
+ * under a new name. */
 
 /* ── Filters ─────────────────────────────────────────────────────────────
  * Presentation only, and deliberately thin: AGENTS.md makes
@@ -2200,26 +2197,61 @@ kbd {
   color: var(--tf-text-secondary);
 }
 
+/* `align-items: stretch` — the default — and it matters: `flex-start` made each
+   field shrink to its own content, so "Workspace name" ended up half the width
+   of "Address" purely because the hint under Address is a longer sentence. Two
+   inputs on one form that are different widths for no reason a reader can see
+   is the kind of thing that makes a form look unfinished. The button opts out
+   individually, because a submit stretched across the form reads as a banner. */
 .newws {
   display: flex;
   flex-direction: column;
   gap: var(--tf-gap-field);
-  align-items: flex-start;
 }
 
-/* In the rail, the switcher and its "New workspace" share a line; the form that
-   replaces them stacks. */
-.workspace__row {
+.newws button[type='submit'] {
+  align-self: flex-start;
+}
+
+/* The workspace control, in the header. Separated from the brand by a rule
+   rather than by space alone: "TaskForge" and "Demo" are both proper nouns, and
+   without a divider they read as one long name. */
+.workspace {
   display: flex;
   align-items: center;
   gap: var(--tf-gap-tight);
-  flex-wrap: wrap;
   min-width: 0;
+  padding-left: var(--tf-gap-tight);
+  border-left: 1px solid var(--tf-border);
 }
 
-.workspace__new {
+.workspace__single {
+  font-weight: 600;
+  color: var(--tf-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace__form {
   display: flex;
   flex-direction: column;
-  gap: var(--tf-gap-tight);
-  align-items: flex-start;
+  gap: var(--tf-gap-field);
+  width: min(22rem, calc(100vw - 2 * var(--tf-gap-section)));
+}
+
+.workspace__heading {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  color: var(--tf-text);
+}
+
+/* On a phone the header has room for the brand, a search icon and the account.
+   The workspace name is the first thing to go: it is the scope you are already
+   in, and it is named again on every settings screen that can change it. */
+@media (max-width: 860px) {
+  .workspace {
+    display: none;
+  }
 }

@@ -383,6 +383,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-036 | **Projects, and the shell that stopped scrolling** — create and edit a project; the rail and header stay put | `Built` |
 | C-037 | **The phone, to its own spec** — audit items 2, 3 and 5 closed, measured | `Built` |
 | C-038 | **A workspace you can start** — audit item 10; the first run is no longer a dead end | `Built` |
+| C-039 | **The create-task flow, and the workspace in the header** | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -2907,3 +2908,38 @@ match its derived form cannot silently re-arm the derivation. Eleven cases
 assert the suggestion is one the server would *accept*: a suggestion that fails
 validation is a rejection the person did not earn. Verified by removing the
 leading/trailing-separator strip, which fails six of them.
+
+**C-039 began with a stylesheet collision nobody could see.** `app.css` defined
+`.create` as a flex **row** — left over from an inline composer that no longer
+exists, alongside a `.create__title` that no component references — and it
+loaded after `patterns.css`, where the real create form is a flex *column*. So
+the form rendered as a cramped line of controls with its labels centred against
+its inputs, and nothing in either file looked wrong on its own.
+
+With that deleted, the form was still the wrong shape:
+
+- **The project was the first field**, defaulting to "Choose a project…", so on
+  a list scoped to "All projects" a required decision was the price of typing a
+  title. It is context, not a field you fill in order, and it now sits in the
+  form's header defaulted to the scope you are already in.
+- **Type and priority were behind a disclosure** and description was absent
+  entirely, so writing down what a task *is* meant creating it and opening it
+  again. All four are on the form, with description and due marked optional
+  rather than every required field marked with an asterisk.
+- **There was no way to file two.** "Create another" keeps the form open and
+  keeps what describes the *batch* — project, type, priority — while clearing
+  what describes the task.
+- **⌘↵ / Ctrl+↵** submits from either text field. On the fields rather than the
+  `<form>`, because a form is not an interactive element and `jsx-a11y` is right
+  to say so; and Enter alone deliberately does *not* submit from the
+  description, where a newline is what it means.
+
+Assignee is absent on purpose: it is a separate endpoint, so offering it here
+would make create non-atomic — a task that exists unassigned after the second
+call fails is worse than one field's absence.
+
+**The workspace moved to the header.** It is the outermost scope — the rail,
+every route under it and every request carry it — and in the rail it read as one
+more item *inside* the navigation, which inverts that. Creating one is a popover
+anchored to a plus beside the name: spelled out as "New workspace" it sat at the
+same weight as search, which is not what a once-a-year action deserves.

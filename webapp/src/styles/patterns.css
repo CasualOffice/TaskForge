@@ -998,3 +998,84 @@
 .narr__body {
   max-width: 70ch;
 }
+
+/* ── The create form ──────────────────────────────────────────────────────────
+ *
+ * Wider than a menu because it holds a title and a paragraph, and those are the
+ * two fields it exists for. The previous version was 240 px of stacked selects
+ * with the title squeezed between them, and it was laid out as a *row* — a
+ * `.create` rule left behind in `app.css` by a composer that no longer exists
+ * beat the column rule here.
+ */
+.create {
+  width: min(30rem, calc(100vw - 2 * var(--tf-gap-section)));
+}
+
+/* Heading and project on one line: the title says what this is, the project
+   says where it goes, and neither is a field you fill in order. */
+.create__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tf-gap-field);
+  margin-bottom: var(--tf-gap-hair);
+}
+
+.create__heading {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  color: var(--tf-text);
+}
+
+/* Three across on a desk, stacked when there is no room. `minmax(0, 1fr)` so a
+   date input — which has a stubborn intrinsic width — cannot widen the form. */
+.create__row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--tf-gap-tight);
+}
+
+@media (width <= 560px) {
+  .create__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* "optional" reads as part of the label rather than as a second label, because
+   the alternative — marking every *required* field with an asterisk — puts a
+   symbol on the four fields people always fill and nothing on the one they
+   sometimes skip. */
+.field__optional {
+  margin-left: var(--tf-gap-hair);
+  font-weight: 400;
+  color: var(--tf-text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.create__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  margin-top: var(--tf-gap-tight);
+  padding-top: var(--tf-gap-field);
+  border-top: 1px solid var(--tf-border);
+}
+
+/* Pushes the buttons to the right and keeps the checkbox on the left, where a
+   setting about the form belongs rather than beside the button it changes. */
+.create__another {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-gap-hair);
+  margin-right: auto;
+  font-size: 0.8125rem;
+  color: var(--tf-text-secondary);
+  cursor: pointer;
+}
+
+.create__hint {
+  font: var(--tf-code);
+  color: var(--tf-text-muted);
+}

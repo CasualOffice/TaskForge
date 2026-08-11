@@ -36,7 +36,14 @@
  * rotated on success, which is exactly when the attempt is over.
  */
 import { Button, Input, Select } from '@schnsrw/design-system'
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+} from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { idempotencyKey } from '../api/http'
@@ -107,9 +114,14 @@ function CreateForm({
   // on another's, and the menu has to follow the choice.
   const authority = useAuthority(project === '' ? projectId : project)
   const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
   const [type, setType] = useState<TaskType>('TASK')
   const [priority, setPriority] = useState<Priority>('NONE')
-  const [more, setMore] = useState(false)
+  const [due, setDue] = useState('')
+  // Off by default. On, it keeps the form open and the project, type and
+  // priority set — filing a batch of tickets after a meeting is one of the two
+  // ways anyone creates tasks, and the other one is creating a single task.
+  const [another, setAnother] = useState(false)
   const attempt = useRef(idempotencyKey())
   const titleRef = useRef<HTMLInputElement>(null)
 
@@ -144,8 +156,13 @@ function CreateForm({
         chosen,
         {
           title: title.trim(),
+          ...(description.trim() === '' ? {} : { description: description.trim() }),
           ...(type === 'TASK' ? {} : { type }),
           ...(priority === 'NONE' ? {} : { priority }),
+          // A date input gives `YYYY-MM-DD`; the field is a timestamp. End of
+          // that day in the reader's own zone, because "due Friday" means the
+          // end of Friday where they are, not 00:00 UTC.
+          ...(due === '' ? {} : { due_at: new Date(`${due}T23:59:59`).toISOString() }),
         },
         attempt.current,
       ),
@@ -153,6 +170,17 @@ function CreateForm({
       attempt.current = idempotencyKey()
       announce(`Created ${task.key} — ${task.title}`)
       void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
+      if (another) {
+        // Everything that describes *this* task is cleared; everything that
+        // describes the batch — project, type, priority — is kept. Clearing the
+        // project between two tickets from the same meeting would make the
+        // checkbox useless.
+        setTitle('')
+        setDescription('')
+        setDue('')
+        titleRef.current?.focus()
+        return
+      }
       close()
       openTask(task.id)
     },
@@ -161,6 +189,20 @@ function CreateForm({
   function submit(event: FormEvent): void {
     event.preventDefault()
     if (title.trim() !== '' && chosen !== '') create.mutate()
+  }
+
+  // ⌘↵ / Ctrl+↵ from either text field, which is where a person filing a batch
+  // of tickets has their hands. On the fields rather than the `<form>` because
+  // a form is not an interactive element and `jsx-a11y` is right to say so.
+  //
+  // Enter alone still submits from the title and deliberately does not from the
+  // description: a newline is what Enter means inside a textarea, and stealing
+  // it would make the field useless for the paragraph it exists to hold.
+  function keydown(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      if (title.trim() !== '' && chosen !== '') create.mutate()
+    }
   }
 
   if (!projects.isPending && available.length === 0) {
@@ -176,27 +218,34 @@ function CreateForm({
 
   return (
     <form className="create" onSubmit={submit}>
-      {/* Required field first (§6), and the label stays visible — §6 again:
-          "placeholder text is not a label". */}
-      <div className="field">
-        <label className="field__label" htmlFor="create-project">
+      <header className="create__head">
+        <h2 className="create__heading">New task</h2>
+        {/* The project sits in the header rather than as the first field. It is
+            *context* — which drawer this goes in — and putting it first made a
+            required decision the price of typing a title, on a view whose
+            default scope is "All projects". Anyone filing into the project they
+            are already looking at never touches it. */}
+        <label className="visually-hidden" htmlFor="create-project">
           Project
         </label>
         <Select
-          full
+          width="auto"
           id="create-project"
+          containerStyle={{ maxWidth: 200 }}
           value={chosen}
           onChange={(event) => setProject(event.target.value)}
         >
-          <option value="">Choose a project…</option>
+          {chosen === '' ? <option value="">Choose a project…</option> : null}
           {available.map((entry) => (
             <option key={entry.id} value={entry.id}>
               {entry.key} — {entry.name}
             </option>
           ))}
         </Select>
-      </div>
+      </header>
 
+      {/* The one field this form exists for, and the only one that is required.
+          Large, focused, and its own line. */}
       <div className="field">
         <label className="field__label" htmlFor="create-title">
           Title
@@ -206,59 +255,97 @@ function CreateForm({
           id="create-title"
           ref={titleRef}
           value={title}
+          placeholder="What needs doing?"
+          onKeyDown={keydown}
           onChange={(event) => setTitle(event.target.value)}
         />
       </div>
 
-      <Button
-        variant="subtle"
-        className="create__more"
-        aria-expanded={more}
-        onClick={() => setMore(!more)}
-      >
-        {more ? 'Fewer fields' : 'Type and priority'}
-      </Button>
+      {/* Present, not disclosed. The previous form hid everything but the title
+          behind "Type and priority", so the ordinary act of writing down what
+          the task actually is meant creating it and then opening it again. */}
+      <div className="field">
+        <label className="field__label" htmlFor="create-description">
+          Description <span className="field__optional">optional</span>
+        </label>
+        <textarea
+          className="textarea"
+          id="create-description"
+          rows={3}
+          value={description}
+          onKeyDown={keydown}
+          onChange={(event) => setDescription(event.target.value)}
+        />
+      </div>
 
-      {more ? (
-        <div className="create__row">
-          <div className="field">
-            <label className="field__label" htmlFor="create-type">
-              Type
-            </label>
-            <Select
-              full
-              id="create-type"
-              value={type}
-              onChange={(event) => setType(event.target.value as TaskType)}
-            >
-              {offered.map((option) => (
-                <option key={option} value={option}>
-                  {typeLabel(option)}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="field">
-            <label className="field__label" htmlFor="create-priority">
-              Priority
-            </label>
-            <Select
-              full
-              id="create-priority"
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as Priority)}
-            >
-              {PRIORITIES.map((option) => (
-                <option key={option} value={option}>
-                  {priorityLabel(option)}
-                </option>
-              ))}
-            </Select>
-          </div>
+      <div className="create__row">
+        <div className="field">
+          <label className="field__label" htmlFor="create-type">
+            Type
+          </label>
+          <Select
+            full
+            id="create-type"
+            value={type}
+            onChange={(event) => setType(event.target.value as TaskType)}
+          >
+            {offered.map((option) => (
+              <option key={option} value={option}>
+                {typeLabel(option)}
+              </option>
+            ))}
+          </Select>
         </div>
-      ) : null}
+        <div className="field">
+          <label className="field__label" htmlFor="create-priority">
+            Priority
+          </label>
+          <Select
+            full
+            id="create-priority"
+            value={priority}
+            onChange={(event) => setPriority(event.target.value as Priority)}
+          >
+            {PRIORITIES.map((option) => (
+              <option key={option} value={option}>
+                {priorityLabel(option)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="field">
+          <label className="field__label" htmlFor="create-due">
+            Due <span className="field__optional">optional</span>
+          </label>
+          <Input
+            full
+            type="date"
+            id="create-due"
+            value={due}
+            onChange={(event) => setDue(event.target.value)}
+          />
+        </div>
+      </div>
 
-      <div className="field__actions">
+      {/* Beside the fields, not over them: §6 puts validation near what it is
+          about, and the draft is still on screen to correct. */}
+      {create.isError ? <ErrorNotice error={create.error} /> : null}
+
+      <footer className="create__foot">
+        <label className="create__another">
+          <input
+            type="checkbox"
+            checked={another}
+            onChange={(event) => setAnother(event.target.checked)}
+          />
+          Create another
+        </label>
+        <span className="create__hint" aria-hidden="true">
+          ⌘↵
+        </span>
+        <Button variant="subtle" onClick={close}>
+          Cancel
+        </Button>
         <Button
           variant="primary"
           type="submit"
@@ -266,14 +353,7 @@ function CreateForm({
         >
           {create.isPending ? 'Creating…' : 'Create task'}
         </Button>
-        <Button variant="subtle" onClick={close}>
-          Cancel
-        </Button>
-      </div>
-
-      {/* Beside the fields, not over them: §6 puts validation near what it is
-          about, and the draft is still on screen to correct. */}
-      {create.isError ? <ErrorNotice error={create.error} /> : null}
+      </footer>
     </form>
   )
 }
