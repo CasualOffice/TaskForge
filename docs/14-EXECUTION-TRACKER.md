@@ -381,7 +381,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-034 | **An empty body is not a payload** — the transport refuses a silent `undefined` | **Gated** |
 | C-035 | **Dashboards** — the four built-ins, five visualizations, no charting library | **Gated** |
 | C-036 | **Projects, and the shell that stopped scrolling** — create and edit a project; the rail and header stay put | `Built` |
-| C-037 | **The phone, to its own spec** — audit items 2 and 3 closed, measured | `Built` |
+| C-037 | **The phone, to its own spec** — audit items 2, 3 and 5 closed, measured | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -413,9 +413,9 @@ marker to be deleted. A skipped test is a test nobody removes.
 
 - ~~**item 2** — the shell is wider than a 390 px viewport on several routes~~ — closed by C-037
 - ~~**item 3** — the stacked list row does not hold at 390 px~~ — closed by C-037
-- **item 5** — controls under the 44 px tier
+- ~~**item 5** — controls under the 44 px tier~~ — closed by C-037
 
-**C-037 closed items 2 and 3, and the markers are gone from the suite.** That is
+**C-037 closed items 2, 3 and 5, and every marker is gone from the suite.** That is
 the mechanism working as designed: the fix made nine assertions report an
 *unexpected pass*, which is the only signal that reliably gets a stale
 expectation deleted.
@@ -453,6 +453,26 @@ the row rendered as four lines of text on top of each other, because every one
 of them measured *widths*. `a list row contains its own cells` is the assertion
 that was missing — it fails with `title spans 16..58 of a 40px row`, and it was
 verified against the pre-fix code.
+
+**Item 5 was the design system sizing for a mouse.** Sixteen controls on the
+list route and twelve in settings were under the tier — 34 px buttons, 34 px
+selects, 23 px text inputs. The floor is `min-height` under `pointer: coarse`,
+and both halves of that are load-bearing:
+
+- **`min-height`, not `height`.** `@schnsrw/design-system` sets `height` as an
+  *inline style*, which no selector can outrank. It does not need to be
+  outranked: the used height is `max(min-height, height)` whatever the
+  specificity of either, so the floor applies with no `!important` anywhere and
+  without clobbering the deliberate inline tints those components also set.
+- **`pointer: coarse`, not a width.** A 44 px toolbar on a desk wastes a third
+  of its height. The question that matters is whether the primary input is a
+  finger, and deriving that from a viewport width gets a touchscreen laptop
+  wrong in both directions.
+
+The two links inside a list row needed the floor restored explicitly, because
+the narrow layout deliberately removes it: the title sets `min-height: 0` so it
+can wrap as prose rather than sit in a 44 px line box, and the key link was
+43 px wide — one pixel under the tier is still under it.
 
 **C-034 is a fix to the fix that caused it.** `POST /teams/{id}/members` answers
 `201` with no body, so the transport was taught to tolerate an empty body on any

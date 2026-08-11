@@ -2110,3 +2110,67 @@ kbd {
     line-height: 44px;
   }
 }
+
+/* ── Audit item 5: the 44 px tier, under a finger ──────────────────────────────
+ *
+ * WCAG 2.2 §2.5.8 and this repository's own control scale. Sixteen controls on
+ * the list route and twelve in settings were under the tier on a phone —
+ * 34 px buttons, 34 px selects, 23 px text inputs — because the design system
+ * sizes its controls for a mouse and a mouse is not what is holding a phone.
+ *
+ * # Why `min-height` and not `height`
+ *
+ * `@schnsrw/design-system` sets `height` as an **inline style**, which no
+ * selector can outrank. `min-height` does not need to: the used height is
+ * `max(min-height, height)` whatever the specificity of either, so the floor
+ * applies without a single `!important` and without clobbering the deliberate
+ * inline tints those components also set.
+ *
+ * # Why it is scoped to a coarse pointer
+ *
+ * A 44 px row of controls on a desk is a toolbar that wastes a third of its
+ * height. `pointer: coarse` asks the question that actually matters — is the
+ * primary input a finger — rather than guessing it from a viewport width, which
+ * gets a touchscreen laptop wrong in both directions.
+ */
+@media (pointer: coarse) {
+  button,
+  select,
+  input:not([type='hidden'], [type='checkbox'], [type='radio']),
+  summary,
+  .btn,
+  .list__open,
+  .shell__search,
+  .shell__account,
+  .shell__brand,
+  .skip-link,
+  .colhead__filter {
+    min-height: var(--tf-control-touch);
+  }
+
+  /* Width as well as height for the controls that are icons: a 38 px square
+     account button fails the tier on the axis nobody checks. Text controls are
+     left alone — a button is as wide as its label, and padding it to 44 px
+     would put "OK" in the middle of an empty box. */
+  button.shell__account,
+  .shell__search,
+  .colhead__filter {
+    min-width: var(--tf-control-touch);
+  }
+
+  /* The two links inside a list row, which the narrow layout deliberately
+     re-sizes and therefore has to re-floor.
+     - The title sets `min-height: 0` so it can be prose that wraps to two
+       lines rather than a 44 px line box; it is still a tap target, so the
+       floor comes back here at a higher specificity than the rule that
+       removed it.
+     - The key link was 43 px wide. One pixel under the tier is still under
+       the tier, and it is the second most tapped thing in a row. */
+  .list__cell--title .list__open--title {
+    min-height: var(--tf-control-touch);
+  }
+
+  .list__cell--key .list__open {
+    min-width: var(--tf-control-touch);
+  }
+}

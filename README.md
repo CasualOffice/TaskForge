@@ -72,7 +72,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **The browser layer — geometry, reflow and touch targets, measured** (C-032) — `Built`
 - **The list, to its own spec — status, assignee, column filters, grouping** (C-033) — `Built`
 - **Projects, and the shell that stopped scrolling — create and edit a project; the rail and header stay put** (C-036) — `Built`
-- **The phone, to its own spec — audit items 2 and 3 closed, measured** (C-037) — `Built`
+- **The phone, to its own spec — audit items 2, 3 and 5 closed, measured** (C-037) — `Built`
 - **Identity, sessions, MFA, invitations** (C-001) — `Building`
 - **Permission resolver + `/explain`** (C-003) — `Building`
 - **Permission matrix + escalation suites** (C-004) — `Building`

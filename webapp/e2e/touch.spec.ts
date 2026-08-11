@@ -18,10 +18,12 @@ test.describe('on a coarse pointer', () => {
 
   for (const path of ['/', '/settings/profile']) {
     test(`${path} has no control under the 44 px tier`, async ({ page }) => {
-      // Audit item 5, still open: 13–25 controls per route are under the tier.
-      // Recorded as an expected failure so the number is visible in CI and the
-      // fix reports an unexpected pass rather than silence.
-      test.fail(true, 'audit item 5 — controls under the 44 px tier')
+      // Audit item 5, closed. Sixteen controls here and twelve in settings were
+      // under the tier — 34 px buttons and selects, 23 px inputs — because the
+      // design system sizes for a mouse. The floor is applied with `min-height`
+      // under `pointer: coarse`, which outranks the design system's inline
+      // `height` without an `!important` anywhere: the used height is
+      // `max(min-height, height)` whatever the specificity of either.
       await page.goto(path)
       await page.waitForLoadState('networkidle')
 
