@@ -105,6 +105,25 @@ function body(url: string): unknown {
       ],
     }
   }
+  // A report, in the shape every dashboard tile reads. The slices carry a long
+  // name and a lopsided distribution on purpose: a chart only overflows its
+  // tile when a label is too long for the column or a bar is at full width, and
+  // a fixture of three tidy equal values would never produce either.
+  if (url.includes('/api/v1/reports/run')) {
+    return {
+      group_by: 'assignee',
+      measure: 'count',
+      unit: 'tasks',
+      total: 137,
+      scope: { projects: 1 },
+      groups: [
+        { key: null, total: 94 },
+        { key: 'u1', total: 31 },
+        { key: 'u2', total: 8 },
+        { key: 'u3', total: 4 },
+      ],
+    }
+  }
   // One task, by id — the detail route reads this and the list reads the page
   // below it. Matched first, because `/tasks/{id}` also contains `/tasks`.
   if (/\/api\/v1\/tasks\/[0-9a-f-]+$/.test(url)) {

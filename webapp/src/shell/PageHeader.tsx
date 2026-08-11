@@ -45,6 +45,10 @@ const TABS: ReadonlyArray<{ to: string; label: string; exact?: boolean }> = [
   // The second clock gets a tab beside the first. "What is on staging" is a
   // project question, and it is asked as often as "what is in progress".
   { to: '/environments', label: 'Environments' },
+  // Dashboards before Reports, because it is the one you read and Reports is
+  // the one you drive: someone who wants a number should meet the page that
+  // already has it before the page that asks them to build it.
+  { to: '/dashboards', label: 'Dashboards' },
   { to: '/reports', label: 'Reports' },
 ]
 

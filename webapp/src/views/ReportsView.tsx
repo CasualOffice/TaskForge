@@ -26,21 +26,20 @@
  * injected per viewer, so this page says how many projects the number covers.
  * A total quoted without that is a total someone will argue about in a meeting.
  *
- * # What is not here
+ * # Reports and dashboards, and which is which
  *
- * Cycle time, lead time and throughput. All three read state occupancy, which
- * `docs/38` maintains as a projection the worker does not build yet, and the
- * server refuses them by name. Offering them here and rendering an error would
- * be worse than not offering them: a menu is a promise.
+ * This page is *interrogative*: you arrive with a question, drive the toolbar,
+ * and read one number. A dashboard is *declarative* — it answers the four
+ * questions you would have asked anyway, without being driven. They share the
+ * report model, the endpoint and, through `reports/vocabulary`, the words a
+ * group key is read with; a slice called "Untriaged" here and "None" there
+ * would be two products.
  */
 import { useMemo, useState, type ReactElement } from 'react'
 import { Select } from '@schnsrw/design-system'
 import { useQuery } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
-import { listProjects } from '../api/projects'
-import { listTeams } from '../api/admin'
-import { listMembers } from '../api/workspaces'
 import { MEASURES, runReport, type Dimension, type MeasureKey } from '../api/reports'
 import { EmptyState } from '../shell/EmptyState'
 import { PageHeader } from '../shell/PageHeader'
@@ -50,8 +49,8 @@ import { useAppSearch } from '../shell/navigation'
 import { useWorkspaceId } from '../shell/session'
 import { SkeletonRows } from '../shell/Skeleton'
 import { filterFromSearch } from '../tasks/query'
-import { priorityLabel, stateLabel, typeLabel } from '../tasks/present'
 import { WorkToolbar } from './filters/WorkToolbar'
+import { duration, useVocabulary } from './reports/vocabulary'
 
 /**
  * The slices this page can put a name to.
@@ -84,43 +83,11 @@ export default function ReportsView(): ReactElement {
     enabled: workspaceId !== '',
   })
 
-  // The vocabularies a group key is read through. Cheap, cached, and already
-  // fetched by other surfaces — the sidebar has the projects, the settings
-  // screens have the teams and the members.
-  const projects = useQuery({
-    queryKey: keys.projects(workspaceId),
-    queryFn: ({ signal }) => listProjects(workspaceId, signal),
-    enabled: workspaceId !== '',
-    staleTime: 60_000,
-  })
-  const teams = useQuery({
-    queryKey: keys.teams(workspaceId),
-    queryFn: ({ signal }) => listTeams(workspaceId, signal),
-    enabled: workspaceId !== '' && slice === 'team',
-    staleTime: 60_000,
-  })
-  const members = useQuery({
-    queryKey: keys.members(workspaceId),
-    queryFn: ({ signal }) => listMembers(workspaceId, signal),
-    enabled: workspaceId !== '' && (slice === 'assignee' || slice === 'reporter'),
-    staleTime: 60_000,
-  })
-
-  const label = useMemo(() => {
-    const names = new Map<string, string>()
-    for (const project of projects.data?.data ?? []) names.set(project.id, project.name)
-    for (const team of teams.data?.data ?? []) names.set(team.id, team.name)
-    for (const member of members.data?.data ?? []) names.set(member.user_id, member.display_name)
-    return (key: string | null): string => {
-      // The null slice is an answer with a name, and the name depends on which
-      // question was asked. "Unassigned" and "Untriaged" are different facts.
-      if (key === null) return EMPTY_LABEL[slice] ?? 'None'
-      if (slice === 'type') return typeLabel(key)
-      if (slice === 'priority') return priorityLabel(key)
-      if (slice === 'state') return stateLabel(key)
-      return names.get(key) ?? key
-    }
-  }, [projects.data, teams.data, members.data, slice])
+  // Shared with the dashboard rather than re-derived: the words a group key is
+  // read with — "Untriaged", "Unassigned", "No project" — are a product
+  // decision, not a formatting detail, and two copies of that decision drift.
+  const { label: labelFor } = useVocabulary(workspaceId, [slice])
+  const label = (key: string | null): string => labelFor(key, slice)
 
   const groups = report.data?.groups ?? []
   const largest = groups.reduce((most, group) => Math.max(most, group.total), 0)
@@ -237,28 +204,4 @@ export default function ReportsView(): ReactElement {
       </div>
     </section>
   )
-}
-
-/** What "no value" is called, which depends on the question. */
-const EMPTY_LABEL: Partial<Record<Dimension, string>> = {
-  team: 'Untriaged',
-  assignee: 'Unassigned',
-  reporter: 'No reporter',
-  project: 'No project',
-}
-
-/**
- * Seconds, as a person would say them.
- *
- * A cycle time of 271 828 seconds is a number nobody can act on. The unit comes
- * from the server rather than being inferred from the measure name, so a client
- * that has not heard of a new measure still formats it correctly or plainly.
- */
-function duration(seconds: number): string {
-  if (seconds < 90) return `${Math.round(seconds)}s`
-  const minutes = seconds / 60
-  if (minutes < 90) return `${Math.round(minutes)}m`
-  const hours = minutes / 60
-  if (hours < 48) return `${hours.toFixed(1)}h`
-  return `${(hours / 24).toFixed(1)}d`
 }

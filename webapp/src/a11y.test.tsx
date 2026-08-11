@@ -39,6 +39,14 @@ import { ErrorNotice, GapNotice } from './shell/notice'
 import { Announcer } from './shell/announce'
 import { SignIn } from './shell/SignIn'
 import { ApiError } from './api/problem'
+import {
+  BarChart,
+  DonutChart,
+  LineChart,
+  NumberChart,
+  StackedBarChart,
+  TableChart,
+} from './views/dashboard/charts'
 
 afterEach(cleanup)
 
@@ -148,6 +156,56 @@ describe('the live region', () => {
     expect(region).not.toBeNull()
     expect(region?.getAttribute('aria-live')).toBe('polite')
     expect(region?.getAttribute('aria-atomic')).toBe('true')
+    expect(describeViolations(await violationsIn(container))).toBe('')
+  })
+})
+
+describe('the dashboard charts', () => {
+  const points = [
+    { label: 'Unassigned', value: 94, formatted: '94' },
+    { label: 'Ada Lovelace', value: 31, formatted: '31' },
+    { label: 'Grace Hopper', value: 8, formatted: '8' },
+  ]
+  const args = { points, caption: 'Open per assignee', dimension: 'Assignee', measure: 'Tasks' }
+
+  // Each drawn shape, because each one hides its drawing from assistive
+  // technology and carries a `<table>` instead. If that table ever loses its
+  // header cells, its caption, or its row scope, the chart becomes a decorative
+  // image of numbers that nobody can read — and nothing on screen changes.
+  const charts = [
+    ['a bar chart', <BarChart key="bar" {...args} />],
+    ['a line chart', <LineChart key="line" {...args} />],
+    ['a stacked bar', <StackedBarChart key="stack" {...args} />],
+    ['a donut', <DonutChart key="donut" {...args} />],
+    ['a table', <TableChart key="table" {...args} />],
+  ] as const
+
+  for (const [name, element] of charts) {
+    it(`${name} has no axe violations`, async () => {
+      const { container } = render(element)
+      expect(describeViolations(await violationsIn(container))).toBe('')
+    })
+
+    it(`${name} exposes its numbers as a table, not only as a drawing`, async () => {
+      const { container, getByRole } = render(element)
+      // The numbers must be reachable as data. `getByRole('table')` throws if
+      // the drawing is all there is.
+      expect(getByRole('table')).toBeDefined()
+      for (const point of points) {
+        expect(container.textContent).toContain(point.label)
+      }
+      // And the drawing itself must not be read out a second time as a wordless
+      // duplicate of the table beside it.
+      for (const svg of container.querySelectorAll('svg')) {
+        expect(svg.getAttribute('aria-hidden')).toBe('true')
+      }
+    })
+  }
+
+  it('states the unit beside a bare number', async () => {
+    // "3" on a dashboard is not an answer. The unit is part of the number.
+    const { container } = render(<NumberChart value="3" unit="tasks" />)
+    expect(container.textContent).toContain('tasks')
     expect(describeViolations(await violationsIn(container))).toBe('')
   })
 })

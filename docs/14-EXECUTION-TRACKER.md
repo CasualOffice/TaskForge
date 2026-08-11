@@ -378,6 +378,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-032 | **The browser layer** — geometry, reflow and touch targets, measured | `Built` |
 | C-033 | **The list, to its own spec** — status, assignee, column filters, grouping | `Built` |
 | C-034 | **An empty body is not a payload** — the transport refuses a silent `undefined` | **Gated** |
+| C-035 | **Dashboards** — the four built-ins, five visualizations, no charting library | **Gated** |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -438,6 +439,53 @@ have started raising. `tsc` could not see it — `unknown` accepts `undefined` �
 which is the argument for the split being a *function* rather than a convention.
 Gated by four cases in `webapp/src/api/http.test.ts` covering both directions,
 each checked by removing the guard and watching them fail.
+
+**C-035 exists because the product had no dashboard at all.** Reports answered
+one question at a time and had to be driven to answer it; there was nowhere to
+*look* at how work was going. `docs/38` had specified the whole surface — a
+dashboard is a named layout of reports, four built-ins ship, six visualizations,
+closed — so this is that design executed rather than a new one.
+
+The built-ins are **data, not components**: `builtin.ts` is `filter` + `measure`
++ `group_by` + `bucket` per tile, posted to the same endpoint a user-composed
+dashboard will use. `docs/38` asks for exactly that, on the grounds that a
+built-in needing a capability the model lacks is a signal the model is
+under-specified — and writing them out found four such gaps (created vs
+completed, age of oldest open, reopen rate, time in state). They are **absent
+rather than approximated**: a wrong number on a dashboard gets quoted in a
+meeting, where a missing one gets asked about.
+
+**No charting library.** Recharts is ~95 KiB gzip against 40 KiB of headroom;
+the closed visualization set is what makes drawing five shapes by hand
+reasonable, and the whole route including its stylesheet is 5.1 KiB gzip in its
+own chunk. Initial shell moved 159.7 → 159.9 KiB. Every chart renders its SVG
+`aria-hidden` beside a visually-hidden `<table>` of the same numbers — the
+drawing is decoration, the table is the content.
+
+Three defects the work surfaced, none of which any unit test could have seen:
+
+- **The dashboard was a load generator.** Nine tiles mounted together, sent nine
+  reports at once, and a run of them came back `503`. `docs/38` caps reports at
+  5 concurrent per workspace, and the edge's answer to breaching that is a
+  refusal — rendered as an error in a tile whose number was perfectly
+  computable. The client now queues its own tiles at 4, leaving a slot for a
+  second tab. Gated by `gate.test.ts`, five cases, four of which fail with the
+  bound removed.
+- **A hidden table pushed the page 62 px wider than the viewport.**
+  `.visually-hidden` clips with `width: 1px; overflow: hidden`, and neither
+  constrains `display: table` — a table sizes to its content and does not clip.
+  So each chart's data table was invisible *and* causing a horizontal
+  scrollbar. Caught by the desktop half of the overflow assertion on its first
+  run.
+- **The dev database was three commits behind its own migrations.** `0032` had
+  never been applied, so every duration measure answered `500` locally while
+  passing in CI against a fresh database.
+
+The mobile overflow assertions are marked `test.fail` for audit item 2, and that
+inheritance was **measured rather than assumed**: at 390 px every overflowing
+element is shell chrome — `shell__search`, `side__link`, the account popover —
+and not one carries a `dash__`, `tile` or `chart__` class.
+
 
 `/settings/roles` and the task detail route are **not** covered: both need a
 much fuller fixture than a layout suite should carry, and a stub grown to

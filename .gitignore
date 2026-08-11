@@ -20,3 +20,9 @@ webapp/.vite
 # Agent worktrees. Never committed — they are checkouts of this same repo, and
 # `git add -A` will otherwise sweep them in as embedded repositories.
 .claude/worktrees/
+
+# Playwright run output — traces, screenshots and error contexts from the last
+# local run. Machine- and run-specific: committing it makes every browser-test
+# run a diff, and the nine files already tracked were exactly that by accident.
+webapp/test-results/
+webapp/playwright-report/

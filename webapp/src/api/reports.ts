@@ -62,9 +62,45 @@ export interface ReportResult {
   readonly scope: { readonly projects: number }
 }
 
+/**
+ * The time grain of a series (`docs/38` §The report model).
+ *
+ * Closed on both axes, because both are compiled into SQL: the field is one of
+ * the datetime columns the report compiler knows how to `date_trunc`, and the
+ * interval is one of the four grains `docs/38` budgets 400 buckets for.
+ */
+export const INTERVALS = ['day', 'week', 'month'] as const
+export type Interval = (typeof INTERVALS)[number]
+
+/**
+ * Exactly what `bucket_of` accepts, and nothing more.
+ *
+ * `completed_at` is the one a throughput trend reads like it wants, and it is
+ * deliberately absent: there is no such column — completion is a state entry,
+ * which is why `throughput` is its own measure rather than a bucket field. A
+ * client type wide enough to express it would be a type that compiles into a
+ * `400`.
+ */
+export const BUCKET_FIELDS = ['created_at', 'updated_at', 'due_at'] as const
+export type BucketField = (typeof BUCKET_FIELDS)[number]
+
+export interface Bucket {
+  readonly field: BucketField
+  readonly interval: Interval
+}
+
+export interface ReportInput {
+  readonly filter?: TaskFilter
+  readonly groupBy: Dimension
+  readonly measure?: MeasureKey
+  /** Present only for a series; absent for a single slice. */
+  readonly bucket?: Bucket
+  readonly limit?: number
+}
+
 export function runReport(
   workspaceId: string,
-  input: { filter?: TaskFilter; groupBy: Dimension; measure?: MeasureKey; limit?: number },
+  input: ReportInput,
   signal?: AbortSignal,
 ): Promise<ReportResult> {
   return request<ReportResult>('/api/v1/reports/run', {
@@ -75,6 +111,7 @@ export function runReport(
       group_by: input.groupBy,
       ...(input.measure === undefined ? {} : { measure: input.measure }),
       ...(input.filter === undefined ? {} : { filter: input.filter }),
+      ...(input.bucket === undefined ? {} : { bucket: input.bucket }),
       ...(input.limit === undefined ? {} : { limit: input.limit }),
     },
   })

@@ -170,10 +170,11 @@ query's own pipeline** — `compile_group_count` sits beside `compile` in the sa
 module, so the tenant predicate and the authorized project set are injected in
 exactly one place.
 
-The remaining measures wait on `task_state_interval` below and are refused by
-name (`TF-SYS-0007`) rather than approximated. Saved reports and dashboards are
-not built; a run is ad-hoc, and its "saved" form is the URL the toolbar already
-produces.
+`cycle_time`, `lead_time` and `throughput` joined it in C-030, reading the
+projection below; `age`, `time_in_state` and `created_vs_completed` are still
+refused **by name** (`TF-SYS-0007`) rather than approximated. Saved reports are
+not built — a run is ad-hoc, and its "saved" form is the URL the toolbar already
+produces. Dashboards ship as the four built-ins (C-035, §Dashboards below).
 
 ### Report execution limits
 
@@ -222,9 +223,16 @@ A dashboard is a **named layout of saved reports**. That is the whole model.
 }
 ```
 
-- **Visualizations are a closed set**: `number`, `line`, `bar`, `stacked_bar`,
-  `table`, `heatmap`. No chart builder, no arbitrary viz config. Six well-made
-  charts beat a chart builder nobody can use.
+- **Visualizations are a closed set**: `number`, `line`, `bar`, `donut`,
+  `stacked_bar`, `table`, `heatmap`. No chart builder, no arbitrary viz config.
+  Seven well-made charts beat a chart builder nobody can use.
+
+  `donut` was added to the set after the built-ins shipped, on request, and is
+  recorded here rather than left as a divergence in the client. It earns a place
+  because composition is a question a stacked bar answers badly: a bar is read
+  as a *length* and invites comparing segments to each other, while a ring is
+  read as a *proportion* and answers "how much of the open work is this". The
+  hole carries the total, which is the number people want beside the shares.
 - Tiles load **independently and lazily**. One slow report degrades its own tile,
   not the page.
 - The dashboard route is a **lazy chunk**; the charting library is not in the core
@@ -247,6 +255,67 @@ sufficient:
 If a built-in dashboard needed a capability the model lacks, that is the signal
 the model is under-specified. That is why they are defined this way rather than
 hand-built.
+
+### What is built today (C-035)
+
+All four dashboards ship, as **data** — `webapp/src/views/dashboard/builtin.ts`
+holds nothing but `filter` + `measure` + `group_by` + `bucket` per tile, posted
+to the same `POST /reports/run` a user-composed dashboard will use. There is no
+private path a built-in tile can take that a saved report could not.
+
+Writing them out did what this section predicted it would, and the model came
+up short in four places. They are **absent rather than approximated** — a wrong
+number on a dashboard gets quoted in a meeting, where a missing one gets asked
+about:
+
+| Tile | Blocked on |
+| --- | --- |
+| Created vs completed | `created_vs_completed` — two series in one answer |
+| Age of oldest open | `age` |
+| Reopen rate | a measure over `COMPLETED → ACTIVE` transitions |
+| Time in state | `time_in_state` (server refuses it by name) |
+
+Six of the seven visualizations are built: `number`, `bar`, `line`, `donut`,
+`stacked_bar`, `table`. `heatmap` is not, because no built-in tile needs one and
+a menu is a promise.
+
+**Every tile that counts tasks is a link to those tasks.** The tile's own filter
+is the list's address — `searchFromFilter` is the inverse of the translation
+every view already uses, so the count and the rows behind it are the same
+clause and cannot disagree. This is what makes the surface a workflow rather
+than a wall of numbers: notice, open, act. A *duration* tile is deliberately not
+a link — "cycle time by project" measures completed work, and a list behind it
+would have a row count with no relationship to the number above it.
+
+**Tiles are ranked, not uniform.** `number` tiles are *signals* and render in
+their own band above the charts, larger, and coloured by an `Intent` the tile
+declares: `alert` for a commitment already missed, `watch` for work stalled or
+unowned, `plain` for size. A signal at zero renders calm whatever its intent —
+colouring "0 overdue" red for its category trains people to stop reading the
+colour. No thresholds are invented: the product says what *kind* of number it
+is, never that 20 is fine and 21 is not.
+
+The first version of this surface had none of that — nine equal cards, each
+with two lines of explanatory prose above a small number, none of them
+clickable. It read as a page of text rather than a dashboard, which is the
+failure this section now exists to prevent.
+
+**There is no charting library.** The closed visualization set is what makes
+that possible — six shapes is a set you can draw, and the whole dashboard route
+including its stylesheet is 5.1 KiB gzip against the ~95 KiB a chart library
+would have cost. Every chart renders its SVG `aria-hidden` beside a
+visually-hidden `<table>` of the same numbers, per [47](47-TASK-SURFACE-TEMPLATE.md):
+the drawing is decoration, the table is the content.
+
+Saved reports and user-composed dashboards are still not built. A dashboard is
+selected by URL (`/dashboards/{id}`) and its tiles are fixed.
+
+**Tile concurrency is bounded in the browser.** Nine tiles mounting together
+sent nine reports at once and a run of them came back `503`. §Report execution
+limits caps concurrency at 5 per workspace, and the edge's answer to breaching
+it is a refusal — which renders as an error in a tile whose number was
+perfectly computable. So the client queues its own tiles at 4, leaving a slot
+for a second tab.
 
 ## What this deliberately is not
 
