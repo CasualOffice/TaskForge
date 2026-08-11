@@ -600,7 +600,7 @@ async fn the_sweep_removes_delivered_history_and_never_a_dead_letter() -> Result
     assert_eq!(deliveries, CONSUMERS.len() as u64, "swept {deliveries}");
     assert_eq!(events, 1, "swept {events} events");
 
-    // The dead-lettered event and all six of its deliveries survive. docs/25:
+    // The dead-lettered event and every one of its deliveries survive. docs/25:
     // "a dead-lettered event is never silently dropped" — a retention timer
     // deleting one at 3 a.m. is exactly the silent drop that forbids.
     let (_, _, outbox, remaining) = history_of(&db.pool, dead).await?;
@@ -650,7 +650,11 @@ async fn the_sweep_keeps_an_event_while_any_consumer_still_needs_it() -> Result<
     let (deliveries, events) = dispatch::sweep(&mut d, 1000).await?;
     tx.commit().await?;
 
-    assert_eq!(deliveries, 5);
+    // Every consumer but the one still owed: derived from the registry rather
+    // than written as `5`, because a literal here means the next consumer
+    // breaks a Docker-only test long after the unit test pinning the same list
+    // has gone green.
+    assert_eq!(deliveries, CONSUMERS.len() as u64 - 1, "swept {deliveries}");
     assert_eq!(
         events, 0,
         "the event was deleted while one consumer had not received it"
