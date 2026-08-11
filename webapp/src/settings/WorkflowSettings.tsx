@@ -79,7 +79,7 @@ export function WorkflowSettings(): ReactElement {
   const workflowId = all[0]?.workflow_id
 
   const workflow = useQuery({
-    queryKey: keys.workflow(workspaceId, workflowId ?? ''),
+    queryKey: keys.workflowForEditing(workspaceId, workflowId ?? ''),
     queryFn: ({ signal }) => readWorkflowForEditing(workspaceId, workflowId as string, signal),
     enabled: workspaceId !== '' && workflowId !== undefined,
   })
