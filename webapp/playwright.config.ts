@@ -42,7 +42,15 @@ export default defineConfig({
       name: 'phone',
       // A real phone profile: 390 px wide, coarse pointer, device pixel ratio
       // 3. `hasTouch` is what makes the 44 px tier apply.
-      use: { ...devices['iPhone 13'] },
+      //
+      // `browserName` is pinned because the iPhone descriptor selects WebKit,
+      // and CI installs Chromium alone. Locally that difference is invisible —
+      // a developer who has ever run `playwright install` has WebKit — so the
+      // phone project passed here and every one of its tests errored in CI.
+      // What is being measured is geometry at 390 px with a coarse pointer,
+      // which Chromium reproduces; rendering differences between engines are a
+      // separate question this suite does not ask.
+      use: { ...devices['iPhone 13'], browserName: 'chromium' },
     },
   ],
   webServer: {

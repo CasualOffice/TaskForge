@@ -15,7 +15,7 @@
 Error: expect(received).toBeLessThanOrEqual(expected)
 
 Expected: <= 391
-Received:    582
+Received:    583
 ```
 
 # Page snapshot
@@ -23,10 +23,10 @@ Received:    582
 ```yaml
 - generic [ref=e2]:
   - generic [ref=e3]:
-    - link "Skip to content" [ref=e4]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
       - /url: "#main"
     - banner [ref=e5]:
-      - link "TaskForge — Home" [ref=e6]:
+      - link "TaskForge — Home" [ref=e6] [cursor=pointer]:
         - /url: /home
         - generic [ref=e7]: TaskForge
       - button "⌘K" [ref=e8] [cursor=pointer]:

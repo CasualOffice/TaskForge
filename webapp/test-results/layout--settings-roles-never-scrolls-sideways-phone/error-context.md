@@ -15,7 +15,7 @@
 Error: expect(received).toBeLessThanOrEqual(expected)
 
 Expected: <= 391
-Received:    582
+Received:    583
 ```
 
 # Page snapshot
@@ -23,10 +23,10 @@ Received:    582
 ```yaml
 - generic [ref=e2]:
   - generic [ref=e3]:
-    - link "Skip to content" [ref=e4]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
       - /url: "#main"
     - banner [ref=e5]:
-      - link "TaskForge — Home" [ref=e6]:
+      - link "TaskForge — Home" [ref=e6] [cursor=pointer]:
         - /url: /home
         - generic [ref=e7]: TaskForge
       - button "⌘K" [ref=e8] [cursor=pointer]:
@@ -74,31 +74,31 @@ Received:    582
             - heading "Account" [level=2] [ref=e60]
             - list "Account" [ref=e61]:
               - listitem [ref=e62]:
-                - link "Your profile" [ref=e63]:
+                - link "Your profile" [ref=e63] [cursor=pointer]:
                   - /url: /settings/profile
           - generic [ref=e64]:
             - heading "Workspace" [level=2] [ref=e65]
             - list "Workspace" [ref=e66]:
               - listitem [ref=e67]:
-                - link "General" [ref=e68]:
+                - link "General" [ref=e68] [cursor=pointer]:
                   - /url: /settings/workspace
               - listitem [ref=e69]:
-                - link "Members" [ref=e70]:
+                - link "Members" [ref=e70] [cursor=pointer]:
                   - /url: /settings/members
               - listitem [ref=e71]:
-                - link "Teams" [ref=e72]:
+                - link "Teams" [ref=e72] [cursor=pointer]:
                   - /url: /settings/teams
               - listitem [ref=e73]:
-                - link "Roles" [ref=e74]:
+                - link "Roles" [ref=e74] [cursor=pointer]:
                   - /url: /settings/roles
               - listitem [ref=e75]:
-                - link "Workflow" [ref=e76]:
+                - link "Workflow" [ref=e76] [cursor=pointer]:
                   - /url: /settings/workflow
               - listitem [ref=e77]:
-                - link "Environments" [ref=e78]:
+                - link "Environments" [ref=e78] [cursor=pointer]:
                   - /url: /settings/environments
               - listitem [ref=e79]:
-                - link "Tags" [ref=e80]:
+                - link "Tags" [ref=e80] [cursor=pointer]:
                   - /url: /settings/tags
         - paragraph [ref=e82]:
           - text: You do not have

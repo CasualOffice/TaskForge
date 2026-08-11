@@ -15,7 +15,7 @@
 Error: expect(received).toBeLessThanOrEqual(expected)
 
 Expected: <= 391
-Received:    582
+Received:    583
 ```
 
 # Page snapshot
@@ -23,10 +23,10 @@ Received:    582
 ```yaml
 - generic [ref=e2]:
   - generic [ref=e3]:
-    - link "Skip to content" [ref=e4]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
       - /url: "#main"
     - banner [ref=e5]:
-      - link "TaskForge — Home" [ref=e6]:
+      - link "TaskForge — Home" [ref=e6] [cursor=pointer]:
         - /url: /home
         - generic [ref=e7]: TaskForge
       - button "⌘K" [ref=e8] [cursor=pointer]:
@@ -75,20 +75,20 @@ Received:    582
               - listitem [ref=e61]: Acme
               - listitem [ref=e62]:
                 - text: /
-                - link "Onboarding" [ref=e63]:
+                - link "Onboarding" [ref=e63] [cursor=pointer]:
                   - /url: /board?project=019fe000-0000-7000-8000-000000000002
               - listitem [ref=e64]: /Board
           - generic [ref=e65]:
             - heading "Board" [level=1] [ref=e66]
             - button "New task" [ref=e68] [cursor=pointer]
           - navigation "Onboarding views" [ref=e70]:
-            - link "Board" [ref=e71]:
+            - link "Board" [ref=e71] [cursor=pointer]:
               - /url: /board?project=019fe000-0000-7000-8000-000000000002
-            - link "List" [ref=e72]:
+            - link "List" [ref=e72] [cursor=pointer]:
               - /url: /?project=019fe000-0000-7000-8000-000000000002
-            - link "Environments" [ref=e73]:
+            - link "Environments" [ref=e73] [cursor=pointer]:
               - /url: /environments?project=019fe000-0000-7000-8000-000000000002
-            - link "Reports" [ref=e74]:
+            - link "Reports" [ref=e74] [cursor=pointer]:
               - /url: /reports?project=019fe000-0000-7000-8000-000000000002
         - generic [ref=e75]:
           - button "Views" [ref=e77] [cursor=pointer]:

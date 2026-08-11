@@ -46,10 +46,10 @@ expect(received).toEqual(expected) // deep equality
 ```yaml
 - generic [ref=e2]:
   - generic [ref=e3]:
-    - link "Skip to content" [ref=e4]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
       - /url: "#main"
     - banner [ref=e5]:
-      - link "TaskForge — Home" [ref=e6]:
+      - link "TaskForge — Home" [ref=e6] [cursor=pointer]:
         - /url: /home
         - generic [ref=e7]: TaskForge
       - button "⌘K" [ref=e8] [cursor=pointer]:
@@ -217,16 +217,18 @@ expect(received).toEqual(expected) // deep equality
   34 |           // disclosure has no size and is not a target yet.
   35 |           if (rect.width === 0 || rect.height === 0) continue
   36 |           if (rect.height < 44) {
-  37 |             out.push(`${el.tagName}.${el.className.toString().slice(0, 24)} h=${Math.round(rect.height)}`)
-  38 |           }
-  39 |         }
-  40 |         return out
-  41 |       })
-  42 | 
-> 43 |       expect(small, `controls under 44 px: ${small.join(' | ')}`).toEqual([])
+  37 |             out.push(
+  38 |               `${el.tagName}.${el.className.toString().slice(0, 24)} h=${Math.round(rect.height)}`,
+  39 |             )
+  40 |           }
+  41 |         }
+  42 |         return out
+  43 |       })
+  44 | 
+> 45 |       expect(small, `controls under 44 px: ${small.join(' | ')}`).toEqual([])
      |                                                                   ^ Error: controls under 44 px: A.skip-link h=31 | A.shell__brand h=22 | BUTTON.shell__search h=32 | BUTTON. h=28 | BUTTON.shell__account h=38 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | INPUT. h=23 | BUTTON. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | BUTTON. h=34 | SELECT. h=34 | SELECT. h=34 | A.list__open list__open--t h=38
-  44 |     })
-  45 |   }
-  46 | })
-  47 | 
+  46 |     })
+  47 |   }
+  48 | })
+  49 | 
 ```

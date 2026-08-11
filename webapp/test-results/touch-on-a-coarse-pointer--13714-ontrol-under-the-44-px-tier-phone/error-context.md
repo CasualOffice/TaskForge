@@ -41,10 +41,10 @@ expect(received).toEqual(expected) // deep equality
 ```yaml
 - generic [ref=e2]:
   - generic [ref=e3]:
-    - link "Skip to content" [ref=e4]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
       - /url: "#main"
     - banner [ref=e5]:
-      - link "TaskForge — Home" [ref=e6]:
+      - link "TaskForge — Home" [ref=e6] [cursor=pointer]:
         - /url: /home
         - generic [ref=e7]: TaskForge
       - button "⌘K" [ref=e8] [cursor=pointer]:
@@ -92,31 +92,31 @@ expect(received).toEqual(expected) // deep equality
             - heading "Account" [level=2] [ref=e60]
             - list "Account" [ref=e61]:
               - listitem [ref=e62]:
-                - link "Your profile" [ref=e63]:
+                - link "Your profile" [ref=e63] [cursor=pointer]:
                   - /url: /settings/profile
           - generic [ref=e64]:
             - heading "Workspace" [level=2] [ref=e65]
             - list "Workspace" [ref=e66]:
               - listitem [ref=e67]:
-                - link "General" [ref=e68]:
+                - link "General" [ref=e68] [cursor=pointer]:
                   - /url: /settings/workspace
               - listitem [ref=e69]:
-                - link "Members" [ref=e70]:
+                - link "Members" [ref=e70] [cursor=pointer]:
                   - /url: /settings/members
               - listitem [ref=e71]:
-                - link "Teams" [ref=e72]:
+                - link "Teams" [ref=e72] [cursor=pointer]:
                   - /url: /settings/teams
               - listitem [ref=e73]:
-                - link "Roles" [ref=e74]:
+                - link "Roles" [ref=e74] [cursor=pointer]:
                   - /url: /settings/roles
               - listitem [ref=e75]:
-                - link "Workflow" [ref=e76]:
+                - link "Workflow" [ref=e76] [cursor=pointer]:
                   - /url: /settings/workflow
               - listitem [ref=e77]:
-                - link "Environments" [ref=e78]:
+                - link "Environments" [ref=e78] [cursor=pointer]:
                   - /url: /settings/environments
               - listitem [ref=e79]:
-                - link "Tags" [ref=e80]:
+                - link "Tags" [ref=e80] [cursor=pointer]:
                   - /url: /settings/tags
         - generic [ref=e81]:
           - generic [ref=e82]:
@@ -130,7 +130,7 @@ expect(received).toEqual(expected) // deep equality
               - paragraph [ref=e93]:
                 - generic [ref=e94]: Time zone
                 - textbox "Time zone" [ref=e97]:
-                  - /placeholder: Asia/Kolkata
+                  - /placeholder: Asia/Calcutta
                   - text: Europe/London
                 - generic [ref=e98]: Relative dates — today, overdue, next week — are resolved in this zone. Empty means UTC.
               - button "Save profile" [disabled] [ref=e99]
@@ -214,16 +214,18 @@ expect(received).toEqual(expected) // deep equality
   34 |           // disclosure has no size and is not a target yet.
   35 |           if (rect.width === 0 || rect.height === 0) continue
   36 |           if (rect.height < 44) {
-  37 |             out.push(`${el.tagName}.${el.className.toString().slice(0, 24)} h=${Math.round(rect.height)}`)
-  38 |           }
-  39 |         }
-  40 |         return out
-  41 |       })
-  42 | 
-> 43 |       expect(small, `controls under 44 px: ${small.join(' | ')}`).toEqual([])
+  37 |             out.push(
+  38 |               `${el.tagName}.${el.className.toString().slice(0, 24)} h=${Math.round(rect.height)}`,
+  39 |             )
+  40 |           }
+  41 |         }
+  42 |         return out
+  43 |       })
+  44 | 
+> 45 |       expect(small, `controls under 44 px: ${small.join(' | ')}`).toEqual([])
      |                                                                   ^ Error: controls under 44 px: A.skip-link h=31 | A.shell__brand h=22 | BUTTON.shell__search h=32 | BUTTON. h=28 | BUTTON.shell__account h=38 | INPUT. h=23 | INPUT. h=23 | BUTTON. h=34 | INPUT. h=23 | INPUT. h=23 | INPUT. h=23 | BUTTON. h=34
-  44 |     })
-  45 |   }
-  46 | })
-  47 | 
+  46 |     })
+  47 |   }
+  48 | })
+  49 | 
 ```
