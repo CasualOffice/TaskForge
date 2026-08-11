@@ -214,6 +214,14 @@ jobs:
         run: pnpm lint:css
       - name: axe over rendered output
         run: pnpm test
+      - name: Browsers for the geometry suite
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Geometry in a real browser (docs/47 §9)
+        # jsdom has no layout, so nothing else in this pipeline can see whether
+        # an element is on the screen, how wide it is, or how big it is under a
+        # finger. Three changes shipped with "not visually verified" before this
+        # existed, and every one of them was a geometry bug.
+        run: pnpm build && pnpm e2e
 
   docs:
     runs-on: ubuntu-latest
