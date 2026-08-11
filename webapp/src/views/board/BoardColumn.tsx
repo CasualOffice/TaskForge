@@ -143,7 +143,11 @@ export function BoardColumn({
             detail={
               hasFilters
                 ? 'Filters are narrowing this board.'
-                : 'Drag a card here, or create one.'
+                : // Names the control instead of the verb. "Create one" is true
+                  // and unhelpful: there is nothing to create *with* inside a
+                  // column, and someone reads it as a promise about the empty
+                  // space they are looking at.
+                  'Drag a card here, or use New task above.'
             }
           />
         ) : null}

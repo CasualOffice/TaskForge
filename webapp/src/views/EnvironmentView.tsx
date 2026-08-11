@@ -30,6 +30,7 @@
  * quietly hide the answer.
  */
 import { useMemo, useState, type ReactElement } from 'react'
+import { Link } from '@tanstack/react-router'
 import { Checkbox } from '@schnsrw/design-system'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -136,9 +137,19 @@ export function EnvironmentView(): ReactElement {
     return (
       <section className="view" aria-labelledby="page-title">
         <PageHeader title="Environments" />
+        {/* The instruction and the control now agree. This said "Add the
+            stages this project deploys through" on a screen with nothing to add
+            them *with* — environments are authored in settings, and telling
+            someone to act where they cannot is worse than saying nothing,
+            because they look for the button before they doubt the sentence. */}
         <EmptyState
           title="No environments yet"
-          detail="Add the stages this project deploys through — dev, qa, staging, production — and this becomes the answer to “what is on staging”."
+          detail="Environments are the stages this project deploys through — dev, qa, staging, production. Add them and this becomes the answer to “what is on staging”."
+          actions={
+            <Link className="linkbutton" to="/settings/environments">
+              Add environments
+            </Link>
+          }
         />
       </section>
     )
