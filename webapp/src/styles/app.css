@@ -2213,45 +2213,147 @@ kbd {
   align-self: flex-start;
 }
 
-/* The workspace control, in the header. Separated from the brand by a rule
-   rather than by space alone: "TaskForge" and "Demo" are both proper nouns, and
-   without a divider they read as one long name. */
-.workspace {
-  display: flex;
+/* ── The workspace control ────────────────────────────────────────────────────
+ *
+ * One button in the header showing where you are, opening a menu of everywhere
+ * you could be. It replaced a bare name, a `<select>` that only appeared once a
+ * second workspace existed, and a separate plus — three controls for one
+ * subject, none of which looked like what it was. */
+
+.wsbtn {
+  display: inline-flex;
   align-items: center;
   gap: var(--tf-gap-tight);
   min-width: 0;
-  padding-left: var(--tf-gap-tight);
-  border-left: 1px solid var(--tf-border);
+  max-width: 15rem;
+  padding: 0 var(--tf-gap-tight);
+  min-height: var(--tf-control-default);
+  border: 1px solid transparent;
+  border-radius: var(--tf-radius-control);
+  background: none;
+  color: var(--tf-text);
+  font: var(--tf-control-text);
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.workspace__single {
-  font-weight: 600;
-  color: var(--tf-text);
-  white-space: nowrap;
+.wsbtn:hover {
+  background: var(--tf-hover);
+  border-color: var(--tf-border);
+}
+
+.wsbtn[aria-expanded='true'] {
+  background: var(--tf-hover);
+  border-color: var(--tf-border);
+}
+
+.wsbtn__name {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.workspace__form {
+.wsbtn__chevron {
+  font-size: 18px;
+  color: var(--tf-text-muted);
+  flex: none;
+}
+
+/* The mark. An initial in a tinted square — a workspace has no avatar in this
+   schema, and adding an upload for one is a feature, not a fix. */
+.wsmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--tf-radius-badge);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.wsmenu {
   display: flex;
   flex-direction: column;
-  gap: var(--tf-gap-field);
-  width: min(22rem, calc(100vw - 2 * var(--tf-gap-section)));
+  gap: var(--tf-gap-tight);
+  width: min(20rem, calc(100vw - 2 * var(--tf-gap-section)));
 }
 
-.workspace__heading {
+.wsmenu__heading {
   margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 650;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tf-text-muted);
+}
+
+.wsmenu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+}
+
+.wsmenu__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Separated by a rule: everything above is a place to go, everything below is
+   an action. Without the line they read as one list with two odd entries. */
+.wsmenu__foot {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--tf-gap-tight);
+  border-top: 1px solid var(--tf-border);
+}
+
+.wsmenu__foot .pop__item {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  text-decoration: none;
   color: var(--tf-text);
 }
 
-/* On a phone the header has room for the brand, a search icon and the account.
-   The workspace name is the first thing to go: it is the scope you are already
-   in, and it is named again on every settings screen that can change it. */
+.wsmenu__foot .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--tf-text-muted);
+}
+
+.wsmenu__head {
+  display: flex;
+}
+
+.wsmenu__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-gap-hair);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tf-text-secondary);
+  font: var(--tf-meta);
+  cursor: pointer;
+}
+
+.wsmenu__back:hover {
+  color: var(--tf-text);
+}
+
+.wsmenu__back .material-symbols-outlined {
+  font-size: 16px;
+}
+
+/* On a phone the header has room for the brand, search and the account. The
+   workspace is the scope you are already in, and it is named again on every
+   settings screen that can change it. */
 @media (max-width: 860px) {
-  .workspace {
+  .wsbtn {
     display: none;
   }
 }

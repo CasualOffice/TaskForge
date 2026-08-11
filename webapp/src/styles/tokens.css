@@ -261,3 +261,16 @@
   /* Inside a bounded panel. */
   --tf-pad-panel: 20px;
 }
+
+/* Workspace marks. Six tints, picked by hashing the id so a workspace keeps its
+ * colour across loads without the schema storing one. Chosen for contrast
+ * against white text rather than for a palette — the mark carries a letter, and
+ * a letter nobody can read is not an identifier. */
+:root {
+  --tf-mark-1: #3d6fd8;
+  --tf-mark-2: #0f8a72;
+  --tf-mark-3: #a4543a;
+  --tf-mark-4: #7a4bd0;
+  --tf-mark-5: #b03a63;
+  --tf-mark-6: #55647a;
+}

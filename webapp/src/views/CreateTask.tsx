@@ -50,7 +50,15 @@ import { idempotencyKey } from '../api/http'
 import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
 import { listProjects } from '../api/projects'
-import { createTask, PRIORITIES, TASK_TYPES, type Priority, type TaskType } from '../api/tasks'
+import {
+  assignTask,
+  createTask,
+  PRIORITIES,
+  TASK_TYPES,
+  type Priority,
+  type TaskType,
+} from '../api/tasks'
+import { listMembers } from '../api/workspaces'
 import { useAnnounce } from '../shell/announce'
 import { useOpenTask } from '../shell/navigation'
 import { ErrorNotice } from '../shell/notice'
@@ -118,6 +126,16 @@ function CreateForm({
   const [type, setType] = useState<TaskType>('TASK')
   const [priority, setPriority] = useState<Priority>('NONE')
   const [due, setDue] = useState('')
+  const [assignee, setAssignee] = useState('')
+
+  // The workspace directory, for the assignee menu. Shared with every other
+  // surface that turns an id into a name, so it is usually already cached.
+  const members = useQuery({
+    queryKey: keys.members(workspaceId),
+    queryFn: ({ signal }) => listMembers(workspaceId, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
   // Off by default. On, it keeps the form open and the project, type and
   // priority set — filing a batch of tickets after a meeting is one of the two
   // ways anyone creates tasks, and the other one is creating a single task.
@@ -150,8 +168,17 @@ function CreateForm({
   }, [offered, type])
 
   const create = useMutation({
-    mutationFn: () =>
-      createTask(
+    // Two calls, and the order matters. `POST /tasks` has no `assignee` field —
+    // assignment is its own endpoint — so a task with an assignee is created
+    // and then assigned.
+    //
+    // That makes this **not atomic**, and the failure is handled rather than
+    // hidden: if the assignment fails the task still exists, so the form
+    // reports what happened and does not pretend the whole thing failed.
+    // Throwing away a created task to keep the illusion of atomicity would lose
+    // work someone typed.
+    mutationFn: async () => {
+      const task = await createTask(
         workspaceId,
         chosen,
         {
@@ -165,11 +192,28 @@ function CreateForm({
           ...(due === '' ? {} : { due_at: new Date(`${due}T23:59:59`).toISOString() }),
         },
         attempt.current,
-      ),
-    onSuccess: (task) => {
+      )
+      if (assignee !== '') {
+        try {
+          await assignTask(workspaceId, task.id, assignee)
+        } catch (error) {
+          return { task, assignmentFailed: error }
+        }
+      }
+      return { task, assignmentFailed: undefined }
+    },
+    onSuccess: ({ task, assignmentFailed }) => {
       attempt.current = idempotencyKey()
-      announce(`Created ${task.key} — ${task.title}`)
+      announce(
+        assignmentFailed === undefined
+          ? `Created ${task.key} — ${task.title}`
+          : `Created ${task.key}, but it could not be assigned.`,
+      )
       void client.invalidateQueries({ queryKey: keys.taskLists(workspaceId) })
+      // The task exists either way. Opening it is how someone fixes the half
+      // that did not happen, so a failed assignment ends the same way a
+      // successful one does rather than leaving the form open over a task that
+      // was already created.
       if (another) {
         // Everything that describes *this* task is cleared; everything that
         // describes the batch — project, type, priority — is kept. Clearing the
@@ -178,6 +222,7 @@ function CreateForm({
         setTitle('')
         setDescription('')
         setDue('')
+        setAssignee('')
         titleRef.current?.focus()
         return
       }
@@ -309,6 +354,24 @@ function CreateForm({
             {PRIORITIES.map((option) => (
               <option key={option} value={option}>
                 {priorityLabel(option)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="field">
+          <label className="field__label" htmlFor="create-assignee">
+            Assignee <span className="field__optional">optional</span>
+          </label>
+          <Select
+            full
+            id="create-assignee"
+            value={assignee}
+            onChange={(event) => setAssignee(event.target.value)}
+          >
+            <option value="">Nobody</option>
+            {(members.data?.data ?? []).map((member) => (
+              <option key={member.user_id} value={member.user_id}>
+                {member.display_name}
               </option>
             ))}
           </Select>
