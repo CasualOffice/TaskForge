@@ -8,7 +8,7 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { stubApi } from './stub'
+import { stubApi, stubApiWithoutWorkspace } from './stub'
 
 test.beforeEach(async ({ page }) => {
   await stubApi(page)
@@ -288,3 +288,24 @@ for (const path of ['/', '/board', '/reports', '/dashboards/project-health', '/s
     expect(result.innerScroller).toBe(true)
   })
 }
+
+test('a person who belongs to nothing can start a workspace', async ({ page }) => {
+  // Audit item 10. The first-run screen was a sentence with no control on it —
+  // "ask an owner for an invitation" — while `POST /api/v1/workspaces` existed
+  // the whole time and the client never called it. Someone signing up as the
+  // first person in their organisation had no way forward at all.
+  await stubApiWithoutWorkspace(page)
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+
+  await expect(page.getByRole('heading', { name: 'Start a workspace' })).toBeVisible()
+
+  const name = page.getByLabel('Workspace name')
+  await name.fill('Acme, Inc.')
+
+  // The address is offered, not demanded, and it is offered as something the
+  // server will accept — a suggestion that fails validation is a rejection the
+  // person did not earn.
+  await expect(page.getByLabel('Address')).toHaveValue('acme-inc')
+  await expect(page.getByRole('button', { name: 'Create workspace' })).toBeEnabled()
+})

@@ -2174,3 +2174,52 @@ kbd {
     min-width: var(--tf-control-touch);
   }
 }
+
+/* ── Starting a workspace ─────────────────────────────────────────────────────
+ *
+ * The first-run screen. It is the only route in the product that a person can
+ * reach with no tenant at all, so it carries its own `h1` and reads as a page
+ * rather than as an empty state — an empty state implies something should have
+ * been here, and nothing should have been. */
+.firstrun {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--tf-gap-page);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-field);
+}
+
+.firstrun__title {
+  margin: 0;
+  font: var(--tf-page-title);
+}
+
+.firstrun__lede {
+  margin: 0;
+  color: var(--tf-text-secondary);
+}
+
+.newws {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-field);
+  align-items: flex-start;
+}
+
+/* In the rail, the switcher and its "New workspace" share a line; the form that
+   replaces them stacks. */
+.workspace__row {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.workspace__new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-tight);
+  align-items: flex-start;
+}

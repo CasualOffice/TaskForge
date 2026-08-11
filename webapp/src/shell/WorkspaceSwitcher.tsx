@@ -14,21 +14,54 @@
  * and a bespoke listbox that reimplements all three is the classic place a
  * keyboard trap appears (docs/42 §Accessibility).
  */
-import type { ReactElement } from 'react'
-import { Select } from '@schnsrw/design-system'
+import { useState, type ReactElement } from 'react'
+import { Button, Select } from '@schnsrw/design-system'
 
+import { NewWorkspace } from './NewWorkspace'
 import { useSession } from './session'
 
 export function WorkspaceSwitcher(): ReactElement | null {
   const { workspaces, workspace, chooseWorkspace } = useSession()
+  const [creating, setCreating] = useState(false)
 
   if (workspace === undefined) return null
+
+  // The form, in place of the switcher, until it is done. A dialog would be the
+  // obvious alternative and is the wrong one here: this is the outermost scope
+  // of the whole application, and a modal over the workspace you are leaving
+  // shows you the old tenant behind the form that replaces it.
+  if (creating) {
+    return (
+      <div className="workspace__new">
+        <NewWorkspace onDone={() => setCreating(false)} />
+        <Button size="sm" onClick={() => setCreating(false)}>
+          Cancel
+        </Button>
+      </div>
+    )
+  }
+
+  const add = (
+    /* Reachable whether or not there is a second workspace to switch to. The
+       switcher only renders as a `<select>` when there are two, so hanging
+       "New workspace" off the select alone would have hidden it from exactly
+       the person most likely to want it: someone with one workspace. */
+    <Button size="sm" variant="subtle" icon="add" onClick={() => setCreating(true)}>
+      New workspace
+    </Button>
+  )
+
   if (workspaces.length === 1) {
-    return <span className="workspace__single">{workspace.name}</span>
+    return (
+      <div className="workspace__row">
+        <span className="workspace__single">{workspace.name}</span>
+        {add}
+      </div>
+    )
   }
 
   return (
-    <>
+    <div className="workspace__row">
       <label className="visually-hidden" htmlFor="workspace-switcher">
         Workspace
       </label>
@@ -45,6 +78,7 @@ export function WorkspaceSwitcher(): ReactElement | null {
           </option>
         ))}
       </Select>
-    </>
+      {add}
+    </div>
   )
 }

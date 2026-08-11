@@ -382,6 +382,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-035 | **Dashboards** — the four built-ins, five visualizations, no charting library | **Gated** |
 | C-036 | **Projects, and the shell that stopped scrolling** — create and edit a project; the rail and header stay put | `Built` |
 | C-037 | **The phone, to its own spec** — audit items 2, 3 and 5 closed, measured | `Built` |
+| C-038 | **A workspace you can start** — audit item 10; the first run is no longer a dead end | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -2878,3 +2879,31 @@ Eight of the decisions accepted on 2026-08-08 have not yet had their design
 notes rewritten; the note above §Phase 0 says which, and flags the one that is
 actively misleading until it is.
 
+**C-038 removes the product's only unreachable state.** A person who signed in
+and belonged to nothing was shown one sentence — "You are signed in but belong
+to no workspace yet. Ask an owner for an invitation." — on a screen with no
+control on it. `POST /api/v1/workspaces` existed the whole time and the client
+never called it, so the first person in an organisation to sign up was told to
+go and find someone else.
+
+The first-run screen now offers both routes out, and states the second one
+rather than implying it: an invitation adds you to *someone else's* workspace,
+which is not the same as having one. "New workspace" is also reachable from the
+switcher for anyone who already has one — hung off a button rather than the
+`<select>`, because the switcher only renders as a select when there are two,
+which would have hidden it from exactly the person most likely to want it.
+
+The navigation is gone from that screen. This file's own header already said
+rendering the frame "with no workspace produces a nav whose every link 404s",
+and it did: eight destinations, every one scoped to a tenant that does not
+exist yet.
+
+**The slug is offered, not demanded.** Asking for a URL handle before the
+workspace exists is asking someone to decide about a thing they have not made.
+It is derived as the name is typed — "Acme, Inc." becomes `acme-inc` — and
+stops following the name the moment it is edited by hand, tracked with a flag
+rather than by comparing the two strings so that typing a slug which happens to
+match its derived form cannot silently re-arm the derivation. Eleven cases
+assert the suggestion is one the server would *accept*: a suggestion that fails
+validation is a rejection the person did not earn. Verified by removing the
+leading/trailing-separator strip, which fails six of them.

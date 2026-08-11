@@ -28,6 +28,40 @@ export interface Member {
   readonly joined_at: string
 }
 
+/**
+ * Start a workspace, with the caller as its first member.
+ *
+ * No workspace header, for the same reason [`listWorkspaces`] sends none: this
+ * is the call made *before* there is a tenant to be scoped to. It was the one
+ * endpoint the client never called, which left a signed-in person with no
+ * workspace looking at "ask an owner for an invitation" and no way to become
+ * an owner themselves.
+ *
+ * `slug` is validated server-side as 1–64 characters of `a-z`, `0-9` and `-`,
+ * starting with a letter or digit, and a duplicate is a `409`.
+ */
+export function createWorkspace(workspace: { name: string; slug: string }): Promise<Workspace> {
+  return request<Workspace>('/api/v1/workspaces', { method: 'POST', body: workspace })
+}
+
+/**
+ * A slug from a name, the way a person would write one.
+ *
+ * Offered as a default rather than imposed: "Acme, Inc." becoming `acme-inc`
+ * is what someone would have typed, and having to type it is a step that only
+ * exists because the URL cannot hold a comma. Exported so the form and its test
+ * agree on the rule.
+ */
+export function slugFrom(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    // Leading and trailing separators are legal characters in the wrong place:
+    // the server requires the first character to be a letter or digit.
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+}
+
 /** Every workspace the caller belongs to. No workspace header — this is the list that picks one. */
 export function listWorkspaces(signal?: AbortSignal): Promise<Paged<Workspace>> {
   return request<Paged<Workspace>>(`/api/v1/workspaces${query({ limit: 100 })}`, { signal })

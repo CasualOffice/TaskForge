@@ -162,6 +162,26 @@ function body(url: string): unknown {
   return { data: [], page: { next_cursor: null, has_more: false } }
 }
 
+/**
+ * A signed-in person who belongs to nothing.
+ *
+ * The product's first-run state, and the one screen that cannot be reached by
+ * navigation — you have to arrive with no tenant. Worth a fixture of its own
+ * because it used to be a dead end: a sentence telling you to ask an owner for
+ * an invitation, shown to someone who may be about to become the owner.
+ */
+export async function stubApiWithoutWorkspace(page: Page): Promise<void> {
+  await page.route('**/api/v1/**', async (route) => {
+    const url = route.request().url()
+    const empty = /\/api\/v1\/workspaces(\?|$)/.test(url)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(empty ? { data: [], page: { next_cursor: null, has_more: false } } : body(url)),
+    })
+  })
+}
+
 /** Answer every API call from the fixtures above. */
 export async function stubApi(page: Page): Promise<void> {
   await page.route('**/api/v1/**', async (route) => {

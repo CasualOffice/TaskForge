@@ -33,6 +33,7 @@ import { useAppSearch, useUpdateSearch } from './navigation'
 import { useWorkspaceId } from './session'
 import { CommandPalette } from '../palette/CommandPalette'
 import { SignIn } from './SignIn'
+import { NewWorkspace } from './NewWorkspace'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { useSession } from './session'
 import { apply, nextChoice, storedChoice, type ThemeChoice } from './theme'
@@ -72,13 +73,29 @@ export function AppFrame(): ReactElement {
         <AccountMenu onSignedOut={forget} />
       </header>
 
-      <Sidebar />
+      {/* No workspace, no navigation. This file's own header says rendering the
+          frame "with no workspace produces a nav whose every link 404s", and it
+          did: eight destinations, all of them scoped to a tenant that does not
+          exist yet. The first-run screen is the only thing to do here, so it is
+          the only thing offered. */}
+      {workspace === undefined ? null : <Sidebar />}
 
       <main className="shell__main" id="main">
         {workspace === undefined ? (
-          <p className="empty">
-            You are signed in but belong to no workspace yet. Ask an owner for an invitation.
-          </p>
+          /* The product's first-run state, and it used to be a sentence with no
+             control on it — "ask an owner for an invitation" to someone who may
+             *be* the owner. Both routes out are offered: wait for an invitation,
+             or start a workspace, which is what the API allowed all along. */
+          <section className="firstrun" aria-labelledby="firstrun-title">
+            <h1 className="firstrun__title" id="firstrun-title">
+              Start a workspace
+            </h1>
+            <p className="firstrun__lede">
+              You are signed in and belong to no workspace yet. Create one to begin, or wait for
+              an invitation — an invitation adds you to someone else&rsquo;s.
+            </p>
+            <NewWorkspace />
+          </section>
         ) : (
           <Outlet />
         )}
