@@ -32,6 +32,8 @@ export function TaskRow({
   style,
   statusName,
   nameOf,
+  measureRef,
+  index,
 }: {
   task: Task
   onOpen: (id: string) => void
@@ -47,9 +49,22 @@ export function TaskRow({
    */
   statusName?: (id: string) => string | undefined
   nameOf?: (id: string) => string
+  /**
+   * The virtualizer's measuring callback, and the index it measures against.
+   *
+   * Supplied only by the ungrouped list. A virtualized row used to be given a
+   * fixed `height` from a single `ROW_HEIGHT` constant, which is true of the
+   * desktop table and false of the phone: the narrow row is a four-line stacked
+   * summary whose height depends on how far the title wraps. The constant
+   * clipped it to 40 px, so the lines rendered on top of each other. Measuring
+   * the real element is the only version of this that stays right when the
+   * layout changes again.
+   */
+  measureRef?: (element: HTMLElement | null) => void
+  index?: number
 }): ReactElement {
   return (
-    <tr className="list__row" style={style}>
+    <tr className="list__row" style={style} ref={measureRef} data-index={index}>
       <td className="list__cell list__cell--type">
         <TypeBadge type={task.type} />
       </td>
@@ -63,7 +78,7 @@ export function TaskRow({
           {task.title}
         </TaskLink>
       </td>
-      <td className="list__cell">
+      <td className="list__cell list__cell--status">
         {/* Status, in words. It was absent, and it is the field people scan a
             list for — "what state is this in" is the question the list exists
             to answer for many rows at once. The name comes from the project's
@@ -84,20 +99,20 @@ export function TaskRow({
           (task.assignees ?? []).map((id) => nameOf?.(id) ?? id).join(', ')
         )}
       </td>
-      <td className="list__cell">
+      <td className="list__cell list__cell--priority">
         {/* `NONE` renders as nothing — see `tasks/TaskCard.tsx`. A pill reading
             "None" on most rows occupies the position where a signal would be, so
             the eye stops checking it and misses the URGENT. */}
         {task.priority === 'NONE' ? null : <PriorityBadge priority={task.priority} />}
       </td>
-      <td className={`list__cell${isOverdue(task) ? ' list__cell--overdue' : ''}`}>
+      <td className={`list__cell list__cell--due${isOverdue(task) ? ' list__cell--overdue' : ''}`}>
         {task.due_at === null ? (
           '—'
         ) : (
           <time dateTime={task.due_at}>{formatRelative(task.due_at)}</time>
         )}
       </td>
-      <td className="list__cell">
+      <td className="list__cell list__cell--updated">
         <time dateTime={task.updated_at}>{formatRelative(task.updated_at)}</time>
       </td>
     </tr>

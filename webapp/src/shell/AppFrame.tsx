@@ -334,7 +334,11 @@ function ThemeToggle(): ReactElement {
       // "Theme" alone would not.
       aria-label={`${label}. Activate to change.`}
     >
-      {label}
+      {/* Wrapped so a phone can drop the words and keep the icon. The
+          `aria-label` above already carries the state, so hiding this costs a
+          screen reader nothing — and at 390 px "Light theme" is 113 px of a
+          header that has 390 to spend. */}
+      <span className="shell__toptext">{label}</span>
     </Button>
   )
 }

@@ -16,12 +16,13 @@ test.beforeEach(async ({ page }) => {
 
 /** Nothing may push the page sideways. `docs/47` §5: no horizontal scrolling. */
 for (const path of ['/', '/board', '/settings/profile', '/settings/roles', '/reports']) {
-  test(`${path} never scrolls sideways`, async ({ page, isMobile }) => {
-    // Audit item 2, still open: the shell is wider than a 390 px viewport on
-    // several routes. `test.fail` rather than `skip` — the assertion runs, and
-    // the day someone fixes the layout this reports an *unexpected pass* and
-    // makes them delete this line. A skipped test is a test nobody removes.
-    test.fail(isMobile, 'audit item 2 — the narrow shell still overflows')
+  test(`${path} never scrolls sideways`, async ({ page }) => {
+    // Audit item 2, closed. This carried `test.fail(isMobile, …)` until the
+    // header stopped insisting on 260 px of search and 113 px of theme label,
+    // and the bottom bar stopped sizing eight destinations by their words. The
+    // marker is gone because it did its job: the fix made this report an
+    // unexpected pass, which is the only signal that reliably gets a stale
+    // expectation deleted.
     await page.goto(path)
     await page.waitForLoadState('networkidle')
     const overflow = await page.evaluate(() => ({
@@ -35,36 +36,90 @@ for (const path of ['/', '/board', '/settings/profile', '/settings/roles', '/rep
 }
 
 test('the task list keeps its title readable', async ({ page, isMobile }) => {
-  // Audit item 3 on a phone. The stacked row landed in #79 but is unverified
-  // there — this is what verifies it, and it does not pass yet.
-  test.fail(isMobile, 'audit item 3 — the stacked row does not hold at 390 px')
-  // The reported failure: 492 px of fixed columns before the title's `1fr`, so
-  // on a phone the fixed columns ate the row and the title — the one thing
-  // anyone scans for — was the column that collapsed.
+  // Audit item 3, closed. The stacked row landed in #79 and then broke
+  // silently: the mobile layout placed cells by `nth-child`, and adding Status
+  // and Assignee columns shifted every one of those selectors two places, so
+  // Due and Updated were auto-placed on top of the title. The row rendered as
+  // overlapping text at 390 px and nothing in the source looked wrong.
+  //
+  // The two compositions get different assertions because they are different
+  // layouts, and collapsing them into one weaker rule would have meant losing
+  // the desktop guarantee to make the phone pass. On a desk the row is a table
+  // and the title must be the widest *column*; on a phone it is a stacked
+  // summary where several cells legitimately span the whole row, so what
+  // matters is that the title spans it too rather than being squeezed by the
+  // fixed columns beside it.
   await page.goto('/')
-  const title = page.locator('.list__cell--title').first()
+  // Scoped to a row. The column *heading* carries the same class and is
+  // `display: none` on a phone, so an unscoped locator finds the hidden `<th>`
+  // and reports the row as invisible — a failure that says nothing about the
+  // row it is meant to be measuring.
+  const title = page.locator('.list__row .list__cell--title').first()
   await expect(title).toBeVisible()
 
-  // The invariant is not a fraction of the screen — a sidebar and five other
-  // columns make that meaningless — it is that the title is the **widest**
-  // thing in its row. Every other column is a detail; the title is the row, and
-  // it is the one that must never be what shrinks.
-  const widths = await page.evaluate(() => {
+  const measured = await page.evaluate(() => {
     const row = document.querySelector('.list__row')
     if (row === null) return null
-    return [...row.querySelectorAll('.list__cell')].map((cell) => ({
-      title: cell.classList.contains('list__cell--title'),
-      width: Math.round(cell.getBoundingClientRect().width),
-    }))
+    return {
+      rowWidth: Math.round(row.getBoundingClientRect().width),
+      cells: [...row.querySelectorAll('.list__cell')].map((cell) => ({
+        title: cell.classList.contains('list__cell--title'),
+        width: Math.round(cell.getBoundingClientRect().width),
+      })),
+    }
   })
-  expect(widths).not.toBeNull()
-  const titleWidth = widths!.find((cell) => cell.title)?.width ?? 0
-  const widest = Math.max(...widths!.filter((cell) => !cell.title).map((cell) => cell.width))
-  expect(titleWidth, `title ${titleWidth}px vs widest other column ${widest}px`).toBeGreaterThan(
-    widest,
-  )
+  expect(measured).not.toBeNull()
+  const titleWidth = measured!.cells.find((cell) => cell.title)?.width ?? 0
+
+  if (isMobile) {
+    // The title owns its own line. The failure this catches is the one that
+    // shipped: fixed columns eating the row until the title is a sliver, or
+    // cells landing on top of each other.
+    expect(
+      titleWidth,
+      `title ${titleWidth}px of a ${measured!.rowWidth}px row`,
+    ).toBeGreaterThanOrEqual(measured!.rowWidth * 0.9)
+  } else {
+    // Every other column is a detail; the title is the row, and it is the one
+    // that must never be what shrinks.
+    const widest = Math.max(...measured!.cells.filter((c) => !c.title).map((c) => c.width))
+    expect(titleWidth, `title ${titleWidth}px vs widest other column ${widest}px`).toBeGreaterThan(
+      widest,
+    )
+  }
   // And wide enough to read a title in, not merely wider than a date.
   expect(titleWidth).toBeGreaterThan(200)
+})
+
+test('a list row contains its own cells', async ({ page }) => {
+  // The assertion that was missing, and the reason audit item 3 stayed broken
+  // through a passing suite: the width checks above were all satisfied while
+  // the row rendered as four lines of text on top of each other.
+  //
+  // The cause was a fixed `height` on every virtualized row, taken from one
+  // `ROW_HEIGHT` constant that is true of the desktop table and false of the
+  // narrow stacked summary. Cells spilled out of a 40 px box — measurably, at
+  // y = -2 to y = 60 — and nothing that measured *widths* could see it.
+  await page.goto('/')
+  await page.waitForLoadState('networkidle')
+
+  const spills = await page.evaluate(() => {
+    const out: string[] = []
+    for (const row of document.querySelectorAll('.list__row')) {
+      const box = row.getBoundingClientRect()
+      for (const cell of row.querySelectorAll('.list__cell')) {
+        const inner = cell.getBoundingClientRect()
+        if (inner.height === 0) continue
+        if (inner.top < box.top - 1 || inner.bottom > box.bottom + 1) {
+          out.push(
+            `${String(cell.className).slice(0, 30)} spans ${Math.round(inner.top - box.top)}..${Math.round(inner.bottom - box.top)} of a ${Math.round(box.height)}px row`,
+          )
+        }
+      }
+    }
+    return out
+  })
+  expect(spills, spills.join('; ')).toEqual([])
 })
 
 test('the create form opens fully on screen', async ({ page }) => {

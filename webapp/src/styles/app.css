@@ -338,8 +338,25 @@ body {
     grid-template-rows: var(--tf-global-bar-h) minmax(0, 1fr) auto;
     grid-template-areas: 'top' 'main' 'rail';
   }
-  .shell__search-text {
+  /* ── Audit item 2: the header at 390 px ──────────────────────────────────
+   *
+   * Measured rather than guessed. Three controls could not fit and would not
+   * shrink: the search carried `min-width: 260px`, the theme toggle rendered
+   * its state as 113 px of visible words, and between them they pushed the
+   * account button off the right edge — 583 px of shell in a 390 px window.
+   *
+   * The search keeps its icon and loses its floor, so it collapses to a button;
+   * the theme toggle keeps its icon and loses its words, which its `aria-label`
+   * was already carrying. Nothing is removed from the header — it stops
+   * insisting on a width the phone does not have. */
+  .shell__search-text,
+  .shell__toptext {
     display: none;
+  }
+
+  .shell__search {
+    min-width: 0;
+    flex: 0 1 auto;
   }
   /* `docs/47` §3: one scrolling region per route. On the narrow composition
      that region is the page, so the routes stop scrolling inside themselves and
@@ -389,6 +406,32 @@ body {
   .side__link {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  /* ── Audit item 2: the bottom bar ────────────────────────────────────────
+   *
+   * Eight destinations, each sized by its own label, came to 535 px on a
+   * 390 px phone — "Environments" alone is 84 px. So on the narrow
+   * composition the bar is icons, and the words are *clipped rather than
+   * removed*: `display: none` would strip the link's accessible name and
+   * leave a screen-reader user with eight unnamed buttons, which is a worse
+   * bug than the one being fixed. Eight icons at the 44 px tier is 352 px,
+   * and it fits.
+   *
+   * Eight is still more than the four or five a phone tab bar conventionally
+   * carries. Trimming to five with the rest behind a "More" sheet is the
+   * better answer and is a product decision about which destinations are
+   * primary, so it is recorded rather than guessed at here. */
+  .side__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
   .side__group {
     flex-direction: row;
@@ -1978,12 +2021,27 @@ kbd {
     /* Column headings for columns that are no longer columns. */
     display: none;
   }
+  /* Audit item 3: the stacked row.
+   *
+   * Every cell is placed by **name**, never by position. The previous version
+   * used `nth-child(4)`, `(5)` and `(6)` for priority and the two dates — and
+   * then the list gained Status and Assignee columns, which silently shifted
+   * every one of those selectors two places to the right. Priority landed on
+   * Status, the dates landed on Assignee and Priority, and Due and Updated had
+   * no area left, so the grid auto-placed them on top of the title. The row
+   * rendered as overlapping text at 390 px and nothing in the source looked
+   * wrong. A positional selector is a rule that breaks when a *sibling* is
+   * added, which is exactly the edit nobody thinks to re-check.
+   *
+   * Four lines, in the order someone scans them: what and which, the title,
+   * who and where it is, and when. */
   .list__row {
     display: grid;
     grid-template-columns: auto auto 1fr;
     grid-template-areas:
       'type key priority'
       'title title title'
+      'meta meta meta'
       'dates dates dates';
     gap: var(--tf-gap-hair) var(--tf-gap-tight);
     padding: var(--tf-gap-field) var(--tf-gap-tight);
@@ -1991,6 +2049,7 @@ kbd {
   }
   .list__cell {
     padding: 0;
+    min-width: 0;
     white-space: normal;
   }
   .list__cell--type {
@@ -1998,6 +2057,10 @@ kbd {
   }
   .list__cell--key {
     grid-area: key;
+  }
+  .list__cell--priority {
+    grid-area: priority;
+    justify-self: end;
   }
   .list__cell--title {
     grid-area: title;
@@ -2017,19 +2080,27 @@ kbd {
     line-height: 1.35;
     min-height: 0;
   }
-  /* The fourth cell is priority; the fifth and sixth are the dates, which share
-     the last line rather than each claiming one. */
-  .list__row > .list__cell:nth-child(4) {
-    grid-area: priority;
-    justify-self: end;
+  /* Status and assignee share the third line — the two fields the desktop list
+     gained, and the two people scan for after the title. */
+  .list__cell--status {
+    grid-area: meta;
+    justify-self: start;
   }
-  .list__row > .list__cell:nth-child(5),
-  .list__row > .list__cell:nth-child(6) {
+  .list__cell--who {
+    grid-area: meta;
+    justify-self: end;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+  }
+  .list__cell--due,
+  .list__cell--updated {
     grid-area: dates;
     font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
-  .list__row > .list__cell:nth-child(6) {
+  .list__cell--updated {
     justify-self: end;
   }
   /* WCAG 2.2 §2.5.8: the row is the touch target. */

@@ -381,6 +381,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-034 | **An empty body is not a payload** — the transport refuses a silent `undefined` | **Gated** |
 | C-035 | **Dashboards** — the four built-ins, five visualizations, no charting library | **Gated** |
 | C-036 | **Projects, and the shell that stopped scrolling** — create and edit a project; the rail and header stay put | `Built` |
+| C-037 | **The phone, to its own spec** — audit items 2 and 3 closed, measured | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -410,9 +411,48 @@ as **expected failures** rather than skipped — the assertion still runs, and t
 day the layout is fixed the suite reports an *unexpected pass* and forces the
 marker to be deleted. A skipped test is a test nobody removes.
 
-- **item 2** — the shell is wider than a 390 px viewport on several routes
-- **item 3** — the stacked list row does not hold at 390 px
+- ~~**item 2** — the shell is wider than a 390 px viewport on several routes~~ — closed by C-037
+- ~~**item 3** — the stacked list row does not hold at 390 px~~ — closed by C-037
 - **item 5** — controls under the 44 px tier
+
+**C-037 closed items 2 and 3, and the markers are gone from the suite.** That is
+the mechanism working as designed: the fix made nine assertions report an
+*unexpected pass*, which is the only signal that reliably gets a stale
+expectation deleted.
+
+**Item 2 was three fixed widths.** The header carried `min-width: 260px` on the
+search and rendered the theme state as 113 px of visible words, and the bottom
+bar sized eight destinations by their labels — "Environments" alone is 84 px.
+583 px of shell in a 390 px window. The search keeps its icon and loses its
+floor; the theme toggle keeps its icon and loses its words, which its
+`aria-label` was already carrying; the bar shows icons, with the labels
+**clipped rather than removed** — `display: none` would strip each link's
+accessible name and leave a screen-reader user with eight unnamed buttons,
+which is a worse bug than the one being fixed.
+
+Eight is still more than the four or five a phone tab bar conventionally
+carries. Trimming to five with the rest behind a "More" sheet is a product
+decision about which destinations are primary, so it is recorded rather than
+guessed at.
+
+**Item 3 had two causes, and the second one was mine.** The narrow row placed
+cells with `nth-child(4)`, `(5)` and `(6)`; C-033 then added Status and Assignee
+columns, which shifted every one of those selectors two places to the right.
+Due and Updated had no area left, so the grid auto-placed them on top of the
+title. Cells are placed by **name** now: a positional selector is a rule that
+breaks when a *sibling* is added, which is exactly the edit nobody thinks to
+re-check.
+
+Underneath that, every virtualized row was given a fixed `height` from a single
+`ROW_HEIGHT = 40` constant — true of the desktop table, false of a four-line
+stacked summary whose height depends on how far the title wraps. Rows now
+report their real height through `measureElement`.
+
+**The suite passed through all of it.** Three width assertions were green while
+the row rendered as four lines of text on top of each other, because every one
+of them measured *widths*. `a list row contains its own cells` is the assertion
+that was missing — it fails with `title spans 16..58 of a 40px row`, and it was
+verified against the pre-fix code.
 
 **C-034 is a fix to the fix that caused it.** `POST /teams/{id}/members` answers
 `201` with no body, so the transport was taught to tolerate an empty body on any

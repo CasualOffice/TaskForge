@@ -43,8 +43,19 @@ import { TaskRow } from './list/TaskRow'
 import { groupsFor, type GroupKey } from './list/grouping'
 import { TaskPeek } from '../task/TaskPeek'
 import { useSortPreference } from './sorting'
+import { useNarrow } from '../shell/viewport'
 
+/**
+ * A first guess, replaced by measurement.
+ *
+ * Two values because the two compositions are two layouts: the desktop row is
+ * one table line, the narrow row is a four-line stacked summary. This is only
+ * the *estimate* the virtualizer starts from — every rendered row reports its
+ * real height through `measureElement`, which is what keeps a wrapped title
+ * from being clipped. A single constant here was audit item 3.
+ */
 const ROW_HEIGHT = 40
+const ROW_HEIGHT_NARROW = 104
 /** Fetch the next page while this many rows remain, so scrolling never stalls. */
 const PREFETCH_MARGIN = 12
 
@@ -90,11 +101,12 @@ export function TaskListView(): ReactElement {
   // server refusing one is the point rather than a limitation to work around.
   useLiveUpdates(workspaceId, search.project)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const narrow = useNarrow()
 
   const virtualizer = useVirtualizer({
     count: feed.rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => (narrow ? ROW_HEIGHT_NARROW : ROW_HEIGHT),
     overscan: 10,
   })
 
@@ -197,12 +209,16 @@ export function TaskListView(): ReactElement {
                     statusName={statusName}
                     nameOf={nameOf}
                     onOpen={openTask}
+                    measureRef={virtualizer.measureElement}
+                    index={item.index}
                     style={{
                       position: 'absolute',
                       top: 0,
                       left: 0,
                       width: '100%',
-                      height: item.size,
+                      // No `height`. The row reports its own through
+                      // `measureElement`; pinning it here is what clipped the
+                      // stacked row to one line of a four-line summary.
                       transform: `translateY(${item.start}px)`,
                     }}
                   />

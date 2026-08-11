@@ -35,16 +35,13 @@ test('/dashboards lands on a dashboard rather than a chooser', async ({ page }) 
 })
 
 for (const id of DASHBOARDS) {
-  test(`${id} never scrolls sideways`, async ({ page, isMobile }) => {
-    // Audit item 2 again, and it is the *shell* rather than this surface: at
-    // 390 px every overflowing element is chrome — `shell__search`,
-    // `shell__account`, `side__link`, the account popover — and not one carries
-    // a `dash__`, `tile` or `chart__` class. Measured, not assumed, because the
-    // honest thing to do with an inherited failure is to prove it is inherited.
-    // The desktop half of this test is what guards the grid itself, and it
-    // caught a real defect on its first run: the hidden data table each chart
-    // carries was pushing the document 62 px wider than the viewport.
-    test.fail(isMobile, 'audit item 2 — the narrow shell still overflows')
+  test(`${id} never scrolls sideways`, async ({ page }) => {
+    // This inherited audit item 2 — at 390 px every overflowing element was
+    // shell chrome, not a `dash__`, `tile` or `chart__` class — and it is now
+    // fixed at the shell, so the marker is gone and this asserts for real on
+    // both compositions. The desktop half caught a defect of its own on its
+    // first run: the hidden data table each chart carries was pushing the
+    // document 62 px wider than the viewport.
     await page.goto(`/dashboards/${id}`)
     await page.waitForLoadState('networkidle')
     const overflow = await page.evaluate(() => ({
