@@ -133,11 +133,17 @@
   position: relative;
   display: inline-flex;
 }
+/* The fallback position only. `Popover` sets `position: fixed` with measured
+ * coordinates as soon as it opens — see the layout effect there for why an
+ * absolutely positioned surface was both clipped by scrolling ancestors and
+ * pushed off-screen when its trigger sat near the left edge. */
 .pop__surface {
   position: absolute;
   top: calc(100% + 4px);
   z-index: 40;
   min-width: 200px;
+  /* Never wider than the screen it has to fit on. */
+  max-width: calc(100vw - 16px);
   padding: 8px;
   border: 1px solid var(--tf-border-strong, var(--color-border-strong));
   border-radius: 10px;

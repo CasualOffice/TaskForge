@@ -30,8 +30,10 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactElement,
   type ReactNode,
 } from 'react'
@@ -68,6 +70,8 @@ export function Popover({
   const [open, setOpen] = useState(false)
   const host = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const surface = useRef<HTMLDivElement>(null)
+  const [placement, setPlacement] = useState<CSSProperties>()
   const id = useId()
 
   const close = useCallback(() => {
@@ -77,6 +81,41 @@ export function Popover({
     // to tab from the top of the page to get back to where they were.
     trigger.current?.focus()
   }, [])
+
+  /**
+   * Put the surface where it fits, in viewport coordinates.
+   *
+   * It used to be `position: absolute` inside the trigger's own box, with
+   * `align="end"` meaning `right: 0`. Two things went wrong with that, and both
+   * were reported as the control being unusable rather than as a layout bug.
+   *
+   * A 360 px panel right-aligned to a trigger near the *left* edge extends
+   * leftwards off the screen — which is what "New task" did, because the
+   * toolbar wraps its trigger to the left at desktop widths.
+   *
+   * And an absolutely positioned box is clipped by any ancestor that hides its
+   * overflow. Several routes have one, by design, because they own a scrolling
+   * region. `fixed` takes the surface out of that containing block entirely.
+   *
+   * Measured after paint rather than guessed: the surface sizes itself to its
+   * contents, and a hardcoded width here would be a second opinion about it
+   * that goes stale the first time a form gains a field.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(undefined)
+      return
+    }
+    const anchor = trigger.current?.getBoundingClientRect()
+    const panel = surface.current?.getBoundingClientRect()
+    if (anchor === undefined || panel === undefined) return
+
+    const { left, top } = place(anchor, panel, align, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
+    setPlacement({ position: 'fixed', left, top, right: 'auto', bottom: 'auto' })
+  }, [open, align])
 
   useEffect(() => {
     if (!open) return
@@ -135,7 +174,12 @@ export function Popover({
       )}
 
       {open ? (
-        <div className={`pop__surface pop__surface--${align}`} id={id}>
+        <div
+          className={`pop__surface pop__surface--${align}`}
+          id={id}
+          ref={surface}
+          style={placement}
+        >
           {children(close)}
         </div>
       ) : null}
@@ -186,4 +230,45 @@ export function ChoiceList({
       ))}
     </ul>
   )
+}
+
+/** A rectangle, as much of one as placement needs. */
+export interface Box {
+  readonly left: number
+  readonly right: number
+  readonly top: number
+  readonly bottom: number
+  readonly width: number
+  readonly height: number
+}
+
+/**
+ * Where the surface goes, in viewport coordinates.
+ *
+ * Pure, and exported, because the two failures this replaces were both
+ * arithmetic and neither was visible until someone opened the control on a
+ * particular screen. A browser is not required to check that a panel ends up on
+ * one.
+ */
+export function place(
+  anchor: Box,
+  panel: { readonly width: number; readonly height: number },
+  align: 'start' | 'end',
+  viewport: { readonly width: number; readonly height: number },
+  margin = 8,
+): { left: number; top: number } {
+  // Where it would like to be: left-aligned to the trigger, or right-aligned so
+  // its trailing edge matches the trigger's.
+  const wanted = align === 'end' ? anchor.right - panel.width : anchor.left
+  // Clamped into the viewport. `Math.max` outermost, so a panel wider than the
+  // screen starts at the left margin rather than being pushed off it.
+  const left = Math.max(margin, Math.min(wanted, viewport.width - panel.width - margin))
+
+  // Below by default; above when there is no room below. A menu that opens
+  // downwards into nothing is a menu you have to scroll to find.
+  const below = anchor.bottom + 4
+  const fitsBelow = below + panel.height <= viewport.height - margin
+  const top = fitsBelow ? below : Math.max(margin, anchor.top - panel.height - 4)
+
+  return { left, top }
 }

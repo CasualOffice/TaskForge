@@ -374,6 +374,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-028 | **Environments as configuration** — add, rename, reorder, remove | **Gated** |
 | C-029 | **State-occupancy projection** — `task_state_interval`, maintained and rebuildable | **Gated** |
 | C-030 | **Duration measures** — cycle time, lead time, throughput | **Gated** |
+| C-031 | **Popover placement and the narrow list row** — two release blockers | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
