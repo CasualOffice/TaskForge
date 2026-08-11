@@ -75,7 +75,30 @@ export function csrfToken(): string | undefined {
  * is never surfaced — `ApiError.fromResponse` normalizes even a proxy's HTML.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  return (await send<T>(path, options)).data
+  const { data, status } = await send<T>(path, options)
+  // A 2xx with no body is a real answer to a route that returns nothing, and
+  // [`requestNoContent`] is where those callers go. Reaching *here* means the
+  // caller named a payload type and the server sent no payload — so returning
+  // `undefined` under a type that promises `T` would smuggle a server fault
+  // past every `if (query.error)` in the app and detonate it later inside a
+  // child component, as `Cannot read properties of undefined` with no code, no
+  // request id, and nothing tying it back to the response that caused it.
+  // Throwing puts the fault where the caller already handles faults.
+  if (data === undefined) throw ApiError.emptyBody(path, status)
+  return data
+}
+
+/**
+ * A request whose success carries no body — a `DELETE`, or a write whose only
+ * answer is "done".
+ *
+ * Separate from [`request`] so that "no body" is a claim a route makes once,
+ * here, rather than a silence every caller has to be ready for. `request<void>`
+ * looked equivalent and was not: it made the empty body indistinguishable from
+ * a truncated one on the 65 routes that do return a payload.
+ */
+export async function requestNoContent(path: string, options: RequestOptions = {}): Promise<void> {
+  await send<unknown>(path, options)
 }
 
 /**
@@ -88,7 +111,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 async function send<T>(
   path: string,
   options: RequestOptions,
-): Promise<{ data: T; etag: string | null }> {
+): Promise<{ data: T; etag: string | null; status: number }> {
   const method = options.method ?? 'GET'
   const headers = new Headers({ accept: 'application/json' })
 
@@ -132,8 +155,8 @@ async function send<T>(
   // server had just succeeded at. Reading the text first is the fix: whether a
   // body is present is a fact about the response, not a fact about its status.
   const text = await response.text()
-  if (text === '') return { data: undefined as T, etag }
-  return { data: JSON.parse(text) as T, etag }
+  if (text === '') return { data: undefined as T, etag, status: response.status }
+  return { data: JSON.parse(text) as T, etag, status: response.status }
 }
 
 /**
@@ -152,8 +175,13 @@ export async function requestWithVersion<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<{ data: T; version: number | undefined }> {
-  const { data, etag } = await send<T>(path, options)
-  return { data, version: parseEtag(etag) ?? (data as { version?: number } | undefined)?.version }
+  const { data, etag, status } = await send<T>(path, options)
+  // Same refusal as [`request`], and it matters more here: every caller of this
+  // function unwraps `.data` into a child component's props on the next line,
+  // so an empty body arrived as a crash inside that child rather than as an
+  // error on the query that fetched it.
+  if (data === undefined) throw ApiError.emptyBody(path, status)
+  return { data, version: parseEtag(etag) ?? (data as { version?: number }).version }
 }
 
 /**

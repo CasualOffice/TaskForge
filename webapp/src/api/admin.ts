@@ -16,7 +16,7 @@
  * only reason teams exist, and it is why the team screen shows membership: "who
  * does this grant reach?" is otherwise unanswerable.
  */
-import { query, request } from './http'
+import { query, request, requestNoContent } from './http'
 import type { Paged } from './page'
 import type { Member, Workspace } from './workspaces'
 
@@ -97,7 +97,7 @@ export function listMembers(
  * the control and renders the refusal.
  */
 export function removeMember(workspaceId: string, userId: string): Promise<void> {
-  return request<void>(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
+  return requestNoContent(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
     method: 'DELETE',
     workspaceId,
   })
@@ -132,7 +132,7 @@ export function createInvitation(
 }
 
 export function revokeInvitation(workspaceId: string, id: string): Promise<void> {
-  return request<void>(`/api/v1/workspaces/${workspaceId}/invitations/${id}`, {
+  return requestNoContent(`/api/v1/workspaces/${workspaceId}/invitations/${id}`, {
     method: 'DELETE',
     workspaceId,
   })
@@ -201,7 +201,7 @@ export function removeTeamMember(
   teamId: string,
   userId: string,
 ): Promise<void> {
-  return request<void>(`/api/v1/teams/${teamId}/members/${userId}`, {
+  return requestNoContent(`/api/v1/teams/${teamId}/members/${userId}`, {
     method: 'DELETE',
     workspaceId,
   })

@@ -11,7 +11,7 @@
  * client that asked with a workspace would log a user out whenever their last
  * workspace was one they had been removed from.
  */
-import { request } from './http'
+import { request, requestNoContent } from './http'
 import { ApiError } from './problem'
 
 /** `GET /api/v1/auth/session` — the body `middleware::whoami` returns. */
@@ -60,7 +60,7 @@ export async function login(credentials: Credentials): Promise<void> {
 
 /** Revoke the session row. `docs/40` rejects JWTs precisely so this is immediate. */
 export async function logout(): Promise<void> {
-  await request<unknown>('/api/v1/auth/logout', { method: 'POST' })
+  await requestNoContent('/api/v1/auth/logout', { method: 'POST' })
 }
 
 function isUnauthenticated(error: unknown): boolean {

@@ -377,6 +377,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-031 | **Popover placement and the narrow list row** — two release blockers | `Built` |
 | C-032 | **The browser layer** — geometry, reflow and touch targets, measured | `Built` |
 | C-033 | **The list, to its own spec** — status, assignee, column filters, grouping | `Built` |
+| C-034 | **An empty body is not a payload** — the transport refuses a silent `undefined` | **Gated** |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -409,6 +410,34 @@ marker to be deleted. A skipped test is a test nobody removes.
 - **item 2** — the shell is wider than a 390 px viewport on several routes
 - **item 3** — the stacked list row does not hold at 390 px
 - **item 5** — controls under the 44 px tier
+
+**C-034 is a fix to the fix that caused it.** `POST /teams/{id}/members` answers
+`201` with no body, so the transport was taught to tolerate an empty body on any
+status rather than only `204`. That was right for writes and wrong for reads:
+`request<T>` and `requestWithVersion<T>` then returned `undefined` under a type
+that promised `T`. Nothing threw, so the query settled as a **success** carrying
+no payload, every `if (query.error)` in the app passed it through, and the fault
+detonated one component later — `/settings/workflow` reported `Cannot read
+properties of undefined (reading 'id')` from inside `Statuses`, with no error
+code, no `request_id`, and nothing tying it to the response that caused it. Two
+screens unwrapped a payload that way (`workflow`, `workspace`) and both would
+have needed their own guard, forever, on every screen added after them.
+
+The fix is at the boundary rather than at the call sites: **"this route returns
+nothing" is now a claim a route makes once**, by calling `requestNoContent`
+instead of `request<void>` — nine routes do — and anything else that arrives
+empty raises `TF-SYS-0001` naming the path. So the two screens did not need
+guards at all; the state they were guarding against can no longer be
+constructed. Registry note: `TF-SYS-0001` rather than a new code, because
+`docs/20` owns that catalogue and this is exactly the server fault the user did
+not cause that the generic code already describes.
+
+Migrating the nine caught a live bug on the way past: `logout` used
+`request<unknown>` and `POST /auth/logout` answers `204`, so signing out would
+have started raising. `tsc` could not see it — `unknown` accepts `undefined` —
+which is the argument for the split being a *function* rather than a convention.
+Gated by four cases in `webapp/src/api/http.test.ts` covering both directions,
+each checked by removing the guard and watching them fail.
 
 `/settings/roles` and the task detail route are **not** covered: both need a
 much fuller fixture than a layout suite should carry, and a stub grown to

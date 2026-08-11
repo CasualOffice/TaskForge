@@ -13,10 +13,18 @@
  * Every write in the settings area goes through this function, so the failure
  * was one line away from every one of them. That is what makes it worth a test
  * rather than a comment.
+ *
+ * The fix for that bug then caused the opposite one: tolerating an empty body
+ * everywhere meant a *read* that got nothing returned `undefined` under a type
+ * promising a payload, and `/settings/workflow` crashed inside a child
+ * component with "Cannot read properties of undefined (reading 'id')" — no
+ * code, no request id, nothing pointing at the response. So the two cases are
+ * now two functions, and both directions are held here.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { request, requestWithVersion } from './http'
+import { request, requestNoContent, requestWithVersion } from './http'
+import { ApiError } from './problem'
 
 function answering(init: {
   status: number
@@ -47,18 +55,39 @@ afterEach(() => {
 })
 
 describe('a response with no body', () => {
-  it('resolves rather than throwing, whatever the status', async () => {
+  it('resolves for a route that returns nothing, whatever the status', async () => {
+    // `POST /teams/{id}/members` answers 201 with nothing, and adding someone
+    // already in the team answers 200 with nothing. Both are successes.
     for (const status of [200, 201, 204]) {
       answering({ status })
-      await expect(request('/api/v1/teams/t1/members', { method: 'POST' })).resolves.toBeUndefined()
+      await expect(
+        requestNoContent('/api/v1/teams/t1/members', { method: 'POST' }),
+      ).resolves.toBeUndefined()
     }
   })
 
-  it('still carries its ETag', async () => {
+  it('is a fault when the caller was promised a payload', async () => {
+    // The regression this file exists to hold: `request` used to hand back
+    // `undefined` under a type that promised `T`. That sailed past every
+    // `if (query.error)` and detonated later inside a child component as
+    // "Cannot read properties of undefined", with no code and no request id.
+    answering({ status: 200 })
+    await expect(request<{ id: string }>('/api/v1/workflows/w1')).rejects.toThrow(ApiError)
+  })
+
+  it('is a fault for a versioned read, ETag or not', async () => {
+    // Even with a usable version: `requestWithVersion`'s callers unwrap `.data`
+    // into a child's props on the very next line.
     answering({ status: 200, headers: { etag: '"9"' } })
-    const { data, version } = await requestWithVersion('/api/v1/anything')
-    expect(data).toBeUndefined()
-    expect(version).toBe(9)
+    await expect(requestWithVersion('/api/v1/workflows/w1')).rejects.toThrow(ApiError)
+  })
+
+  it('names the route it came from, so the fault is traceable', async () => {
+    answering({ status: 200 })
+    await expect(requestWithVersion('/api/v1/workflows/w1')).rejects.toMatchObject({
+      code: 'TF-SYS-0001',
+      message: expect.stringContaining('/api/v1/workflows/w1'),
+    })
   })
 })
 
