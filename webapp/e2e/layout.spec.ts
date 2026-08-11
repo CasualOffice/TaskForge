@@ -309,3 +309,23 @@ test('a person who belongs to nothing can start a workspace', async ({ page }) =
   await expect(page.getByLabel('Address')).toHaveValue('acme-inc')
   await expect(page.getByRole('button', { name: 'Create workspace' })).toBeEnabled()
 })
+
+test('every surface that shows task cards can preview one', async ({ page }) => {
+  // The defect: `?task=` opened the drawer on the board, the list and My work,
+  // and did nothing at all on Home and Environments — because each of those
+  // views rendered `<TaskPeek>` itself and two of them simply did not. Clicking
+  // a card there changed the address and produced no drawer.
+  //
+  // It is rendered once by the shell now, so this asserts the property rather
+  // than the four places that happened to have it: the drawer belongs to the
+  // *address*, and every route already shares that parameter. A sixth surface
+  // cannot forget something it does not have to remember — and if one is added
+  // that suppresses it, this fails.
+  await stubApi(page)
+  const TASK = '019fe000-0000-7000-8000-000000000004'
+  for (const path of ['/home', '/', '/board', '/my-work']) {
+    await page.goto(`${path}?task=${TASK}`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('.peek'), `${path} did not open the drawer`).toHaveCount(1)
+  }
+})

@@ -32,6 +32,7 @@ import { Popover } from './Popover'
 import { useAppSearch, useUpdateSearch } from './navigation'
 import { useWorkspaceId } from './session'
 import { CommandPalette } from '../palette/CommandPalette'
+import { TaskPeek } from '../task/TaskPeek'
 import { SignIn } from './SignIn'
 import { NewWorkspace } from './NewWorkspace'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -40,6 +41,7 @@ import { apply, nextChoice, storedChoice, type ThemeChoice } from './theme'
 
 export function AppFrame(): ReactElement {
   const { actor, loading, workspace, forget } = useSession()
+  const taskInDrawer = useAppSearch().task
 
   if (loading) {
     // A `role="status"` rather than a spinner: the first thing a screen-reader
@@ -101,6 +103,15 @@ export function AppFrame(): ReactElement {
           <Outlet />
         )}
       </main>
+
+      {/* The drawer is a property of the *address*, not of a view: `?task=` is
+          what opens it, and every route already shares that parameter. It used
+          to be rendered by each view that wanted it, and Home and Environments
+          simply did not — so clicking a card there set `?task=` and nothing
+          happened, on two of the five surfaces that show task cards. Rendering
+          it once here is what stops the sixth surface forgetting. It is
+          `position: fixed`, so where in the tree it sits was never load-bearing. */}
+      {taskInDrawer === undefined ? null : <TaskPeek taskId={taskInDrawer} />}
 
       <CommandPalette />
     </div>

@@ -385,6 +385,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-038 | **A workspace you can start** — audit item 10; the first run is no longer a dead end | `Built` |
 | C-039 | **The create-task flow, and the workspace in the header** | `Built` |
 | C-040 | **Attachments reach the browser** — the preflight that made `docs/28` usable | `Built` |
+| C-041 | **The task drawer belongs to the address** — Home and Environments could not preview | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -2983,3 +2984,17 @@ rather than showing "Nothing attached" over a file that arrived safely.
 request: files are chosen before the task exists and uploaded after it, because
 a presigned URL is minted per task. Sequentially, so ten files are ten uploads
 and not thirty requests racing one rate limit.
+
+**C-041 — the task drawer belonged to four views instead of to the address.**
+`?task=` opened it on the board, the list and My work, and did nothing at all
+on Home and Environments: each view rendered `<TaskPeek>` itself, and two of the
+five surfaces that show task cards simply did not. Clicking a card there changed
+the address and produced no drawer.
+
+It is rendered once by the shell now. The drawer is a property of the URL —
+every route already shares that parameter, and `.peek` is `position: fixed`, so
+where in the tree it sat was never load-bearing. Four copies were four chances
+to forget, and two of them had been taken.
+
+Gated by an assertion over every card surface, verified by deleting the shell's
+copy and watching it fail with `/home did not open the drawer`.

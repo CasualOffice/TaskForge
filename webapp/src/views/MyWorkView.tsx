@@ -30,7 +30,6 @@ import { Button } from '@schnsrw/design-system'
 import { useMemo, type ReactElement } from 'react'
 
 import type { TaskQuery } from '../api/tasks'
-import { TaskPeek } from '../task/TaskPeek'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
 import { ErrorNotice, GapNotice } from '../shell/notice'
 import { TaskLink } from '../task/TaskLink'
@@ -172,7 +171,6 @@ export function MyWorkView(): ReactElement {
         </footer>
       </div>
 
-      {search.task === undefined ? null : <TaskPeek taskId={search.task} />}
     </section>
   )
 }
