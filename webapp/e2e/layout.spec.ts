@@ -144,8 +144,41 @@ test('the list shows status and assignee, and filters on the column', async ({
 
   // And the filter is on the column it narrows, not in a toolbar somewhere
   // else. Hidden until the heading is hovered, so it is found by hovering.
-  const status = page.locator('.colhead', { hasText: 'Status' }).first()
-  await status.hover()
-  const funnel = status.locator('.colhead__filter')
+  // The Type column, because its options are a closed set that needs no
+  // project scope — a status list belongs to one project's workflow, and at
+  // workspace scope there is nothing to offer.
+  const type = page.locator('.colhead', { hasText: 'Type' }).first()
+  await type.hover()
+  const funnel = type.locator('.colhead__filter')
   await expect(funnel).toBeVisible()
+
+  // And the menu it opens is actually *on top*. `.list` sets `overflow:
+  // hidden`, so a menu positioned inside the table was clipped by it and
+  // appeared behind the rows with nothing visible — which no z-index fixes,
+  // because a clipped box is not a stacking problem. `elementFromPoint` is the
+  // only honest way to ask "is this painted here": a visible box behind an
+  // opaque one is still `toBeVisible`.
+  await funnel.click()
+  const menu = await page.evaluate(() => {
+    const el = document.querySelector('.colhead__menu')
+    if (el === null) return null
+    const box = el.getBoundingClientRect()
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 20)
+    const list = document.querySelector('.list')
+    return {
+      // The mechanism: `.list` sets `overflow: hidden`, so a menu positioned
+      // *inside* the table is clipped by it — which is not a stacking problem
+      // and no z-index fixes it. `fixed` is what takes it out of that
+      // containing block, so the fix is what is asserted, not a symptom that
+      // only appears once the list is long enough to clip.
+      position: getComputedStyle(el).position,
+      paintedOnTop: hit !== null && el.contains(hit),
+      // And it is allowed to extend past the table, which is the thing the
+      // clipping prevented.
+      escapesTheTable: list !== null && box.bottom > list.getBoundingClientRect().bottom,
+    }
+  })
+  expect(menu?.position).toBe('fixed')
+  expect(menu?.paintedOnTop).toBe(true)
+  expect(menu?.escapesTheTable).toBe(true)
 })

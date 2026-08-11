@@ -20,11 +20,20 @@
  * The label sorts when the column is sortable; the funnel filters. Two targets,
  * one heading, and neither is a menu you have to open to discover the other.
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from 'react'
 import { Button, Icon } from '@schnsrw/design-system'
 
 import type { Sort, SortKey } from '../../api/tasks'
 import { useAppSearch, useUpdateSearch } from '../../shell/navigation'
+import { place } from '../../shell/Popover'
 
 export interface FilterOption {
   readonly value: string
@@ -54,12 +63,43 @@ export function FilterHeader({
   const update = useUpdateSearch()
   const [open, setOpen] = useState(false)
   const host = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const [placement, setPlacement] = useState<CSSProperties>()
   const id = useId()
 
   // The grammar's `in` is a comma-separated list, so the chosen set is the
   // parameter split on commas — not a second representation held beside it.
   const raw = search[field]
   const chosen = raw === undefined || raw === '' ? [] : raw.split(',')
+
+  /**
+   * Positioned in viewport coordinates, by the same function the popover uses.
+   *
+   * `.list` sets `overflow: hidden` — it has a rounded border and rows must not
+   * escape it — so a menu positioned inside the table was clipped by it and
+   * appeared *behind* the rows with nothing visible. No z-index fixes that: a
+   * clipped box is not a stacking problem, it is a box the browser was told not
+   * to paint outside its parent.
+   *
+   * `fixed` takes it out of that containing block, and reusing `place` means
+   * there is one rule about where a floating surface goes, already tested
+   * against both ways it can land off-screen.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(undefined)
+      return
+    }
+    const anchor = trigger.current?.getBoundingClientRect()
+    const panel = menu.current?.getBoundingClientRect()
+    if (anchor === undefined || panel === undefined) return
+    const { left, top } = place(anchor, panel, 'start', {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
+    setPlacement({ position: 'fixed', left, top, right: 'auto' })
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -109,6 +149,7 @@ export function FilterHeader({
 
         <button
           type="button"
+          ref={trigger}
           className={`colhead__filter${chosen.length > 0 ? ' colhead__filter--on' : ''}`}
           aria-expanded={open}
           aria-haspopup="true"
@@ -127,7 +168,7 @@ export function FilterHeader({
         </button>
 
         {open ? (
-          <div className="colhead__menu" id={id}>
+          <div className="colhead__menu" id={id} ref={menu} style={placement}>
             <ul className="colhead__options">
               {options.map((option) => (
                 <li key={option.value}>
