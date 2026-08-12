@@ -183,16 +183,15 @@ a row in this table. Never neither.
 | Gate (from the tables above) | Lands with | Why not yet |
 | --- | --- | --- |
 | Schema gate asserts the auth `SECURITY DEFINER` definition | **C-001** | ADR-032 accepts the pre-workspace seam **on this condition**. The F-015 gate checks tables; a redefinition widening the function's `RETURNS TABLE` would pass today, which is exactly how a narrowed hole becomes a wide one. |
-| Schema gate asserts the auth `SECURITY DEFINER` definition | **C-001** | ADR-032 accepts the pre-workspace seam **on this condition**. The F-015 gate checks tables; a redefinition widening the function's `RETURNS TABLE` would pass today, which is exactly how a narrowed hole becomes a wide one. |
 | Latency (subset + full) | **F-007** | The harness and the comparison gate are built and tested. There is no baseline to compare against: `benchmarks/reference-8vcpu-32gb.reference.json` is a placeholder that no run can pass, because the docs/30 reference machine does not exist yet. |
-| Frontend lint (`eslint`) | **C-019** | `tsc --noEmit` runs today in `bundle-size`. There is no ESLint config, and no product code to lint. |
-| Frontend tests (Vitest), E2E (Playwright) | **C-018**, **C-019** | No product frontend exists; `webapp/` is the bundle-floor harness only. |
+| ~~Frontend lint (`eslint`, `stylelint`)~~ | — | **Built (C-019).** `webapp/eslint.config.js` and the stylelint rules run as `pnpm lint` and `pnpm lint:css` in the `frontend-a11y` job. |
+| ~~Frontend tests (Vitest), E2E (Playwright)~~ | — | **Built (C-018, C-019).** `pnpm test` (Vitest) and `pnpm e2e` (Playwright, desktop and phone projects) run in the `frontend-a11y` job. `webapp/` stopped being the bundle-floor harness at C-018. |
 | ~~Integration (testcontainers)~~ | — | **Built (F-005).** `crates/casual-task-persistence/tests/schema_harness.rs` starts PostgreSQL 16, applies every migration, and reaches the invariants from Rust. Run by the `schema` job. The tests are `#[ignore]` so `cargo test` stays runnable without a Docker daemon; CI runs them explicitly, because otherwise nothing would. |
 | Query count (no N+1) | **C-012** | Needs a query layer to count. |
-| Permission matrix, escalation, cross-tenant | **C-004**, **C-005** | Phase 1. |
+| ~~Permission matrix, escalation, cross-tenant~~ | — | **Built (C-004, C-005).** `casual-task-api/tests/authz.rs` (16), `permissions.rs` (9), the escalation suite in `roles.rs`, and `casual-task-persistence/tests/tenant_isolation.rs`, which exercises `Scoped::apply` against migration 0010's policy rather than setting the GUC itself. All `#[ignore]`, all run by `cargo test --workspace -- --ignored` in the `schema` job. |
 | OpenAPI diff, event schema diff, plugin contract diff, error registry | Phase 1 | Nothing to diff until `/v1` and the registry exist. |
 | Secret scan, SAST, container scan, enumeration, injection, fuzz | Phase 1 | Tracked with the security work in [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md). |
-| Accessibility (axe, contrast) | **C-019** | Needs a shell to audit. |
+| ~~Accessibility (axe, contrast)~~ | — | **Built (C-019).** axe runs over rendered output in `pnpm test`; the `frontend-a11y` job is named for it. |
 
 ## Future gates
 
