@@ -163,6 +163,69 @@ pub struct Compiled {
 /// apart.
 const RANK: &str = "ts_rank_cd(s.document, q)";
 
+/// How a typed term becomes a `tsquery`: the SQL function and its argument.
+///
+/// # Why not `plainto_tsquery` alone
+///
+/// It was `plainto_tsquery` alone, and that meant **no result until a whole
+/// word was typed**. `backu` found nothing; `backup` found the task. Every
+/// keystroke before the last was an empty list, which is the single thing that
+/// made search feel broken — a search box that answers only complete words is
+/// a search box you have to already know the answer to use.
+///
+/// `docs/26` §index inventory assigns prefix matching to `task_search_trgm`,
+/// which is created by migration 0009, filled on every write, and read by
+/// nothing. **D-069** ruled that the trigram path stays unwired until its plan
+/// shape is measured — `compile_search`'s own notes explain why an `OR` across
+/// two indexes is not a free change under D-043 — and that prefix is served
+/// meanwhile by a `:*` on the final token, which the existing `task_search_gin`
+/// already answers and which leaves the plan alone.
+///
+/// # Only the last token
+///
+/// The last token is the one being typed; the ones before it are finished
+/// words. `restore backu` becomes `restore & backu:*`, which still finds
+/// "Backup restore drill". Making every token a prefix would match far more
+/// than anyone asked for.
+///
+/// # Why the term is rebuilt rather than passed through
+///
+/// `to_tsquery` parses its argument as tsquery *syntax*, so `&`, `|`, `!`,
+/// `(`, `)` and `:` in a person's typing are operators rather than text. The
+/// term is therefore reduced to alphanumerics and `-` — everything else is
+/// dropped, not escaped — and the operators are supplied by this function
+/// alone. Hyphens are kept because `OPS-1` is a task key and dropping the
+/// hyphen would break the search people use most.
+///
+/// Measured against PostgreSQL 16 rather than assumed: hyphen-only and
+/// stopword-only inputs do not raise — they produce an empty tsquery, which
+/// matches nothing — so the only real hazard is an operator reaching the
+/// parser, and none can.
+///
+/// When nothing survives the filter there is no prefix to add, and the term
+/// goes to `plainto_tsquery` unchanged: it never parses operators, so it is the
+/// safe thing to hand text this function could not tokenize.
+fn tsquery_of(term: &str) -> (&'static str, String) {
+    let tokens: Vec<String> = term
+        .split_whitespace()
+        .map(|token| {
+            token
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == '-')
+                .collect::<String>()
+        })
+        // A token of punctuation alone contributes no lexeme. Requiring one
+        // alphanumeric rather than merely non-empty is what stops `-` becoming
+        // the token `-:*`.
+        .filter(|token| token.chars().any(char::is_alphanumeric))
+        .collect();
+
+    if tokens.is_empty() {
+        return ("plainto_tsquery", term.to_owned());
+    }
+    ("to_tsquery", format!("{}:*", tokens.join(" & ")))
+}
+
 /// The static identifier map. The only place a column name is written.
 fn column_of(field: Field) -> &'static str {
     match field {
@@ -774,8 +837,11 @@ fn full_text_term(node: &Node) -> Option<String> {
 /// in `docs/14` §D-043 rather than assumed here.
 fn compile_search(filter: &Node, term: String, page: &Page, mut params: Vec<Param>) -> Compiled {
     // $3 — bound before any clause parameter, like the tenant pair above, so
-    // the numbering stays positional and predictable.
-    let query = bind(&mut params, Param::Text(term));
+    // the numbering stays positional and predictable. The term is rebuilt into
+    // tsquery text first (see `tsquery_of`), so what is bound is a query, not
+    // the raw typing.
+    let (parser, text) = tsquery_of(&term);
+    let query = bind(&mut params, Param::Text(text));
 
     // Every other clause still applies. `Field::Q` emits TRUE inside this
     // shape because it has been hoisted into the FROM and WHERE.
@@ -806,7 +872,7 @@ fn compile_search(filter: &Node, term: String, page: &Page, mut params: Vec<Para
         "SELECT {columns}, {RANK} AS rank \
            FROM task_search s \
            JOIN task t ON t.id = s.task_id \
-           CROSS JOIN plainto_tsquery('{configuration}', {query}) q \
+           CROSS JOIN {parser}('{configuration}', {query}) q \
           WHERE s.workspace_id = $1 \
             AND s.project_id = ANY($2) \
             AND s.document @@ q \
@@ -1065,6 +1131,78 @@ fn param_of(value: &Value) -> Param {
 
 #[cfg(test)]
 mod tests {
+    use super::tsquery_of;
+
+    /// The failure these prevent: an empty result for every keystroke before the
+    /// last, and a tsquery syntax error from ordinary punctuation.
+    mod prefix_search {
+        use super::tsquery_of;
+
+        #[test]
+        fn the_last_token_is_a_prefix_and_the_others_are_not() {
+            // The last token is the one being typed. Making them all prefixes
+            // would match far more than was asked for.
+            assert_eq!(
+                tsquery_of("restore backu"),
+                ("to_tsquery", "restore & backu:*".to_owned()),
+            );
+        }
+
+        #[test]
+        fn a_single_word_is_a_prefix() {
+            // This is the whole point: `backu` has to find "Backup restore
+            // drill" before the word is finished.
+            assert_eq!(tsquery_of("backu"), ("to_tsquery", "backu:*".to_owned()));
+        }
+
+        #[test]
+        fn a_task_key_keeps_its_hyphen() {
+            // `OPS-1` is the search people use most. Dropping the hyphen with
+            // the rest of the punctuation would break it.
+            assert_eq!(tsquery_of("OPS-1"), ("to_tsquery", "OPS-1:*".to_owned()));
+        }
+
+        #[test]
+        fn tsquery_operators_in_the_typing_are_dropped_not_escaped() {
+            // `to_tsquery` parses its argument as syntax, so `&`, `|`, `!`, the
+            // parens and the colon are operators unless they never arrive. The
+            // only operators in the output are the ones this function adds.
+            let (parser, text) = tsquery_of("a & b | !c (d) e:f");
+            assert_eq!(parser, "to_tsquery");
+            // `e:f` is one whitespace-delimited token and reduces to `ef`. The
+            // colon does not survive to separate them, which is the point: a
+            // `:` reaching `to_tsquery` is a weight or prefix marker, not text.
+            assert_eq!(text, "a & b & c & d & ef:*");
+        }
+
+        #[test]
+        fn punctuation_alone_never_becomes_a_token() {
+            // A token reduced to `-` would emit `-:*`. Requiring one
+            // alphanumeric is what stops that.
+            assert_eq!(
+                tsquery_of("backup - restore"),
+                ("to_tsquery", "backup & restore:*".to_owned()),
+            );
+        }
+
+        #[test]
+        fn text_that_tokenizes_to_nothing_goes_to_the_parser_that_cannot_be_confused() {
+            // `plainto_tsquery` never reads operators, so it is the safe home
+            // for text this function could not tokenize. Both yield an empty
+            // tsquery and match nothing; neither raises.
+            assert_eq!(tsquery_of("!!!"), ("plainto_tsquery", "!!!".to_owned()));
+            assert_eq!(tsquery_of(""), ("plainto_tsquery", String::new()));
+        }
+
+        #[test]
+        fn a_name_outside_ascii_is_still_a_term() {
+            // `is_alphanumeric` is Unicode-aware, and a colleague's name is the
+            // most likely non-ASCII thing anybody types here.
+            assert_eq!(tsquery_of("Bekele"), ("to_tsquery", "Bekele:*".to_owned()));
+            assert_eq!(tsquery_of("Ökafor"), ("to_tsquery", "Ökafor:*".to_owned()));
+        }
+    }
+
     use super::*;
     use casual_task_search::filter::Clause;
 

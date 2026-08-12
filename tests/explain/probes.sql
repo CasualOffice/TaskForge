@@ -47,6 +47,10 @@ SELECT
     '14000000-0000-7000-8000-000000000064'                        AS cursor_id,
     -- A term seeded into one task per project: the selective full-text probe.
     'zylophage'                                                   AS probe_term,
+    -- The same term as the compiler builds it since D-069: a `:*` on the final
+    -- token. Kept beside `probe_term` rather than replacing it so a query that
+    -- wants the unprefixed form still has one.
+    'zylophage:*'                                                 AS probe_term_prefix,
     'Task 42'                                                     AS probe_title_prefix,
     -- The C-013 grammar's ordered-enum probe. HIGH sits above MEDIUM in the
     -- enum's declared order, which is what `priority >= HIGH` compares against

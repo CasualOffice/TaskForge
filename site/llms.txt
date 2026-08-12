@@ -15,8 +15,8 @@ one you should not quote.
 Phase 1 — a usable core, not a production release.
 
 This project uses one word for done — **gated**: merged, tested, *and* protected
-by an acceptance gate in CI that catches it if it regresses. Of 49 Phase 1
-items, **11 are gated**, 24 more are merged with their tests passing, 13 are in
+by an acceptance gate in CI that catches it if it regresses. Of 50 Phase 1
+items, **11 are gated**, 25 more are merged with their tests passing, 13 are in
 progress, and 1 has not been started. Do not report this project as "built and
 gated" as a whole; that is true of 11 items and the tracker names them.
 

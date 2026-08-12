@@ -47,12 +47,23 @@
 --
 -- C-013 UPDATE: this is now the query the compiler actually emits, character
 -- for character in shape — the repository projection, the `CROSS JOIN
--- plainto_tsquery(...) q` that builds the tsquery once instead of twice, and
+-- <parser>(...) q` that builds the tsquery once instead of twice, and
 -- the ranking expression repeated in ORDER BY rather than the `rank` alias
 -- (an alias is not visible in WHERE, so the keyset resume must use the
 -- expression). Nothing above changes: the tenant predicate is already on
 -- task_search itself, which is the "tenant-filtered projection" D-043 accepts
 -- as the thing to try first, and it is not sufficient.
+--
+-- C-050 UPDATE: `to_tsquery` with a `:*` on the final token, not
+-- `plainto_tsquery`, because that is what the compiler emits now (D-069).
+-- The probe carries the `:*` for the same reason the rest of this file mirrors
+-- the compiler character for character: a fixture that keeps planning
+-- `plainto_tsquery` after the product moved is a gate proving the shape of a
+-- query nobody issues, which passes forever and guards nothing.
+--
+-- A prefix query is the *less* selective of the two — `zylophage:*` can match
+-- more lexemes than `zylophage` — so this is the harder case for the planner
+-- and the right one to gate on.
 SELECT t.id, t.workspace_id, t.project_id, t.number, t.title, t.description,
        t.type::text AS "type", t.priority::text AS priority, t.status_id,
        t.state::text AS state,
@@ -62,7 +73,7 @@ SELECT t.id, t.workspace_id, t.project_id, t.number, t.title, t.description,
        ts_rank_cd(s.document, q) AS rank
   FROM task_search s
   JOIN task t ON t.id = s.task_id
-  CROSS JOIN plainto_tsquery('english', :'probe_term') q
+  CROSS JOIN to_tsquery('english', :'probe_term_prefix') q
  WHERE s.workspace_id = :'ws_id'
    AND s.project_id = ANY (:accessible_projects)
    AND s.document @@ q

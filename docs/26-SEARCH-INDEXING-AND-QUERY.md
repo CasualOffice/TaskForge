@@ -99,6 +99,15 @@ a title expects to *filter* to it immediately, and tolerates a beat before it is
 Query ranking uses `ts_rank_cd`, with a recency decay so a stale exact match does
 not outrank a live near-match.
 
+**The decay is not built yet (D-070).** `RANK` is bare `ts_rank_cd(s.document,
+q)` today, and the sentence above has described a decay that does not exist for
+long enough that a bug was raised against the symptom. It is accepted and
+scheduled: the decay is computed against a reference instant captured on the
+first request and **carried in the cursor**, never against `now()`, because
+`RANK` is simultaneously the `ORDER BY` expression and the keyset cursor's sort
+key — a rank that moves with wall-clock time makes page two disagree with page
+one, which is a bug that shows up only after the first page.
+
 ## The complete index inventory
 
 Every index, why it exists, and the query it serves. This table is the deliverable
@@ -129,9 +138,30 @@ minority forever, and excluding them keeps every hot index smaller.
 
 | Index | Definition | Serves |
 | --- | --- | --- |
-| `task_search_gin` | `GIN (document)` | full-text |
-| `task_search_trgm` | `GIN (title_trgm gin_trgm_ops)` | typo tolerance, substring, `WR-12*` prefix |
+| `task_search_gin` | `GIN (document)` | full-text, **including prefix** |
+| `task_search_trgm` | `GIN (title_trgm gin_trgm_ops)` | typo tolerance, substring — **not yet read by anything** |
 | `task_search_scope_ix` | `(workspace_id, project_id)` | permission pre-filter |
+
+**`WR-12*` prefix moved off the trigram index (D-069).** It is served by a `:*`
+on the final token through `to_tsquery`, which `task_search_gin` already
+answers, so prefix costs no second index and no change to the query's plan
+shape. That mattered: `@@` is a non-`LEAKPROOF` `ts_match_vq` under row-level
+security (**D-043**), so an `OR` across two indexes is a plan change to be
+measured rather than assumed. Measured both ways, the `explain-no-seq-scan`
+gate reports 29 index-served and 0 sequential scans with an identical advisory
+list.
+
+Only the **last** token is a prefix — it is the one being typed;
+`restore backu` compiles to `restore & backu:*`. The term is reduced to
+alphanumerics and `-` before it reaches `to_tsquery`, because that function
+parses its argument as tsquery *syntax*: `&`, `|`, `!`, `(`, `)` and `:` in
+somebody's typing are operators unless they never arrive.
+
+`task_search_trgm` is therefore **written on every task and read by nothing**
+until typo tolerance lands. That is stated rather than left for a reader to
+discover from the absence of a query: it is a real write cost for a capability
+that does not exist yet, and D-069 part two decides whether it earns its keep or
+is dropped.
 
 ### `task_tag` (many-to-many)
 
