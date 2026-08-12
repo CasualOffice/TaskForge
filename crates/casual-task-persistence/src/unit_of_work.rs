@@ -75,6 +75,7 @@ pub const CONSUMERS: &[&str] = &[
     "automation_matcher",
     "webhook_delivery",
     "plugin_subscribers",
+    "attachment_scan",
 ];
 
 #[derive(Debug)]
@@ -197,18 +198,23 @@ mod tests {
 
     #[test]
     fn every_consumer_in_the_design_record_has_a_delivery_row() {
-        // docs/25 §Consumer fan-out names seven. A consumer missing here gets
+        // docs/25 §Consumer fan-out names eight. A consumer missing here gets
         // no delivery row and therefore silently never receives anything.
-        assert_eq!(CONSUMERS.len(), 7, "docs/25 names seven consumers");
+        //
+        // The count is asserted as well as the names because the failure this
+        // guards is *addition without a decision*: a consumer added to the code
+        // and not to the design record is one nobody agreed to run, and one that
+        // starts claiming deliveries the moment it is deployed.
+        assert_eq!(CONSUMERS.len(), 8, "docs/25 names eight consumers");
         for expected in [
             "sse_fanout",
             "search_projection",
-            "state_interval_projection",
             "state_interval_projection",
             "notification_fanout",
             "automation_matcher",
             "webhook_delivery",
             "plugin_subscribers",
+            "attachment_scan",
         ] {
             assert!(CONSUMERS.contains(&expected), "{expected} is missing");
         }

@@ -483,6 +483,32 @@ async fn start_embedded_worker(
     let intervals = std::sync::Arc::new(
         casual_task_worker::state_interval::StateIntervalProjection::new(state.pool.clone()),
     );
+    // `docs/28` step 4. Without this loop an upload is stored and stays
+    // invisible forever, because `committed_at` is set by the scan alone —
+    // which is exactly what the product did until this consumer existed.
+    //
+    // No `TF_CLAMD_ADDR` means no scanner, and no scanner means the attachment
+    // stays `PENDING`: D-062, countersigned, and not something this code may
+    // reverse by treating an absent scanner as a pass.
+    let scanner: Option<std::sync::Arc<dyn casual_task_infra::Scanner>> =
+        match std::env::var("TF_CLAMD_ADDR") {
+            Ok(address) if !address.trim().is_empty() => {
+                tracing::info!(%address, "scanning attachments with clamd");
+                Some(std::sync::Arc::new(casual_task_infra::Clamd::new(address)))
+            }
+            _ => {
+                tracing::warn!(
+                    "TF_CLAMD_ADDR is unset: uploaded attachments will never become visible, \
+                     because nothing can mark them clean (docs/28 step 4, D-062)"
+                );
+                None
+            }
+        };
+    let scan = std::sync::Arc::new(casual_task_worker::attachment_scan::AttachmentScan::new(
+        state.pool.clone(),
+        std::sync::Arc::clone(&state.storage),
+        scanner,
+    ));
 
     for (name, spawn) in [
         (
@@ -501,6 +527,7 @@ async fn start_embedded_worker(
             casual_task_worker::state_interval::NAME,
             Loop::Intervals(intervals),
         ),
+        (casual_task_worker::attachment_scan::NAME, Loop::Scan(scan)),
     ] {
         let pool = pool.clone();
         let cancel = cancel.clone();
@@ -552,6 +579,17 @@ async fn start_embedded_worker(
                     )
                     .await
                 }
+                Loop::Scan(consumer) => {
+                    dispatcher::run(
+                        &pool,
+                        consumer,
+                        &worker_id,
+                        dispatcher::Config::default(),
+                        cancel,
+                        metrics,
+                    )
+                    .await
+                }
             };
             match outcome {
                 Ok(stopped) => tracing::info!(consumer = name, ?stopped, "dispatch loop stopped"),
@@ -572,6 +610,7 @@ enum Loop {
     Sse(std::sync::Arc<casual_task_worker::consumers::SseFanout>),
     Search(std::sync::Arc<casual_task_worker::projection::SearchProjection>),
     Intervals(std::sync::Arc<casual_task_worker::state_interval::StateIntervalProjection>),
+    Scan(std::sync::Arc<casual_task_worker::attachment_scan::AttachmentScan>),
 }
 
 /// Refuse to serve as a superuser (`docs/48`, migration 0012).

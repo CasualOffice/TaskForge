@@ -252,10 +252,19 @@ outbox_event ──▶ dispatcher ──┬──▶ SSE fan-out           (live
                               ├──▶ notification fan-out  (per-user prefs)
                               ├──▶ automation matcher    (rule evaluation)
                               ├──▶ webhook delivery      (signed, per installation)
-                              └──▶ plugin event subscribers
+                              ├──▶ plugin event subscribers
+                              └──▶ attachment scan       (docs/28 step 4)
 ```
 
 A failing webhook consumer does not delay the search projection.
+
+The **attachment scan** consumer is the one whose absence is *visible in the
+product*: `docs/28` sets `committed_at` only on `PENDING → CLEAN`, and every
+read of an attachment requires it, so until something scans an upload the file
+is stored and invisible. It ran nowhere for a long time, which made the whole
+attachment pipeline correct and useless. A deployment with no scanner
+configured still fails closed — D-062, countersigned — and this consumer says
+so in the log rather than waving the file through.
 
 The **state interval** consumer maintains the occupancy projection `docs/38`
 reports from — how long a task spent in each state. It rebuilds a task's whole

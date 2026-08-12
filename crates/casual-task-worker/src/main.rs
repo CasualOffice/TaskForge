@@ -24,6 +24,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use casual_task_worker::attachment_scan::AttachmentScan;
 use casual_task_worker::consumers::{NotificationFanout, SseFanout};
 use casual_task_worker::dispatcher::{self, CancelOnDrop};
 
@@ -159,6 +160,44 @@ async fn run() -> ExitCode {
     ));
     let sse = Arc::new(SseFanout::new(Arc::clone(&broadcast)));
 
+    // Step 4 of `docs/28`. Built here rather than in the API because the scan
+    // is the worker's job and the bytes must never enter a request handler.
+    //
+    // `TF_CLAMD_ADDR` absent means no scanner, and no scanner means every
+    // attachment stays `PENDING` and invisible — D-062, countersigned, and the
+    // reason this is `Option` rather than a default that waves files through.
+    let scanner: Option<Arc<dyn casual_task_infra::Scanner>> = match std::env::var("TF_CLAMD_ADDR")
+    {
+        Ok(address) if !address.trim().is_empty() => {
+            tracing::info!(%address, "scanning attachments with clamd");
+            Some(Arc::new(casual_task_infra::Clamd::new(address)))
+        }
+        _ => {
+            tracing::warn!(
+                "TF_CLAMD_ADDR is unset: attachments will be stored and never become visible,                  because nothing can mark them clean (docs/28 step 4, D-062)"
+            );
+            None
+        }
+    };
+    let attachment_scan = match object_store_from_env() {
+        Some(store) => Some(Arc::new(AttachmentScan::new(
+            app_pool.clone(),
+            store,
+            scanner,
+        ))),
+        None => {
+            tracing::warn!(
+                "no object storage is configured, so attachments cannot be scanned or served"
+            );
+            None
+        }
+    };
+
+    // Cloned before the loops below take ownership: three consumers, three
+    // handles on the same dispatch pool.
+    let (scan_pool, scan_cancel, scan_metrics) =
+        (dispatch_pool.clone(), cancel.clone(), Arc::clone(&metrics));
+
     let notification_loop = tokio::spawn({
         let (pool, cancel, metrics, id) = (
             dispatch_pool.clone(),
@@ -193,6 +232,26 @@ async fn run() -> ExitCode {
         }
     });
 
+    let scan_loop = attachment_scan.map(|consumer| {
+        let (pool, cancel, metrics, id) = (
+            scan_pool,
+            scan_cancel,
+            Arc::clone(&scan_metrics),
+            worker_id.clone(),
+        );
+        tokio::spawn(async move {
+            dispatcher::run(
+                &pool,
+                consumer,
+                &id,
+                dispatcher::Config::default(),
+                cancel,
+                metrics,
+            )
+            .await
+        })
+    });
+
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         worker_id,
@@ -206,12 +265,36 @@ async fn run() -> ExitCode {
     drop(handle);
     let _ = notification_loop.await;
     let _ = sse_loop.await;
+    // Awaited like the others so an in-flight scan finishes rather than being
+    // cut off mid-verdict, which would leave an attachment PENDING with the
+    // delivery already claimed.
+    if let Some(loop_handle) = scan_loop {
+        let _ = loop_handle.await;
+    }
     ExitCode::SUCCESS
 }
 
 /// `TF_SMTP_*`, the same five keys the API reads (`docs/48` §Configuration).
 ///
 /// An empty host disables email, which is a supported deployment.
+/// The object store, from `TF_STORAGE_BACKEND` and `TF_STORAGE_PATH`.
+///
+/// Read here rather than shared with the API's `Config` because the worker has
+/// no HTTP configuration and should not have to satisfy it — but the two
+/// variables are the same two, so a deployment configures storage once.
+fn object_store_from_env() -> Option<std::sync::Arc<dyn casual_task_infra::ObjectStore>> {
+    let backend = std::env::var("TF_STORAGE_BACKEND").unwrap_or_default();
+    if backend != "fs" {
+        return None;
+    }
+    let path = std::env::var("TF_STORAGE_PATH").ok()?;
+    let origin = std::env::var("TF_ATTACHMENT_ORIGIN").ok()?;
+    let secret = std::env::var("TF_SECRET_KEY").ok()?;
+    Some(std::sync::Arc::new(
+        casual_task_infra::FilesystemStore::new(path.into(), origin, secret),
+    ))
+}
+
 fn smtp_from_env() -> casual_task_infra::SmtpConfig {
     let get = |name: &str| std::env::var(name).unwrap_or_default();
     casual_task_infra::SmtpConfig {

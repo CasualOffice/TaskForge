@@ -386,6 +386,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-039 | **The create-task flow, and the workspace in the header** | `Built` |
 | C-040 | **Attachments reach the browser** — the preflight that made `docs/28` usable | `Built` |
 | C-041 | **The task drawer belongs to the address** — Home and Environments could not preview | `Built` |
+| C-042 | **The attachment scan** — `docs/28` step 4, the consumer that made uploads visible | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -2998,3 +2999,36 @@ to forget, and two of them had been taken.
 
 Gated by an assertion over every card surface, verified by deleting the shell's
 copy and watching it fail with `/home did not open the drawer`.
+
+**C-042 is the consumer `docs/25` named and nobody wrote.** `docs/28` sets
+`committed_at` on `PENDING → CLEAN` alone, and every read of an attachment
+requires it — that is what makes a forgotten `WHERE` clause unable to leak an
+unscanned file. The cost is that until something scans an upload, the file is
+stored and invisible, and **nothing ever did**. C-040 made uploads reach
+storage; they arrived somewhere nobody could look.
+
+The consumer runs in the API's embedded dispatcher beside the other four, since
+that is where the single-node profile runs them.
+
+**`TF_CLAMD_ADDR` is the switch, and its absence is not a pass.** Unset, the
+consumer acknowledges the delivery, logs why, and changes nothing — the file
+stays `PENDING` and unreadable. That is D-062, countersigned, and the reason
+the scanner is an `Option` rather than a default that waves files through: the
+alternative default is a deployment that serves unscanned user content while
+appearing to work.
+
+A *failed* scan is not a verdict either. An unreachable daemon returns `Err`,
+which leaves the delivery unacknowledged for the dispatcher to retry, rather
+than recording an answer nobody gave.
+
+ClamAV is in `deploy/docker-compose.yml` behind a `scanning` profile — the image
+is ~1 GB and loads a signature database on start, which is not a cost to pay by
+accident. Running the daemon and pointing the application at it are two separate
+settings on purpose: an operator who does one gets a warning in the log rather
+than silent non-scanning. Nothing was added to the dev script.
+
+Four tests against a real database cover the four outcomes — clean commits,
+infected never commits and its object is deleted, a failed scan changes nothing
+and is retried, and no scanner is not a clean verdict. The last was verified by
+making the mistake it forbids: teaching the consumer to mark unscanned files
+`CLEAN` fails it and nothing else.

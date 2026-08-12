@@ -115,6 +115,15 @@ DISPATCHER_DATABASE_URL      required to run the outbox dispatcher — a SECOND 
                              job. Unset means the loop does not run, and the
                              process says so: notifications and live updates are
                              not delivered (D-060)
+TF_CLAMD_ADDR                empty disables malware scanning — and an attachment is
+                             visible only once something has scanned it clean, so
+                             empty means uploads succeed and are never listed or
+                             downloadable (docs/28 step 4, D-062). Set it to a clamd
+                             address (`clamav:3310`) and uploads become visible. The
+                             compose file carries the daemon behind the `scanning`
+                             profile; running it and pointing at it are two separate
+                             decisions, so an operator who does one gets a warning
+                             rather than silent non-scanning
 TF_SMTP_HOST/PORT/USER/PASS/FROM   empty host disables email (D-046). STARTTLS is
                              required and the relay certificate and hostname are verified;
                              FROM is a bare address, and a set host with no FROM refuses to start

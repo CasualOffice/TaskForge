@@ -21,8 +21,10 @@
 pub mod broadcast;
 pub mod header;
 pub mod mail;
+pub mod scanner;
 pub mod storage;
 
 pub use broadcast::{Broadcast, LiveEvent, LocalBroadcast, Subscription, Topic};
 pub use mail::{Mailer, Message, SmtpConfig};
+pub use scanner::{Clamd, ScanError, Scanner, Verdict};
 pub use storage::{FilesystemStore, ObjectHead, ObjectStore, StorageError};
