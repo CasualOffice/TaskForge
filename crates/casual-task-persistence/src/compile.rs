@@ -578,6 +578,59 @@ pub fn compile_age(
 /// # Errors
 ///
 /// None. The SQL is assembled, not executed.
+/// Compile a **validated** filter into two series per bucket: work raised, and
+/// work finished (`docs/38` §Measures — `created_vs_completed`).
+///
+/// # Why this is one query and not two
+///
+/// The whole message of the chart is where the lines *cross*. Two separate runs
+/// would be two permission resolutions, two cache windows and two moments in
+/// time, so a reader comparing them would be comparing answers to slightly
+/// different questions — and the crossing point, which is the only thing anyone
+/// reads this for, is exactly where that error shows.
+///
+/// # Why it takes no dimension
+///
+/// The two series *are* the grouping. `group_key` carries `created` or
+/// `completed`, so a caller's `group_by` has nowhere to go — asking for
+/// "created vs completed by assignee" is asking for four lines from a chart
+/// that draws two. The request field stays required because every other measure
+/// needs it, and the response says `"group_by": "series"` rather than echoing a
+/// dimension the answer does not contain.
+///
+/// # Errors
+///
+/// None. The SQL is assembled, not executed.
+pub fn compile_created_vs_completed(
+    filter: &Node,
+    workspace: WorkspaceId,
+    authorized: &AuthorizedProjectSet,
+    interval: Interval,
+    limit: u32,
+) -> Compiled {
+    let mut params: Vec<Param> = Vec::new();
+    params.push(Param::Workspace(workspace));
+    params.push(Param::Projects(authorized.as_slice().to_vec()));
+
+    let predicate = emit(filter, &mut params);
+    let grain = match interval {
+        Interval::Day => "day",
+        Interval::Week => "week",
+        Interval::Month => "month",
+    };
+
+    // `DISTINCT t.id` on the completed half for the reason throughput needs it:
+    // a task that finished, reopened and finished again has two `COMPLETED`
+    // intervals, and inside one bucket that is one delivery.
+    //
+    // `CANCELED` never counts as completed (`docs/38`), which is why the join
+    // names the state rather than reading "not open".
+    let sql = format!(
+        "SELECT 'created' AS group_key,                 date_trunc('{grain}', t.created_at) AS bucket_start,                 count(*)::bigint AS total            FROM task t           WHERE t.workspace_id = $1 AND t.project_id = ANY($2)             AND t.deleted_at IS NULL AND ({predicate})           GROUP BY bucket_start           UNION ALL          SELECT 'completed' AS group_key,                 date_trunc('{grain}', i.entered_at) AS bucket_start,                 count(DISTINCT t.id)::bigint AS total            FROM task t            JOIN task_state_interval i              ON i.task_id = t.id AND i.state = 'COMPLETED'           WHERE t.workspace_id = $1 AND t.project_id = ANY($2)             AND t.deleted_at IS NULL AND ({predicate})           GROUP BY bucket_start           ORDER BY bucket_start, group_key           LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
 pub fn compile_throughput(
     filter: &Node,
     workspace: WorkspaceId,

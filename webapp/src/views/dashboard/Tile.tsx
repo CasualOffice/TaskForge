@@ -115,6 +115,18 @@ export function Tile({
   const groups = report.data?.groups ?? []
   const total = report.data?.total ?? 0
 
+  // `created_vs_completed` answers with two series in one result — rows keyed
+  // `created` and `completed`, one per bucket each. Split here rather than in
+  // the chart, because the chart should not know which measures are plural.
+  const seriesOf = (name: string): readonly Point[] =>
+    groups
+      .filter((group) => group.key === name)
+      .map((group) => ({
+        label: bucketLabel(group.bucket_start ?? ''),
+        value: group.total,
+        formatted: formatValue(group.total, unit),
+      }))
+
   const points: readonly Point[] = spec.bucket
     ? // A series is keyed by bucket, not by slice: the group key is constant
       // (throughput is always `COMPLETED`) and it is the time axis that varies.
@@ -145,7 +157,16 @@ export function Tile({
   ) : points.length === 0 ? (
     <p className="tile__empty">Nothing to show yet.</p>
   ) : (
-    <Chart spec={spec} points={points} unit={unit} />
+    <Chart
+      spec={spec}
+      points={points}
+      unit={unit}
+      series={
+        spec.measure === 'created_vs_completed'
+          ? { created: seriesOf('created'), completed: seriesOf('completed') }
+          : undefined
+      }
+    />
   )
 
   const inner = (
@@ -195,10 +216,12 @@ function Chart({
   spec,
   points,
   unit,
+  series,
 }: {
   spec: TileSpec
   points: readonly Point[]
   unit: string
+  series?: { created: readonly Point[]; completed: readonly Point[] } | undefined
 }): ReactNode {
   const caption = `${spec.title}${spec.help === undefined ? '' : `. ${spec.help}`}`
   const dimension = spec.bucket ? 'Week beginning' : DIMENSION_LABEL[spec.groupBy]
@@ -207,7 +230,17 @@ function Chart({
 
   switch (spec.viz) {
     case 'line':
-      return <LineChart {...args} />
+      return spec.measure === 'created_vs_completed' ? (
+        <LineChart
+          {...args}
+          series={[
+            { name: 'Raised', points: series?.created ?? [] },
+            { name: 'Finished', points: series?.completed ?? [] },
+          ]}
+        />
+      ) : (
+        <LineChart {...args} />
+      )
     case 'donut':
       return <DonutChart {...args} />
     case 'stacked_bar':

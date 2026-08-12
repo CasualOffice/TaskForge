@@ -283,33 +283,43 @@ function formatTick(value: number): string {
  */
 export function LineChart({
   points,
+  series,
   caption,
   dimension,
   measure,
 }: {
-  points: readonly Point[]
+  /** One series. Ignored when `series` is given. */
+  points?: readonly Point[]
+  /**
+   * Two or more named series sharing one axis.
+   *
+   * `created_vs_completed` is the reason this exists: the whole message of that
+   * chart is where the lines *cross*, and two tiles side by side cannot show a
+   * crossing. Drawn on one scale — the peak of *all* series — because two lines
+   * with independent axes can be made to cross anywhere.
+   */
+  series?: readonly { name: string; points: readonly Point[] }[]
   caption: string
   dimension: string
   measure: string
 }): ReactElement {
-  const peak = Math.max(...points.map((p) => p.value), 1)
-  const span = Math.max(points.length - 1, 1)
+  const lines = series ?? [{ name: measure, points: points ?? [] }]
+  const peak = Math.max(...lines.flatMap((line) => line.points.map((p) => p.value)), 1)
+  const longest = Math.max(...lines.map((line) => line.points.length), 1)
+  const span = Math.max(longest - 1, 1)
   // A single bucket has no span to spread across, and dividing by one would pin
   // it to the left edge looking like a series that failed to load. It is not a
   // trend yet — it is one week — so it sits in the middle and says so below.
   const x = (i: number): number =>
-    points.length === 1
+    longest === 1
       ? (PAD.left + (W - PAD.right)) / 2
       : PAD.left + (i / span) * (W - PAD.left - PAD.right)
   const y = (v: number): number => H - PAD.bottom - (v / peak) * (H - PAD.top - PAD.bottom)
 
-  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(p.value)}`).join(' ')
-  // Closed back along the baseline, so the fill has an area rather than a
-  // stroke with a fill rule nobody can predict.
-  const area =
-    points.length === 0
-      ? ''
-      : `${line} L${x(points.length - 1)},${H - PAD.bottom} L${x(0)},${H - PAD.bottom} Z`
+  const path = (of: readonly Point[]): string =>
+    of.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(p.value)}`).join(' ')
+
+  const axis = lines[0]?.points ?? []
 
   return (
     <div className="chart">
@@ -336,33 +346,72 @@ export function LineChart({
             </text>
           </g>
         ))}
-        <path className="chart__area" d={area} />
-        <path className="chart__line" d={line} />
-        {points.map((point, i) => (
-          <circle
-            className="chart__dot"
-            key={point.label}
-            cx={x(i)}
-            cy={y(point.value)}
-            r={points.length === 1 ? 4 : 2.5}
-          />
-        ))}
+
+        {lines.map((line, index) => {
+          const d = path(line.points)
+          // Only the first series gets an area. Two filled regions overlapping
+          // read as a third colour where they cross, which is exactly the point
+          // of the chart and exactly where it must stay legible.
+          const area =
+            index === 0 && line.points.length > 0
+              ? `${d} L${x(line.points.length - 1)},${H - PAD.bottom} L${x(0)},${H - PAD.bottom} Z`
+              : undefined
+          return (
+            <g key={line.name} className={`chart__series chart__series--${index}`}>
+              {area === undefined ? null : <path className="chart__area" d={area} />}
+              <path className="chart__line" d={d} />
+              {line.points.map((point, i) => (
+                <circle
+                  className="chart__dot"
+                  key={point.label}
+                  cx={x(i)}
+                  cy={y(point.value)}
+                  r={line.points.length === 1 ? 4 : 2.5}
+                />
+              ))}
+            </g>
+          )
+        })}
       </svg>
+
+      {/* Named, not colour-coded alone: two lines distinguished only by hue are
+          two lines nobody with a colour vision deficiency can tell apart. Each
+          key entry carries the series name beside its swatch. */}
+      {series === undefined ? null : (
+        <ul className="chart__key" aria-hidden="true">
+          {lines.map((line, index) => (
+            <li key={line.name}>
+              <span className={`chart__swatch chart__swatch--${index}`} />
+              {line.name}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {/* First and last bucket. One bucket names itself once — repeating the
           same date at both ends reads as a range that lasted no time. */}
       <p className="chart__span" aria-hidden="true">
-        {points.length === 1 ? (
+        {longest === 1 ? (
           <span className="chart__single">
-            {points[0]?.label} — one week so far, not yet a trend
+            {axis[0]?.label} — one week so far, not yet a trend
           </span>
         ) : (
           <>
-            <span>{points[0]?.label ?? ''}</span>
-            <span>{points.at(-1)?.label ?? ''}</span>
+            <span>{axis[0]?.label ?? ''}</span>
+            <span>{axis.at(-1)?.label ?? ''}</span>
           </>
         )}
       </p>
-      <DataTable caption={caption} dimension={dimension} measure={measure} points={points} />
+
+      {lines.map((line) => (
+        <DataTable
+          key={line.name}
+          caption={series === undefined ? caption : `${caption} — ${line.name}`}
+          dimension={dimension}
+          measure={measure}
+          points={line.points}
+        />
+      ))}
     </div>
   )
 }

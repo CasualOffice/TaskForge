@@ -2357,3 +2357,20 @@ kbd {
     display: none;
   }
 }
+
+/* The card in the air.
+ *
+ * Rendered by `DragOverlay` outside every column, so it is not clipped by the
+ * scrolling region it came from and not painted under the columns to its right
+ * — which is what a translated card in place was doing. It carries a lift
+ * rather than a `z-index`, because at the top of the page there is nothing left
+ * to stack against. */
+.card__dragging {
+  /* No width: `DragOverlay` sizes itself to the card it picked up, and columns
+     are `minmax(240px, 1fr)` — a fixed width here would be wrong at every
+     viewport but one. */
+  cursor: grabbing;
+  transform: rotate(1.5deg);
+  box-shadow: var(--tf-shadow-drag);
+  border-radius: var(--tf-radius-card);
+}

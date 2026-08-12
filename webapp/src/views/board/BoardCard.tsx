@@ -34,17 +34,27 @@ export function BoardCard({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     disabled: !draggable,
-    data: { statusId: task.status_id, state: task.state },
+    // The task itself travels with the drag so the overlay — rendered by the
+    // context, outside every column — can draw it. The board never holds the
+    // task list; each column queries its own.
+    data: { statusId: task.status_id, state: task.state, task },
   })
 
   // Written out rather than pulled from `@dnd-kit/utilities`: docs/42 commits to
   // an exact dependency set, and BUNDLE-FLOOR.md measured that set. Adding a
   // package for one string template would make the floor a measurement of
   // something the app no longer is.
+  // No transform. The card stays where it was, dimmed to mark the gap it came
+  // from, and `DragOverlay` draws the moving copy at the top of the page.
+  //
+  // Translating it here is what put the card *behind* everything: it remained a
+  // child of `.column__body`, which scrolls, so it was clipped by its own column
+  // and painted under every column to its right. No `z-index` reaches out of an
+  // ancestor's `overflow` clip.
   const style: CSSProperties = {
-    transform: transform === null ? undefined : `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.4 : 1,
   }
+  void transform
 
   return (
     <div ref={setNodeRef} style={style} className="card__host">

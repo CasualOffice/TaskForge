@@ -576,3 +576,19 @@
 .chart__single {
   color: var(--tf-text-muted);
 }
+
+/* A second line, distinguishable without relying on hue: a different colour
+   *and* a dashed stroke, because two lines told apart by colour alone are two
+   lines some readers cannot tell apart at all. The key names both. */
+.chart__series--1 .chart__line {
+  stroke: var(--tf-success);
+  stroke-dasharray: 5 3;
+}
+
+.chart__series--1 .chart__dot {
+  fill: var(--tf-success);
+}
+
+.chart__swatch--1 {
+  background: var(--tf-success);
+}

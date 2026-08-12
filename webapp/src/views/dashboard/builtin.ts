@@ -279,6 +279,17 @@ const PROJECT_HEALTH: Dashboard = {
       span: 2,
     },
     {
+      id: 'health-created-vs-completed',
+      title: 'Raised against finished',
+      help: 'Two lines on one scale. While the upper line is the one being raised, the backlog is growing.',
+      viz: 'line',
+      groupBy: 'state',
+      measure: 'created_vs_completed',
+      bucket: WEEKLY,
+      drillable: false,
+      span: 2,
+    },
+    {
       id: 'health-oldest',
       title: 'Oldest open work by project',
       help: 'How long the longest-waiting open task has been waiting. Finished work is not counted.',
@@ -509,13 +520,12 @@ export function breakdownsOf(dashboard: Dashboard): readonly Tile[] {
 /**
  * ## Not built
  *
- * Three tiles `docs/38` names are absent, because the measure set cannot express
+ * Two tiles `docs/38` names are absent, because the measure set cannot express
  * them and approximating a metric is worse than omitting it — a wrong number on
  * a dashboard gets quoted in a meeting, where a missing one gets asked about.
  *
  * | Tile | Needs | Why it cannot be faked |
  * | --- | --- | --- |
- * | Created vs completed | `created_vs_completed` (two series) | Two separate runs would be two scopes and two cache windows; the crossing point is the whole message. |
  * | Reopen rate | — | Needs completed→active transitions counted, which `task_state_interval` records but no measure exposes. |
  * | Time in state | `time_in_state` | The server refuses it by name (`TF-SYS-0007`). |
  *

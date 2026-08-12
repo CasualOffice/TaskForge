@@ -390,6 +390,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-041 | **The task drawer belongs to the address** — Home and Environments could not preview | `Built` |
 | C-042 | **The attachment scan** — `docs/28` step 4, the consumer that made uploads visible | `Built` |
 | C-043 | **The `age` measure** — how long open work has been waiting | `Built` |
+| C-044 | **`created_vs_completed`, and the card that dragged behind the board** | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3066,3 +3067,38 @@ The horizontal version of this was the hidden table making the page 62 px wider
 than the viewport (C-035). `position: relative` on `.tile` closes both, and the
 assertion that caught it is the one that injects its own height — verified by
 deleting the line and watching it fail.
+
+**C-044, part one: a dragged card went behind everything.** Reported directly.
+`BoardCard` translated the card in place — it stayed a child of `.column__body`,
+which is a scrolling region, so it was **clipped by its own column** and painted
+under every column to its right. No `z-index` fixes that: an element cannot
+escape an ancestor's `overflow` clip whatever it is stacked at, which is why
+the obvious fix would not have worked.
+
+`DragOverlay` renders the moving card outside that subtree, which is the only
+thing that can follow a pointer across columns. The original stays in place at
+40% to mark the gap it came from, and the task travels in dnd-kit's `data` so
+the overlay — drawn by the context, which never holds the task list — can render
+it. Verified in the running application: with a card picked up,
+`.card__dragging` exists and `closest('.column__body')` is `null`.
+
+**Part two: `created_vs_completed`**, the last measure `docs/38`'s closed set
+specified that had no implementation, and the last dashboard tile documented as
+missing. One query, not two runs: the whole message is where the lines *cross*,
+and two runs would be two permission resolutions and two cache windows, so the
+crossing point — the only thing anyone reads it for — is exactly where that
+error would show.
+
+It takes no dimension. The two series *are* the grouping, so the response says
+`"group_by": "series"` rather than echoing a dimension the answer does not
+contain. `LineChart` draws several series on one scale — independent axes can be
+made to cross anywhere — and the second is dashed as well as differently
+coloured, because two lines told apart by hue alone are two lines some readers
+cannot tell apart.
+
+**A fixture finding, recorded rather than fixed here.** Making the e2e stub
+answer `/projects/{id}` with a project instead of a page, and serving a real
+workflow, turns the board into one with actual columns and drag handles — and
+two assertions then fail (`/board scrolls its content` and the drawer test).
+The stub was reverted so this change stays about the drag, but a more honest
+fixture exposing two failures is worth its own look.

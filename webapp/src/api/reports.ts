@@ -53,6 +53,10 @@ export const MEASURES = [
   { key: 'age', label: 'Age of oldest open', unit: 'seconds' },
   { key: 'p50_age', label: 'Age of open work (median)', unit: 'seconds' },
   { key: 'throughput', label: 'Throughput', unit: 'tasks' },
+  // Two series in one answer, keyed `created` and `completed`. It takes no
+  // dimension — the series are the grouping — and the response says
+  // `group_by: "series"` rather than echoing one that was not used.
+  { key: 'created_vs_completed', label: 'Raised against finished', unit: 'tasks' },
 ] as const
 
 export type MeasureKey = (typeof MEASURES)[number]['key']

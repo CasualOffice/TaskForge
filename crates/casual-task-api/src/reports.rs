@@ -49,7 +49,7 @@ use axum::response::{IntoResponse, Response};
 use casual_task_model::{ProjectId, TeamId};
 use casual_task_persistence::compile::{
     AuthorizedProjectSet, Bucket, BucketField, Dimension, Interval, Reduce, Span, compile_age,
-    compile_duration, compile_group_count, compile_throughput,
+    compile_created_vs_completed, compile_duration, compile_group_count, compile_throughput,
 };
 use casual_task_persistence::{project, report};
 use serde::{Deserialize, Serialize};
@@ -206,6 +206,15 @@ pub async fn run(
             reduce,
             limit,
         ),
+        // Weekly unless asked otherwise, like throughput: "raised against
+        // finished" with no period is two numbers, not two trends.
+        Measure::CreatedVsCompleted => compile_created_vs_completed(
+            &filter,
+            ctx.workspace,
+            &authorized,
+            bucket.map_or(Interval::Week, |b| b.interval),
+            limit,
+        ),
         Measure::Age(reduce) => compile_age(
             &filter,
             ctx.workspace,
@@ -235,7 +244,16 @@ pub async fn run(
     Ok((
         StatusCode::OK,
         axum::Json(serde_json::json!({
-            "group_by": body.group_by,
+            // Echoed as what the answer is *actually* grouped by. For
+            // `created_vs_completed` the two series are the grouping — the
+            // rows come back keyed `created` and `completed` — so repeating
+            // the caller's `group_by` here would describe a slice the answer
+            // does not contain. The request field stays required because every
+            // other measure needs it; this says plainly that it was not used.
+            "group_by": match measure {
+                Measure::CreatedVsCompleted => "series",
+                _ => body.group_by.as_str(),
+            },
             "measure": body.measure,
             // Seconds for a duration, tasks for a count. The client cannot
             // format a number whose unit it has to guess.
@@ -298,6 +316,8 @@ enum Measure {
     Duration(Span, Reduce),
     /// How long *open* work has been waiting — `created_at` → now.
     Age(Reduce),
+    /// Two series per bucket: raised, and finished.
+    CreatedVsCompleted,
     Throughput,
 }
 
@@ -325,6 +345,7 @@ fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
         "p50_age" => Ok(Measure::Age(Reduce::P50)),
         "p90_age" => Ok(Measure::Age(Reduce::P90)),
         "avg_age" => Ok(Measure::Age(Reduce::Avg)),
+        "created_vs_completed" => Ok(Measure::CreatedVsCompleted),
         "throughput" => Ok(Measure::Throughput),
         "time_in_state" => Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
@@ -336,8 +357,9 @@ fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
         .with_details(serde_json::json!({ "measure": name }))),
         _ => Err(ApiError::bad_request(
             codes::OUT_OF_RANGE,
-            "measure must be count, cycle_time, lead_time, age or throughput \
-             (each duration also as avg_, p50_ or p90_; age also as max_)",
+            "measure must be count, cycle_time, lead_time, age, throughput or \
+             created_vs_completed (each duration also as avg_, p50_ or p90_; \
+             age also as max_)",
             request_id,
         )
         .with_details(serde_json::json!({ "measure": name }))),

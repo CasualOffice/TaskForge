@@ -28,9 +28,10 @@
  * make one particular move. Refusing here means the card never appears to move
  * and then springs back, which reads as a bug rather than as a refusal.
  */
-import { useCallback, useEffect, useMemo, type ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -46,6 +47,7 @@ import { PERMISSIONS } from '../api/permissions'
 import { listProjects } from '../api/projects'
 import { TASK_STATES, type Task } from '../api/tasks'
 import { useLiveUpdates } from '../live/useLiveUpdates'
+import { TaskCard } from '../tasks/TaskCard'
 import { useAnnounce } from '../shell/announce'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
 import { ErrorNotice } from '../shell/notice'
@@ -113,6 +115,10 @@ export function BoardView(): ReactElement {
   }, [workflow])
 
   const canMove = workflow !== undefined && authority.can(PERMISSIONS.taskTransition)
+
+  // Which card is in the air. Held here rather than in the card, because the
+  // overlay is rendered by the context and has to know what to draw.
+  const [dragged, setDragged] = useState<Task | undefined>(undefined)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -189,7 +195,14 @@ export function BoardView(): ReactElement {
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragEnd={onDragEnd}
+        onDragStart={({ active }) =>
+          setDragged((active.data.current as { task?: Task } | undefined)?.task)
+        }
+        onDragCancel={() => setDragged(undefined)}
+        onDragEnd={(dragEnd) => {
+          setDragged(undefined)
+          onDragEnd(dragEnd)
+        }}
         accessibility={{ announcements }}
       >
         <div className="board">
@@ -204,6 +217,23 @@ export function BoardView(): ReactElement {
             />
           ))}
         </div>
+
+        {/* The card being dragged, drawn once at the top of the page instead of
+            moved inside the column it came from.
+            
+            A translated card stayed a child of `.column__body`, which is a
+            scrolling region — so it was *clipped* by its own column and painted
+            under every column to its right. No `z-index` can fix that: an
+            element cannot escape an ancestor's `overflow` clip, whatever it is
+            stacked at. `DragOverlay` renders outside that subtree, which is the
+            only thing that can follow the pointer across columns. */}
+        <DragOverlay dropAnimation={null}>
+          {dragged === undefined ? null : (
+            <div className="card__dragging">
+              <TaskCard task={dragged} onOpen={() => {}} />
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
 
     </section>
