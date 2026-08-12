@@ -1026,6 +1026,59 @@ pub async fn indexed_count(pool: &sqlx::PgPool, workspace_id: Uuid) -> Result<i6
         .await
 }
 
+/// An uploaded-but-unscanned attachment, as `commit` leaves one.
+///
+/// Here rather than in the worker's test because `docs/19`'s boundary
+/// invariant puts **all** SQL in this crate, and the architecture lint enforces
+/// it — a fixture is not an exception, and CI caught exactly that.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn insert_pending_attachment(
+    pool: &sqlx::PgPool,
+    workspace: Uuid,
+    task: Uuid,
+    uploader: Uuid,
+) -> Result<Uuid, sqlx::Error> {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO attachment
+             (id, workspace_id, task_id, object_key, filename, content_type,
+              byte_size, checksum, scan_status, uploaded_by, committed_at)
+         VALUES ($1, $2, $3, $4, 'notes.txt', 'text/plain', 4, 'abc', 'PENDING', $5, NULL)",
+    )
+    .bind(id)
+    .bind(workspace)
+    .bind(task)
+    .bind(format!("{workspace}/{task}/{id}"))
+    .bind(uploader)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
+/// An attachment's scan verdict, and whether it has been committed.
+///
+/// The pair is the assertion the scan pipeline turns on: `committed_at` is set
+/// by `PENDING → CLEAN` alone and every read requires it, so a status without
+/// it is a file nobody can see.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn attachment_scan_state(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+) -> Result<(String, bool), sqlx::Error> {
+    let row: (String, Option<time::OffsetDateTime>) =
+        sqlx::query_as("SELECT scan_status, committed_at FROM attachment WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await?;
+    Ok((row.0, row.1.is_some()))
+}
+
 /// Whether an attachment row exists at all, committed or not.
 ///
 /// The invisibility gate needs to assert that the row IS there and that no read

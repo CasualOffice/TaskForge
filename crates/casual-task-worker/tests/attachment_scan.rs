@@ -114,20 +114,7 @@ async fn seed(pool: &sqlx::PgPool) -> Result<(Uuid, Uuid)> {
     test_support::add_workspace_member(pool, workspace, user).await?;
     let task = test_support::insert_task_fixture(pool, workspace, user, "Has a file").await?;
 
-    let attachment = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO attachment
-             (id, workspace_id, task_id, object_key, filename, content_type,
-              byte_size, checksum, scan_status, uploaded_by, committed_at)
-         VALUES ($1, $2, $3, $4, 'notes.txt', 'text/plain', 4, 'abc', 'PENDING', $5, NULL)",
-    )
-    .bind(attachment)
-    .bind(workspace)
-    .bind(task)
-    .bind(format!("{workspace}/{task}/{attachment}"))
-    .bind(user)
-    .execute(pool)
-    .await?;
+    let attachment = test_support::insert_pending_attachment(pool, workspace, task, user).await?;
 
     Ok((workspace, attachment))
 }
@@ -147,18 +134,6 @@ fn event(workspace: Uuid, attachment: Uuid) -> Claimed {
     }
 }
 
-/// Read as the owner, for the same reason the fixture is written as one: this
-/// is the assertion, not the code under test, and reading it through row-level
-/// security would mean a passing test could also mean "the row is hidden".
-async fn state(pool: &sqlx::PgPool, id: Uuid) -> Result<(String, bool)> {
-    let row: (String, Option<time::OffsetDateTime>) =
-        sqlx::query_as("SELECT scan_status, committed_at FROM attachment WHERE id = $1")
-            .bind(id)
-            .fetch_one(pool)
-            .await?;
-    Ok((row.0, row.1.is_some()))
-}
-
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
 async fn a_clean_verdict_is_what_makes_a_file_visible() -> Result<()> {
@@ -168,7 +143,7 @@ async fn a_clean_verdict_is_what_makes_a_file_visible() -> Result<()> {
 
     // Before: stored and invisible, which is the state every upload lands in.
     assert_eq!(
-        state(&db.pool, attachment).await?,
+        test_support::attachment_scan_state(&db.pool, attachment).await?,
         ("PENDING".to_owned(), false)
     );
 
@@ -183,7 +158,7 @@ async fn a_clean_verdict_is_what_makes_a_file_visible() -> Result<()> {
         .map_err(anyhow::Error::msg)?;
 
     assert_eq!(
-        state(&db.pool, attachment).await?,
+        test_support::attachment_scan_state(&db.pool, attachment).await?,
         ("CLEAN".to_owned(), true)
     );
     Ok(())
@@ -210,7 +185,7 @@ async fn an_infected_file_is_never_committed_and_its_object_is_removed() -> Resu
     // `committed_at` stays NULL, which is what keeps it out of every read —
     // the status alone is not what hides it.
     assert_eq!(
-        state(&db.pool, attachment).await?,
+        test_support::attachment_scan_state(&db.pool, attachment).await?,
         ("INFECTED".to_owned(), false)
     );
     assert_eq!(
@@ -240,7 +215,7 @@ async fn a_scan_that_could_not_run_leaves_the_file_unscanned() -> Result<()> {
 
     assert!(outcome.is_err(), "a failed scan must not be acknowledged");
     assert_eq!(
-        state(&db.pool, attachment).await?,
+        test_support::attachment_scan_state(&db.pool, attachment).await?,
         ("PENDING".to_owned(), false)
     );
     Ok(())
@@ -263,7 +238,7 @@ async fn no_scanner_configured_is_not_a_clean_verdict() -> Result<()> {
         .map_err(anyhow::Error::msg)?;
 
     assert_eq!(
-        state(&db.pool, attachment).await?,
+        test_support::attachment_scan_state(&db.pool, attachment).await?,
         ("PENDING".to_owned(), false)
     );
     Ok(())
