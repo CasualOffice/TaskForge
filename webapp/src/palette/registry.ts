@@ -30,9 +30,19 @@ export interface PaletteContext {
   readonly projects: readonly { id: string; key: string; name: string }[]
   readonly scopedProject: string | undefined
   readonly workspaces: readonly { id: string; name: string; slug: string }[]
+  /**
+   * Workspace members, for the "and people" the header has always promised.
+   *
+   * They are people to *find work by*, not profiles to open — there is no
+   * person page to go to, so a command that claimed to open one would be the
+   * kind of dead end this file's header calls a lie. Choosing one filters the
+   * task list to their work.
+   */
+  readonly people: readonly { id: string; name: string; email: string | null }[]
   readonly mayCreateTask: boolean
   readonly go: (to: string) => void
   readonly setProject: (id: string | undefined) => void
+  readonly setAssignee: (id: string) => void
   readonly chooseWorkspace: (id: string) => void
   readonly createTask: (projectId: string, title: string) => void
   readonly clearFilters: () => void
@@ -111,6 +121,25 @@ export function buildCommands(context: PaletteContext): readonly Command[] {
       group: 'Go',
       keywords: `workspace ${workspace.slug}`,
       run: () => context.chooseWorkspace(workspace.id),
+    })
+  }
+
+  // People. Beside the workspaces rather than behind a `ui.command` slug,
+  // because the registry declares no `go-to-person` contribution and inventing
+  // one here would put a slug in the palette that `docs/34` never registered.
+  //
+  // The email is a keyword and not part of the title: it is how somebody
+  // searches for a colleague whose display name they cannot spell, and it is
+  // not something to paint across a list that may be on a shared screen. It is
+  // `null` once an account is anonymized (ADR-026), which is exactly when it
+  // must not be shown.
+  for (const person of context.people) {
+    commands.push({
+      id: `person-${person.id}`,
+      title: `Work assigned to ${person.name}`,
+      group: 'Go',
+      keywords: `person people assignee who ${person.email ?? ''}`,
+      run: () => context.setAssignee(person.id),
     })
   }
 

@@ -269,6 +269,15 @@ jobs:
         # misstates the guarantee itself.
         run: python3 scripts/check-read-path-count.py
 
+      - name: Stated tracker counts match the tracker
+        # Five files state how many rows are Gated/Built/Building, because that
+        # is the honest answer to "how finished is this?" and it belongs where
+        # somebody is reading. Five copies is five chances to be wrong, and this
+        # repository has been wrong both ways: the site claimed "built and
+        # gated" over Building rows, and AGENTS.md said no product existed long
+        # after one did. Adding a single tracker row moves every count at once.
+        run: python3 scripts/check-status-counts.py
+
       - name: Reject merge-conflict markers
         run: |
           if git grep -nE '^(<{7}|={7}|>{7})( |$)' -- ':!*.yml' ; then

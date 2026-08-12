@@ -33,6 +33,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { keys } from '../api/keys'
 import { PERMISSIONS } from '../api/permissions'
+import { listMembers } from '../api/admin'
 import { listProjects } from '../api/projects'
 import { createTask, listTasks } from '../api/tasks'
 import { useAnnounce } from '../shell/announce'
@@ -97,6 +98,18 @@ function PaletteOverlay({ close }: { close: () => void }): ReactElement {
     staleTime: 60_000,
   })
 
+  // The header has said "tasks, projects and people" since the shell was
+  // written, and people were the one third of it nothing fetched. Filtered on
+  // the client beside the projects rather than by a query per keystroke: a
+  // workspace's membership is a small, slow-changing list, and `listMembers`
+  // already pages at 100.
+  const members = useQuery({
+    queryKey: keys.members(workspaceId),
+    queryFn: ({ signal }) => listMembers(workspaceId, undefined, signal),
+    enabled: workspaceId !== '',
+    staleTime: 60_000,
+  })
+
   const create = useMutation({
     mutationFn: ({ projectId, title }: { projectId: string; title: string }) =>
       createTask(workspaceId, projectId, { title }),
@@ -123,10 +136,19 @@ function PaletteOverlay({ close }: { close: () => void }): ReactElement {
         projects: (projects.data?.data ?? []).map((p) => ({ id: p.id, key: p.key, name: p.name })),
         scopedProject: search.project,
         workspaces: workspaces.map((w) => ({ id: w.id, name: w.name, slug: w.slug })),
+        people: (members.data?.data ?? []).map((m) => ({
+          id: m.user_id,
+          name: m.display_name,
+          email: m.email,
+        })),
         mayCreateTask: authority.can(PERMISSIONS.taskCreate),
         go,
         setProject: (id) => {
           update({ project: id })
+          close()
+        },
+        setAssignee: (id) => {
+          update({ assignee: id })
           close()
         },
         chooseWorkspace: (id) => {
@@ -139,7 +161,7 @@ function PaletteOverlay({ close }: { close: () => void }): ReactElement {
           close()
         },
       }),
-    [term, projects.data, search.project, workspaces, authority, go, update, close, chooseWorkspace, create],
+    [term, projects.data, members.data, search.project, workspaces, authority, go, update, close, chooseWorkspace, create],
   )
 
   const matches = useMemo(() => rank(commands, term).slice(0, 8), [commands, term])
@@ -197,7 +219,7 @@ function PaletteOverlay({ close }: { close: () => void }): ReactElement {
           aria-controls="palette-list"
           aria-autocomplete="list"
           aria-activedescendant={total === 0 ? undefined : optionId(highlighted)}
-          placeholder="Type a command or search tasks…"
+          placeholder="Search tasks, projects and people, or type a command…"
           value={term}
           onChange={(event) => setTerm(event.target.value)}
           onKeyDown={onKeyDown}

@@ -137,6 +137,7 @@ These are the difference between an architecture document and an architecture.
 | Tracker row added or moved ([14](14-EXECUTION-TRACKER.md)) | ✅ |
 | No broken internal doc links | ✅ |
 | Numbers the README states about CI are derived, not typed | ✅ |
+| Tracker counts stated anywhere match [14](14-EXECUTION-TRACKER.md) | ✅ |
 
 The filter-field gate is the one that keeps the index contract honest over time:
 you cannot add a way to query without adding the index that serves it, in the
@@ -154,6 +155,20 @@ no-sequential-scan guarantee covers, so a stale one misstates the guarantee.
 The same check rejects duplicate `NN-` prefixes in the corpus, because three
 were used twice and a numbering scheme that does not number is read as an index
 anyway.
+
+`check-status-counts.py` is the third of the family and the widest: five files —
+the README, both agent contracts, and both halves of the public site — state how
+many tracker rows are `Gated`, `Built` and `Building`, because that is the honest
+answer to "how finished is this?" and it belongs where somebody is reading rather
+than one link away. Five copies is five chances to be wrong, and this repository
+has been wrong in both directions: the published site said "built and gated" over
+rows marked `Building`, and `AGENTS.md` said "no product functionality exists yet"
+long after there was a product. Adding one tracker row then moves every count at
+once. It asserts the digits rather than generating the sentences, because the
+wording differs per audience and generating it would flatten a page written for a
+person into a page written for a script — and it fails loudly if a sentence is
+reworded out from under it, since a gate that quietly stopped looking is worse
+than no gate.
 
 ## Release gates
 

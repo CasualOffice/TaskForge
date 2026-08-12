@@ -97,6 +97,8 @@ The documentation phase. All complete unless noted.
 | D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Accepted — fail closed. Countersigned by the project owner on 2026-08-10.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
 | D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
 | D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
+| D-069 | **How the declared trigram path is wired, given D-043** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Open** — surfaced by the search sweep. `migrations/0009_search.sql` creates `task_search_trgm ON task_search USING gin (title_trgm gin_trgm_ops)` and `search::refresh` fills `title_trgm` on every write, and **nothing reads either**. [26](26-SEARCH-INDEXING-AND-QUERY.md) §index inventory assigns that index three jobs — "typo tolerance, substring, `WR-12*` prefix" — and all three are absent: `backu` finds nothing, `bakcup` finds nothing. The obvious wiring, `document @@ q OR title_trgm % $3`, is what must not be written blind: `compile_search` records **D-043**, that `@@` resolves to a non-`LEAKPROOF` `ts_match_vq` under row-level security and cannot serve as an index qual at all, so an `OR` across two indexes is a plan-shape change measured by the `explain-no-seq-scan` gate at 2 M tasks rather than reasoned about. There is also a cheaper shape the doc does not consider — a `:*` prefix on the final token via `to_tsquery`, which uses the existing GIN index and leaves the plan alone, but covers prefix only and not typos. Accept before either is written; the decision is which of the three jobs the trigram index actually takes and at what similarity threshold |
+| D-070 | **The recency-decay curve, and what it does to the rank cursor** | [26](26-SEARCH-INDEXING-AND-QUERY.md) | **Open** — surfaced by the search sweep. [26](26-SEARCH-INDEXING-AND-QUERY.md) §Weighting specifies "`ts_rank_cd`, **with a recency decay** so a stale exact match does not outrank a live near-match". `compile.rs`'s `RANK` is bare `ts_rank_cd(s.document, q)`; there is no decay, and the demo corpus carries a bug raised against exactly this symptom. Two things are undecided and neither is a tuning knob. First the curve and its half-life, which [26](26-SEARCH-INDEXING-AND-QUERY.md) does not give. Second, and the reason this is not a one-line change: `RANK` is both the `ORDER BY` expression **and** the keyset cursor's sort key, so any decay computed from `now()` makes a cursor issued on page one disagree with page two — rows skipped or repeated, on the second page only, which is where a first-page test never looks. Either the decay is quantised to a boundary that is stable for a paging session, or the cursor carries its own reference instant, which is a cursor-format change. Accept before the decay is written |
 | D-067 | **Whether a workspace may define its own task types** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Open** — asked for directly. `task_type` is a PostgreSQL enum (migration 0001) read by the filter grammar, the `task_type_in` permission constraint (C-025), the create menu and every report dimension. Making it workspace-defined is a schema change plus a decision about what a *closed* set buys: today a filter naming an unknown type is refused at the edge rather than returning nothing, and a grant may name the types its holder may raise. Both properties come from the set being finite and shared. Accept before building — the migration is the cheap part and the grammar is not |
 | D-068 | **Whether SMTP is per-workspace or per-deployment** | [29](29-NOTIFICATIONS-AND-DELIVERY.md), [48](48-DEPLOYMENT-PROFILES.md) | **Open** — asked for directly. `TF_SMTP_*` is deployment configuration today ([48](48-DEPLOYMENT-PROFILES.md)), so one relay serves every tenant. A settings screen means relay credentials stored per workspace, which brings three questions the code cannot answer alone: where the password lives at rest and under which key; whether a tenant may send as any `FROM` domain it likes, which is a spoofing and deliverability decision, not a form field; and what happens to queued mail when a workspace's relay is wrong. Accept before a settings screen is drawn |
 | D-066 | **Whether a workflow belongs to a project or to a workspace** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [22](22-DATABASE-SCHEMA.md) | **Open** — surfaced by C-036. `project.workflow_id` is a real column and `ProjectView` has carried it since 0004, which reads as per-project workflows; but `ensure_default_workflow` hands every project in a workspace the *same* default and nothing creates a second one. So renaming a status renames a column on every board in the workspace, and the schema says otherwise. `/settings/workflow` states the shared reality rather than offering a project picker that would imply a choice the product does not have. Accept before a customer authors a second workflow |
@@ -394,6 +396,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-045 | **Reports draws the same charts the dashboard does** | `Built` |
 | C-046 | **`time_in_state`** — the last measure the closed set specified | `Built` |
 | C-047 | **Deployment story and the public site** — build-from-source compose, environment reference, README, GitHub Pages | `Built` |
+| C-048 | **People in the palette** — the third of "tasks, projects and people" nothing fetched | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3226,3 +3229,38 @@ says so where somebody forking this will read it.
 It is a separate workflow from `ci.yml` because it deploys — `ci.yml` is `contents: read` by
 design, and a deploy job inside it would either hold a release behind a static
 page or publish one from a commit the gates rejected.
+
+
+**C-048 is the third of a promise the shell has always made.** The search button
+reads "Search tasks, projects and people". The palette searched tasks and
+projects; nothing ever fetched people.
+
+What made it look broken rather than merely incomplete is the search projection.
+Weight B indexes the *reporter's* display name on every task, so typing a
+colleague's name returned every task that person had ever raised — in a young
+workspace, all of them — ranked by relevance, with nothing on the row to say
+why. Eight results that each look arbitrary read as a bug, not as a feature
+answering a different question.
+
+Members now become commands beside the workspaces, filtered on the client for
+the same reason projects are: membership is a small, slow-changing list, and a
+query per keystroke buys nothing. Choosing one sets `?assignee=`, which is a
+real answer to "what is this person working on" — deliberately not a link to a
+profile page, because there is no profile route and a command that navigated
+nowhere would be the lie `registry.ts` was written to avoid.
+
+The email is a keyword and not part of the title: it is how you find a colleague
+whose name you cannot spell, and it is not something to paint across a list that
+may be on a shared screen. It is `null` once an account is anonymized (ADR-026),
+which is the moment it must not appear — interpolated straight in, that becomes
+the literal string "null" as a searchable term matching every anonymized person
+at once. A test asserts it, and the test was confirmed by making the mistake.
+
+**What this does not fix, and why it was not fixed here.** The search sweep found
+two more defects, both registered rather than patched: the trigram index that is
+written on every task and read by nothing (**D-069**), and the missing recency
+decay (**D-070**). Both look like small changes and neither is: the first is a
+query-plan change that `compile_search` itself warns about under D-043, and the
+second alters the expression that is simultaneously the sort key and the keyset
+cursor. Guessing at either would have been the kind of silent resolution this
+tracker exists to prevent.
