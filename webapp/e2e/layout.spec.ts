@@ -329,3 +329,35 @@ test('every surface that shows task cards can preview one', async ({ page }) => 
     await expect(page.locator('.peek'), `${path} did not open the drawer`).toHaveCount(1)
   }
 })
+
+test('a card picked up on the board is drawn above it, not inside a column', async ({ page }) => {
+  // The reported failure: a dragged card "goes behind everything". It was
+  // translated in place, so it stayed a child of `.column__body` — a scrolling
+  // region — and was clipped by its own column and painted under every column
+  // to its right.
+  //
+  // What is asserted is the *mechanism*, not the pixels: no `z-index` can lift
+  // an element out of an ancestor's `overflow` clip, so the only fix is for the
+  // moving card to be rendered outside that subtree. If it is ever put back
+  // inside one, this fails whatever it is stacked at.
+  await stubApi(page)
+  await page.goto('/board')
+  await page.waitForLoadState('networkidle')
+
+  const grip = page.locator('.card__grip').first()
+  await expect(grip, 'the board must offer a drag handle, or this tests nothing').toBeVisible()
+
+  const box = await grip.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + 260, box!.y + 60, { steps: 12 })
+
+  const overlay = page.locator('.card__dragging')
+  await expect(overlay).toHaveCount(1)
+  expect(
+    await overlay.evaluate((el) => el.closest('.column__body') !== null),
+    'the card in the air must not live inside a scrolling column',
+  ).toBe(false)
+
+  await page.mouse.up()
+})

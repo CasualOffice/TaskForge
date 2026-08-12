@@ -16,6 +16,7 @@ const WORKSPACE = '019fe000-0000-7000-8000-000000000001'
 const PROJECT = '019fe000-0000-7000-8000-000000000002'
 const TEAM = '019fe000-0000-7000-8000-000000000003'
 const TASK = '019fe000-0000-7000-8000-000000000004'
+const WORKFLOW = '019fe000-0000-7000-8000-000000000005'
 
 const LONG_TITLE =
   'Fix the mobile task layout so the title survives a narrow screen instead of collapsing'
@@ -90,8 +91,57 @@ function body(url: string): unknown {
   if (url.includes('/me/teams')) {
     return { data: [{ id: TEAM, name: 'Backend', created_at: '2026-01-01T00:00:00Z' }] }
   }
+  // One project, by id. Matched **before** the list below, which also matches
+  // this URL and used to answer a `{data: […]}` page where a single project
+  // belongs — so `workflow_id` was undefined, the board never resolved a
+  // workflow, and it rendered no drag handles at all. A fixture that answers
+  // the wrong shape does not fail a test; it quietly removes what the test was
+  // going to look at.
+  if (/\/api\/v1\/projects\/[0-9a-f-]+$/.test(url)) {
+    return {
+      id: PROJECT,
+      key: 'ONB',
+      name: 'Onboarding',
+      visibility: 'WORKSPACE',
+      workflow_id: WORKFLOW,
+      version: 1,
+      description: null,
+      team_id: null,
+      created_at: '2026-01-01T00:00:00Z',
+      created_by: 'u1',
+      updated_at: '2026-01-01T00:00:00Z',
+      updated_by: null,
+      archived_at: null,
+    }
+  }
+  // The workflow the board's columns come from. Two statuses, because one
+  // column cannot show a move between columns.
+  if (/\/api\/v1\/workflows\/[0-9a-f-]+$/.test(url)) {
+    return {
+      id: WORKFLOW,
+      name: 'Default',
+      is_default: true,
+      version: 1,
+      statuses: [
+        { id: 's1', name: 'Todo', state: 'PLANNED', position: 1, is_initial: true },
+        { id: 's2', name: 'Doing', state: 'ACTIVE', position: 2, is_initial: false },
+      ],
+      transitions: [{ id: 't1', from: null, to: 's2' }],
+    }
+  }
   if (url.includes('/api/v1/projects') && !url.includes('/tasks')) {
-    return { data: [{ id: PROJECT, key: 'ONB', name: 'Onboarding', visibility: 'WORKSPACE' }] }
+    return {
+      data: [
+        {
+          id: PROJECT,
+          key: 'ONB',
+          name: 'Onboarding',
+          visibility: 'WORKSPACE',
+          workflow_id: WORKFLOW,
+          version: 1,
+        },
+      ],
+    }
   }
   if (url.includes('/permissions/effective')) {
     return {
@@ -102,6 +152,9 @@ function body(url: string): unknown {
         { permission: 'task.read', reach: 'unconditional' },
         { permission: 'task.create', reach: 'unconditional' },
         { permission: 'task.update', reach: 'unconditional' },
+        // Without this the board renders no drag handles, so anything testing a
+        // drag exercises nothing and passes.
+        { permission: 'task.transition', reach: 'unconditional' },
       ],
     }
   }

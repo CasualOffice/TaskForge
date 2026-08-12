@@ -3096,9 +3096,17 @@ made to cross anywhere — and the second is dashed as well as differently
 coloured, because two lines told apart by hue alone are two lines some readers
 cannot tell apart.
 
-**A fixture finding, recorded rather than fixed here.** Making the e2e stub
-answer `/projects/{id}` with a project instead of a page, and serving a real
-workflow, turns the board into one with actual columns and drag handles — and
-two assertions then fail (`/board scrolls its content` and the drawer test).
-The stub was reverted so this change stays about the drag, but a more honest
-fixture exposing two failures is worth its own look.
+**The fixture was the reason there was no test.** `/projects/{id}` answered a
+`{data: […]}` page where a single project belongs, so `workflow_id` was
+`undefined`, the board never resolved a workflow, and it rendered **no drag
+handles at all** — a drag test would have exercised nothing and passed. A
+fixture that answers the wrong shape does not fail a test; it quietly removes
+what the test was going to look at.
+
+Corrected, with a workflow of two statuses and the `task.transition` grant the
+handles need. The two failures noted when this was first tried were my own
+mismatched ids in the fixture, not a product defect: with the ids consistent
+the suite is green, and the drag now has the regression test it should have had
+— asserting the *mechanism* (the moving card is not inside a scrolling column)
+rather than pixels, and verified by restoring the in-place transform and
+watching it fail.
