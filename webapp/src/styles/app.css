@@ -1159,18 +1159,36 @@ kbd {
 }
 .mywork__row {
   display: grid;
-  grid-template-columns: 88px 88px minmax(0, 1fr) 92px 140px;
+  grid-template-columns: 76px 84px minmax(0, 1fr) 92px 140px;
   align-items: center;
-  gap: var(--tf-gap-hair);
+  /* `start`, because a grid item fills its column by default and a badge that
+     fills 88px is a pill with a paragraph of empty space inside it — which is
+     how the type badge on this page rendered. Only the title should take the
+     width it is given. */
+  justify-items: start;
+  gap: var(--tf-gap-tight);
   width: 100%;
-  padding: var(--tf-gap-hair) var(--tf-gap-hair);
+  /* The same vertical rhythm as a list row. This was 4px, which made the one
+     page in the product where rows were half the height of every other list. */
+  padding: var(--tf-gap-tight) var(--tf-gap-field);
   border: 0;
-  border-bottom: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--tf-border);
   background: none;
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* The title stretches; nothing else does. */
+.mywork__row .mywork__title {
+  justify-self: stretch;
+}
+
+/* Due sits against the right edge, where a date column belongs and where the
+   eye can compare two of them without reading. */
+.mywork__row .mywork__due {
+  justify-self: end;
 }
 .mywork__row:hover {
   background: var(--color-hover);

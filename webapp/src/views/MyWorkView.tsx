@@ -31,6 +31,8 @@ import { useMemo, type ReactElement } from 'react'
 
 import type { TaskQuery } from '../api/tasks'
 import { useAppSearch, useOpenTask, useUpdateSearch } from '../shell/navigation'
+import { PageHeader } from '../shell/PageHeader'
+import { WorkToolbar } from './filters/WorkToolbar'
 import { ErrorNotice, GapNotice } from '../shell/notice'
 import { TaskLink } from '../task/TaskLink'
 import { useWorkspaceId } from '../shell/session'
@@ -95,27 +97,36 @@ export function MyWorkView(): ReactElement {
   const active = LENSES.find((option) => option.id === lens) ?? LENSES[0]
 
   return (
-    <section className="view" aria-labelledby="mywork-heading">
-      <div className="view__bar">
-        <h1 id="mywork-heading" className="view__title">
-          My Work
-        </h1>
+    <section className="view" aria-labelledby="page-title">
+      {/* `PageHeader`, like every other route. This drew its own bar with its
+          own `<h1>`, so My work was the one page in the product with no
+          breadcrumb — you could not see which workspace you were in, and the
+          title sat at a different size from every page you reached it from. */}
+      <PageHeader title="My work" count={`${feed.rows.length} shown`} />
+
+      <WorkToolbar>
+        {/* One choice of three, so they are pressed buttons rather than links:
+            `aria-pressed` says which reading of "mine" is in force, which a
+            group of plain buttons cannot.
+
+            They were styled with `.button`, `.button--primary` and
+            `.button--quiet` — three class names that exist in **no**
+            stylesheet, so the most important control on the page rendered as
+            bare browser buttons. The design system draws them now. */}
         <div className="lenses" role="group" aria-label="Which of my tasks">
           {LENSES.map((option) => (
-            <button
+            <Button
               key={option.id}
-              type="button"
-              className={`button${lens === option.id ? ' button--primary' : ' button--quiet'}`}
+              size="sm"
+              variant={lens === option.id ? 'primary' : 'subtle'}
               aria-pressed={lens === option.id}
               onClick={() => choose(option.id)}
             >
               {option.label}
-            </button>
+            </Button>
           ))}
         </div>
-        <span className="shell__spacer" />
-        <span className="view__count">{feed.rows.length}</span>
-      </div>
+      </WorkToolbar>
 
       <div className="view__body mywork">
         {feed.error != null ? <ErrorNotice error={feed.error} /> : null}
