@@ -3215,8 +3215,14 @@ the site. The status paragraph sits above the fold for the same reason.
 yet, and declaring one that does not exist renders a broken card rather than a
 small one.
 
-The workflow enables Pages itself (`actions/configure-pages` with
-`enablement: true`) so the first run is the whole setup, and it is a separate
-workflow from `ci.yml` because it deploys — `ci.yml` is `contents: read` by
+The workflow does **not** enable Pages itself. `actions/configure-pages` has an
+`enablement: true` flag that reads as though it would, and the first deploy
+proved it cannot: creating a Pages site needs admin rights `GITHUB_TOKEN` does
+not have, so the flag fails the run outright and succeeds only once Pages
+already exists — only, that is, when it has nothing to do. Pages was enabled
+once with `gh api -X POST .../pages -f build_type=workflow`, and the workflow
+says so where somebody forking this will read it.
+
+It is a separate workflow from `ci.yml` because it deploys — `ci.yml` is `contents: read` by
 design, and a deploy job inside it would either hold a release behind a static
 page or publish one from a commit the gates rejected.

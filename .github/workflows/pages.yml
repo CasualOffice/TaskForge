@@ -40,12 +40,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `enablement: true` turns Pages on for the repository if it is off, so
-      # the first run of this workflow is all the setup there is — no click in
-      # a settings page that nobody records.
+      # No `enablement: true`. It reads as "this workflow sets itself up" and
+      # it cannot: creating a Pages site needs admin rights that `GITHUB_TOKEN`
+      # does not have, so the flag fails the run with "Resource not accessible
+      # by integration" and succeeds only once Pages already exists — that is,
+      # only when it is doing nothing.
+      #
+      # Pages is enabled once, out of band, with the workflow build type:
+      #
+      #     gh api -X POST repos/CasualOffice/TaskForge/pages -f build_type=workflow
+      #
+      # Done for this repository on 2026-08-13. A fork has to run it too.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       # No build step, and that is the point: the page is hand-written HTML with
       # one inline stylesheet and no JavaScript. A static site generator here
