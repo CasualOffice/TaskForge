@@ -15,7 +15,15 @@
 //! | 3 — authoring is workspace-scoped | same | yes |
 //! | 4 — last owner | migration 0021's trigger | yes |
 //! | 5 — self-elevation | `casual_task_authz::ceiling` | yes |
+//! | 6 — plugin ceiling | nothing yet | **no — see below** |
 //! | 7 — everything audited | `UnitOfWork::record` | yes |
+//!
+//! Control 6 is the one row here that is not covered, and it is listed rather
+//! than skipped: a table that counts 1, 2, 3, 4, 5, 7 tells a reader nothing
+//! about whether 6 was forgotten. It cannot be tested yet — a plugin's ceiling
+//! is the intersection of its granted scopes with the installing admin's
+//! permissions, and there are no plugins to install until P-001. The test lands
+//! with the registry, not before it.
 
 mod schema_harness;
 
