@@ -201,19 +201,38 @@ but never above a permission decision or an audit record.
 
 ## Current state
 
-**Phase 0 closed (2026-08-08). Phase 1 — usable core — is open.**
+**Phase 0 closed (2026-08-08). Phase 1 — usable core — is well under way.**
 
-`docs/` is finished for Phases 0–4 (40 numbered documents, 30 Accepted ADRs).
-**No product functionality exists yet** — Phase 0 builds none. It exists to make
-every later phase verifiable, and most of that machinery now runs on every pull
-request: the enforced dependency DAG and architecture lints, the schema with
+`docs/` is finished for Phases 0–4 (45 numbered documents, 32 Accepted ADRs).
+
+**There is a product, and it runs.** Sign in, create a project, raise a task
+with a description, assignee, priority and due date, move it on a board, filter
+a list on any column, read a dashboard, upload an attachment. That sentence
+replaced "no product functionality exists yet", which stayed here long after it
+stopped being true and told every agent reading this contract the opposite of
+what the repository contains.
+
+What that means precisely, in this document's own vocabulary, where `Gated` —
+not `Built` — is the only word for done:
+
+| Phase | Items | `Gated` | `Built` | `Building` | Not started |
+| --- | --- | --- | --- | --- | --- |
+| 0 — foundation (`F`) | 16 | 13 | 3 | — | — |
+| 1 — core (`C`) | 47 | 11 | 22 | 13 | 1 |
+
+Do not describe this project as "built and gated" as a whole. That is true of 24
+rows and [docs/14](docs/14-EXECUTION-TRACKER.md) names every one; anything less
+is reported as what it is.
+
+Phase 0's machinery runs on every pull request and is what makes the rest
+verifiable: the enforced dependency DAG and architecture lints, the schema with
 row-level security proven as the non-superuser role, the deployable image, the
 deterministic 2M-task reference corpus, the `EXPLAIN` no-seq-scan gate over all
-23 read paths, and the ADR-024 bundle budget.
+29 read paths, the axe and real-browser suites, and the ADR-024 bundle budget.
 
-Eleven of the sixteen Phase 0 rows are `Gated`; five are `Built` with the reason
-they are not `Gated` written down. [docs/14](docs/14-EXECUTION-TRACKER.md)
-§Current state checks the closure against the exit gate in
+The three Phase 0 rows that are `Built` and not `Gated` each carry the reason
+written down. [docs/14](docs/14-EXECUTION-TRACKER.md) §Current state checks the
+closure against the exit gate in
 [docs/06](docs/06-ROADMAP-AND-DELIVERY.md), condition by condition.
 
 Ten `D-###` decisions carry an explicit `Accepted` ruling, all settled on 2026-08-08. **D-048** is open (base images are
@@ -229,5 +248,7 @@ Three decisions are genuinely open and tracked as such in
 specifics (D-032, Accept at Phase 0), custom-field value storage (D-033, before
 Phase 3), and data residency (D-034, before any customer commitment).
 
-The first product milestone is Phase 1, and it does not begin until Phase 0's
-exit gate passes.
+Phase 0's exit gate passed and Phase 1 began. The public page at
+<https://casualoffice.github.io/TaskForge/> is generated from `site/` and states
+the same counts as the table above; if you change what is true, change all of
+them together.
