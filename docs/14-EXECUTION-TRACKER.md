@@ -397,6 +397,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-046 | **`time_in_state`** — the last measure the closed set specified | `Built` |
 | C-047 | **Deployment story and the public site** — build-from-source compose, environment reference, README, GitHub Pages | `Built` |
 | C-048 | **People in the palette** — the third of "tasks, projects and people" nothing fetched | `Built` |
+| C-049 | **A search result that says why it matched** | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3264,3 +3265,28 @@ query-plan change that `compile_search` itself warns about under D-043, and the
 second alters the expression that is simultaneously the sort key and the keyset
 cursor. Guessing at either would have been the kind of silent resolution this
 tracker exists to prevent.
+
+**C-049 is the other half of C-048's finding.** The projection indexes four
+bands (`docs/26` §Weighting) and the palette row showed one of them. A task
+matched on its description, or on the name of the person who raised it, arrived
+looking like a task that matched on nothing — which is how a search that is
+working correctly becomes indistinguishable from a broken one. The same query
+that returned eight arbitrary rows now reads "assigned to Demo User", "reported
+by Demo User", against each.
+
+Inferred on the client, not asked of the server. PostgreSQL would answer
+precisely with `ts_headline` — it knows which lexeme matched and this does not —
+at the cost of a second pass over every document on every keystroke and a change
+to the wire type. The row already carries `title`, `description`, `reporter_id`
+and `assignees`, and the palette already holds the members for C-048, so the
+common cases are named with no request at all.
+
+The consequence is stated rather than hidden: this can be **wrong about the
+reason** while the match is right, because a stemmed hit or one in a comment or
+tag body is not on the row. So the fallback says where it did *not* match —
+"matches elsewhere in the task" — instead of guessing a place. A confident wrong
+answer is worse here than a vague right one, and the note is a subtitle, never
+load-bearing.
+
+Nothing is annotated when the title already contains the query. A note on every
+row is a note nobody reads, which would cost the one case this exists for.

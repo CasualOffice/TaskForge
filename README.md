@@ -45,7 +45,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 <!-- phase-1-landed:begin -->
-**Phase 1 is under way.** 47 items started, 11 gated:
+**Phase 1 is under way.** 48 items started, 11 gated:
 
 - **Projects, membership, visibility** (C-006) — `Gated`
 - **SSE + fan-out** (C-015) — `Gated`
@@ -81,6 +81,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **`time_in_state` — the last measure the closed set specified** (C-046) — `Built`
 - **Deployment story and the public site — build-from-source compose, environment reference, README, GitHub Pages** (C-047) — `Built`
 - **People in the palette — the third of "tasks, projects and people" nothing fetched** (C-048) — `Built`
+- **A search result that says why it matched** (C-049) — `Built`
 - **Identity, sessions, MFA, invitations** (C-001) — `Building`
 - **Permission resolver + `/explain`** (C-003) — `Building`
 - **Permission matrix + escalation suites** (C-004) — `Building`
@@ -160,7 +161,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
 | **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
-| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 11/48 (23 built, 13 building) | `██░░░░░░░░` 23% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 11/49 (24 built, 13 building) | `██░░░░░░░░` 22% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
 *Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*
@@ -308,7 +309,7 @@ product API and the web client.
 **It is a Phase 1 core, not a finished product.** Tasks, projects, boards,
 lists, dashboards, environments, releases, attachments and the permission model
 all work. They are not all `Gated`, which is the only word here that means done:
-of 48 Phase 1 items, 11 carry an acceptance gate, 23 more are merged with their
+of 49 Phase 1 items, 11 carry an acceptance gate, 24 more are merged with their
 tests passing, 13 are in progress and 1 is not started. Time tracking,
 automation rules, plugins, saved reports and user-composed dashboards are
 designed and not built — `docs/` says which is which, and the tracker says how

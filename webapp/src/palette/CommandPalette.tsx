@@ -43,6 +43,7 @@ import { useAuthority } from '../shell/permissions'
 import { useSession, useWorkspaceId } from '../shell/session'
 import { rank } from './commands'
 import { buildCommands } from './registry'
+import { whyMatched, type People } from './why'
 
 /** Long enough not to query per keystroke; the command half stays instant regardless. */
 const DEBOUNCE_MS = 200
@@ -174,6 +175,14 @@ function PaletteOverlay({ close }: { close: () => void }): ReactElement {
   })
 
   const taskRows = tasks.data?.data ?? []
+
+  // Ids on a task row, resolved to names, so a row can say *why* it matched.
+  // Built from the same member list the people commands use — one fetch, two
+  // uses, rather than a second request to label a subtitle.
+  const people: People = useMemo(
+    () => new Map((members.data?.data ?? []).map((m) => [m.user_id, m.display_name])),
+    [members.data],
+  )
   const total = matches.length + taskRows.length
 
   useEffect(() => setHighlighted(0), [term, taskRows.length])
@@ -265,6 +274,10 @@ function PaletteOverlay({ close }: { close: () => void }): ReactElement {
               >
                 <span className="palette__group key">{task.key}</span>
                 <span className="palette__title">{task.title}</span>
+                {(() => {
+                  const why = whyMatched(task, debounced, people)
+                  return why === undefined ? null : <span className="palette__why">{why}</span>
+                })()}
               </li>
             )
           })}
