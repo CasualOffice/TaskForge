@@ -50,6 +50,12 @@ import { useWorkspaceId } from '../shell/session'
 import { SkeletonRows } from '../shell/Skeleton'
 import { filterFromSearch } from '../tasks/query'
 import { WorkToolbar } from './filters/WorkToolbar'
+import { BarChart } from './dashboard/charts'
+
+// The chart styles travel with the chart. Imported here as well as by the
+// dashboard because a component that only looks right on one route is a
+// component with a hidden dependency on that route's stylesheet.
+import './dashboard/dashboard.css'
 import { duration, useVocabulary } from './reports/vocabulary'
 
 /**
@@ -90,7 +96,6 @@ export default function ReportsView(): ReactElement {
   const label = (key: string | null): string => labelFor(key, slice)
 
   const groups = report.data?.groups ?? []
-  const largest = groups.reduce((most, group) => Math.max(most, group.total), 0)
 
   return (
     <section className="view" aria-labelledby="page-title">
@@ -154,6 +159,32 @@ export default function ReportsView(): ReactElement {
 
         {groups.length === 0 ? null : (
           <>
+            {/* The same chart the dashboard draws, from the same components.
+                This page rendered a `<div>` with a width per row and called it
+                a bar — which was honest when there was nothing better, and
+                stopped being honest the moment the dashboard grew a chart set.
+                Two products drawing the same number two ways is the thing the
+                design system exists to prevent.
+
+                A count is a comparison of magnitudes, so it is bars. A duration
+                is too — "which project is slowest" is the same shape of
+                question. The chart carries its own hidden table for a screen
+                reader; the visible table below stays because this page is where
+                someone comes for the *numbers*, not the shape. */}
+            <div className="rep__chart">
+              <BarChart
+                points={groups.map((group) => ({
+                  label: label(group.key),
+                  value: group.total,
+                  formatted:
+                    report.data?.unit === 'seconds' ? duration(group.total) : String(group.total),
+                }))}
+                caption={`${MEASURES.find((m) => m.key === measure)?.label ?? measure} by ${slice}`}
+                dimension={SLICES.find((entry) => entry.key === slice)?.label ?? slice}
+                measure={report.data?.unit === 'seconds' ? 'Duration' : 'Tasks'}
+              />
+            </div>
+
             <table className="rep__table">
               <caption className="visually-hidden">
                 Count of tasks by {slice}, for the current filters
@@ -162,9 +193,6 @@ export default function ReportsView(): ReactElement {
                 <tr>
                   <th scope="col">{SLICES.find((s) => s.key === slice)?.label ?? slice}</th>
                   <th scope="col">{report.data?.unit === 'seconds' ? 'Duration' : 'Tasks'}</th>
-                  <th scope="col">
-                    <span className="visually-hidden">Share</span>
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -175,16 +203,6 @@ export default function ReportsView(): ReactElement {
                     </th>
                     <td className="rep__count">
                       {report.data?.unit === 'seconds' ? duration(group.total) : group.total}
-                    </td>
-                    <td className="rep__barcell">
-                      {/* The bar carries no information the number does not, so
-                          it is hidden from the reader who is listening rather
-                          than being read out as a second, wordless column. */}
-                      <div
-                        className="rep__bar"
-                        aria-hidden="true"
-                        style={{ width: `${largest === 0 ? 0 : (group.total / largest) * 100}%` }}
-                      />
                     </td>
                   </tr>
                 ))}

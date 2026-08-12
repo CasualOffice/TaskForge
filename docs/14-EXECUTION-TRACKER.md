@@ -391,6 +391,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-042 | **The attachment scan** — `docs/28` step 4, the consumer that made uploads visible | `Built` |
 | C-043 | **The `age` measure** — how long open work has been waiting | `Built` |
 | C-044 | **`created_vs_completed`, and the card that dragged behind the board** | `Built` |
+| C-045 | **Reports draws the same charts the dashboard does** | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3110,3 +3111,20 @@ the suite is green, and the drag now has the regression test it should have had
 — asserting the *mechanism* (the moving card is not inside a scrolling column)
 rather than pixels, and verified by restoring the in-place transform and
 watching it fail.
+
+**C-045 stops the product drawing one number two ways.** Reports rendered a
+`<div>` with a width per row and called it a bar. That was honest while there
+was nothing better, and stopped being honest the moment C-035 gave the dashboard
+a chart set — two surfaces answering the same question with two different
+pictures is what a design system exists to prevent.
+
+It uses `BarChart` now, and the table lost its own bar column: with the chart
+above it there were literally two bar charts on the page. What is left is the
+division the chart set already assumes — the drawing carries the shape, the
+table carries the numbers, right-aligned on tabular figures so a column of
+counts lines up on its digits. Both are bounded to the same width so they read
+as one block.
+
+The chart's stylesheet is imported by `ReportsView` as well as the dashboard: a
+component that only looks right on one route has a hidden dependency on that
+route's stylesheet, which is a trap for whoever uses it third.

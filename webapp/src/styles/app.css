@@ -1959,10 +1959,22 @@ kbd {
   padding: var(--tf-gap-tight);
   overflow-y: auto;
 }
+/* Narrower now that the bar column is gone: with two columns left, 900 px put
+   the count a screen away from the label it belongs to. Matched to the chart
+   above so the two read as one block rather than two panels of different
+   widths. */
 .rep__table {
   width: 100%;
-  max-width: 900px;
+  max-width: 46rem;
   border-collapse: collapse;
+}
+
+/* The number, against the label. Right-aligned with tabular figures so a column
+   of counts lines up on its digits — the whole reason to put them in a table
+   rather than in the chart's own hidden one. */
+.rep__table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .rep__table th,
 .rep__table td {
@@ -2373,4 +2385,12 @@ kbd {
   transform: rotate(1.5deg);
   box-shadow: var(--tf-shadow-drag);
   border-radius: var(--tf-radius-card);
+}
+
+/* The chart above the table on Reports. Bounded so a report with forty slices
+   does not push the numbers — which are what this page is for — below the
+   fold. */
+.rep__chart {
+  max-width: 46rem;
+  margin-bottom: var(--tf-gap-section);
 }
