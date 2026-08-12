@@ -48,8 +48,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use casual_task_model::{ProjectId, TeamId};
 use casual_task_persistence::compile::{
-    AuthorizedProjectSet, Bucket, BucketField, Dimension, Interval, Reduce, Span, compile_duration,
-    compile_group_count, compile_throughput,
+    AuthorizedProjectSet, Bucket, BucketField, Dimension, Interval, Reduce, Span, compile_age,
+    compile_duration, compile_group_count, compile_throughput,
 };
 use casual_task_persistence::{project, report};
 use serde::{Deserialize, Serialize};
@@ -206,6 +206,14 @@ pub async fn run(
             reduce,
             limit,
         ),
+        Measure::Age(reduce) => compile_age(
+            &filter,
+            ctx.workspace,
+            &authorized,
+            dimension,
+            reduce,
+            limit,
+        ),
         // Throughput is always a series: "how much finished" without a period
         // is a number nobody can act on. Weekly unless asked otherwise.
         Measure::Throughput => compile_throughput(
@@ -232,7 +240,9 @@ pub async fn run(
             // Seconds for a duration, tasks for a count. The client cannot
             // format a number whose unit it has to guess.
             "unit": match measure {
-                Measure::Duration(_, _) => "seconds",
+                // Age is a duration too, and a client that formatted it as a
+                // task count would render "1209600" where "14.0d" belongs.
+                Measure::Duration(_, _) | Measure::Age(_) => "seconds",
                 _ => "tasks",
             },
             "groups": rows
@@ -286,6 +296,8 @@ enum Measure {
     Count,
     /// A span reduced across the tasks in each group.
     Duration(Span, Reduce),
+    /// How long *open* work has been waiting — `created_at` → now.
+    Age(Reduce),
     Throughput,
 }
 
@@ -305,6 +317,14 @@ fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
         "lead_time" | "p50_lead_time" => Ok(Measure::Duration(Span::LeadTime, Reduce::P50)),
         "p90_lead_time" => Ok(Measure::Duration(Span::LeadTime, Reduce::P90)),
         "avg_lead_time" => Ok(Measure::Duration(Span::LeadTime, Reduce::Avg)),
+        // `age` defaults to the **oldest**, not the median. "How old is the
+        // work" is usually asked as "what has been sitting longest", and a
+        // median hides exactly the one task the question is about. The
+        // percentiles are there for anyone who wants the distribution.
+        "age" | "max_age" => Ok(Measure::Age(Reduce::Max)),
+        "p50_age" => Ok(Measure::Age(Reduce::P50)),
+        "p90_age" => Ok(Measure::Age(Reduce::P90)),
+        "avg_age" => Ok(Measure::Age(Reduce::Avg)),
         "throughput" => Ok(Measure::Throughput),
         "time_in_state" => Err(ApiError::new(
             StatusCode::NOT_IMPLEMENTED,
@@ -316,8 +336,8 @@ fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
         .with_details(serde_json::json!({ "measure": name }))),
         _ => Err(ApiError::bad_request(
             codes::OUT_OF_RANGE,
-            "measure must be count, cycle_time, lead_time or throughput \
-             (each duration also as avg_, p50_ or p90_)",
+            "measure must be count, cycle_time, lead_time, age or throughput \
+             (each duration also as avg_, p50_ or p90_; age also as max_)",
             request_id,
         )
         .with_details(serde_json::json!({ "measure": name }))),

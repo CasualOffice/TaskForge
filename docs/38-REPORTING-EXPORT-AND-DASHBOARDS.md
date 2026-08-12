@@ -170,9 +170,8 @@ query's own pipeline** — `compile_group_count` sits beside `compile` in the sa
 module, so the tenant predicate and the authorized project set are injected in
 exactly one place.
 
-`cycle_time`, `lead_time` and `throughput` joined it in C-030, reading the
-projection below; `age`, `time_in_state` and `created_vs_completed` are still
-refused **by name** (`TF-SYS-0007`) rather than approximated. Saved reports are
+`cycle_time`, `lead_time` and `throughput` joined it in C-030 and `age` in
+C-043; `time_in_state` and `created_vs_completed` are still refused **by name** (`TF-SYS-0007`) rather than approximated. Saved reports are
 not built — a run is ad-hoc, and its "saved" form is the URL the toolbar already
 produces. Dashboards ship as the four built-ins (C-035, §Dashboards below).
 
@@ -271,7 +270,6 @@ about:
 | Tile | Blocked on |
 | --- | --- |
 | Created vs completed | `created_vs_completed` — two series in one answer |
-| Age of oldest open | `age` |
 | Reopen rate | a measure over `COMPLETED → ACTIVE` transitions |
 | Time in state | `time_in_state` (server refuses it by name) |
 

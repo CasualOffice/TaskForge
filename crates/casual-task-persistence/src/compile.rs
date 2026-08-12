@@ -411,6 +411,10 @@ pub enum Reduce {
     Avg,
     P50,
     P90,
+    /// The largest, which is the only one that answers "the oldest open task".
+    /// A median age says how old work usually is; the question a standup asks
+    /// is what has been sitting longest, and an average hides exactly that.
+    Max,
 }
 
 impl Reduce {
@@ -420,6 +424,7 @@ impl Reduce {
             Self::Avg => format!("avg({column})"),
             Self::P50 => format!("percentile_cont(0.5) WITHIN GROUP (ORDER BY {column})"),
             Self::P90 => format!("percentile_cont(0.9) WITHIN GROUP (ORDER BY {column})"),
+            Self::Max => format!("max({column})"),
         }
     }
 }
@@ -503,6 +508,59 @@ pub fn compile_duration(
           GROUP BY group_key \
           ORDER BY total DESC, group_key NULLS LAST \
           LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
+/// Compile a **validated** filter into the age of *open* work (`docs/38`).
+///
+/// # Why this does not touch `task_state_interval`
+///
+/// Age is `created_at → now`, and both are on the task. Cycle and lead time need
+/// the projection because they are bounded by a *transition*; age is bounded by
+/// the clock, so joining the projection would only add a way for a task with no
+/// intervals yet — one created a second ago — to vanish from a measure that is
+/// specifically about work sitting untouched.
+///
+/// # Why "open" is in the measure and not left to the filter
+///
+/// `docs/38` defines age as "`created_at` → now, **for open tasks**". The age of
+/// a finished task is not a smaller number, it is a meaningless one: it keeps
+/// growing after the work stopped. Leaving that to the caller would make the
+/// measure mean different things depending on a filter someone else wrote, so
+/// the completed states are excluded here. A filter that asks for completed work
+/// and this measure returns nothing, which is visibly empty rather than quietly
+/// wrong.
+///
+/// # Errors
+///
+/// None. The SQL is assembled, not executed.
+pub fn compile_age(
+    filter: &Node,
+    workspace: WorkspaceId,
+    authorized: &AuthorizedProjectSet,
+    group: Dimension,
+    reduce: Reduce,
+    limit: u32,
+) -> Compiled {
+    let mut params: Vec<Param> = Vec::new();
+    params.push(Param::Workspace(workspace));
+    params.push(Param::Projects(authorized.as_slice().to_vec()));
+
+    let predicate = emit(filter, &mut params);
+    let join = if group.needs_assignees() {
+        " LEFT JOIN task_assignee a ON a.task_id = t.id"
+    } else {
+        ""
+    };
+    let group_expr = group.expression();
+    let seconds = reduce.over("EXTRACT(EPOCH FROM (now() - t.created_at))");
+
+    // No `per_task` stage: there is one row per task already, unless the group
+    // is by assignee — and there the LEFT JOIN is the point, because a task with
+    // two assignees is old for both of them.
+    let sql = format!(
+        "SELECT {group_expr} AS group_key, NULL::timestamptz AS bucket_start,                 round({seconds})::bigint AS total            FROM task t{join}           WHERE t.workspace_id = $1             AND t.project_id = ANY($2)             AND t.deleted_at IS NULL             AND t.state NOT IN ('COMPLETED', 'CANCELED')             AND ({predicate})           GROUP BY group_key           ORDER BY total DESC, group_key NULLS LAST           LIMIT {limit}"
     );
     Compiled { sql, params }
 }
@@ -1286,5 +1344,66 @@ mod tests {
         ));
         assert!(c.sql.contains("LIKE '%' || $3 || '%'"), "{}", c.sql);
         assert!(!c.sql.contains("100%"));
+    }
+
+    #[test]
+    fn age_counts_only_open_work() {
+        // `docs/38` defines age as "created_at → now, **for open tasks**". The
+        // age of a finished task is not a smaller number, it is a meaningless
+        // one — it keeps growing after the work stopped — so the exclusion
+        // belongs to the measure and not to whatever filter a caller wrote.
+        let compiled = compile_age(
+            &Node::And(vec![]),
+            WorkspaceId::new(),
+            &AuthorizedProjectSet::resolved(vec![ProjectId::new()]),
+            Dimension::Project,
+            Reduce::Max,
+            20,
+        );
+        assert!(
+            compiled
+                .sql
+                .contains("t.state NOT IN ('COMPLETED', 'CANCELED')"),
+            "age must exclude finished work: {}",
+            compiled.sql,
+        );
+    }
+
+    #[test]
+    fn age_does_not_join_the_state_projection() {
+        // Age is bounded by the clock, not by a transition. Joining
+        // `task_state_interval` would drop a task created a second ago — one
+        // with no intervals yet — out of a measure that is specifically about
+        // work sitting untouched.
+        let compiled = compile_age(
+            &Node::And(vec![]),
+            WorkspaceId::new(),
+            &AuthorizedProjectSet::resolved(vec![ProjectId::new()]),
+            Dimension::Project,
+            Reduce::Max,
+            20,
+        );
+        assert!(
+            !compiled.sql.contains("task_state_interval"),
+            "age is a property of the task row: {}",
+            compiled.sql,
+        );
+    }
+
+    #[test]
+    fn age_carries_the_tenant_and_the_authorized_projects() {
+        // The same guarantee every other compiled query has, asserted here
+        // because a new entry point is a new place to forget it.
+        let compiled = compile_age(
+            &Node::And(vec![]),
+            WorkspaceId::new(),
+            &AuthorizedProjectSet::resolved(vec![ProjectId::new()]),
+            Dimension::Assignee,
+            Reduce::P90,
+            20,
+        );
+        assert!(compiled.sql.contains("t.workspace_id = $1"));
+        assert!(compiled.sql.contains("t.project_id = ANY($2)"));
+        assert!(compiled.sql.contains("t.deleted_at IS NULL"));
     }
 }

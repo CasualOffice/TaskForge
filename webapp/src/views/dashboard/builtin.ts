@@ -279,6 +279,16 @@ const PROJECT_HEALTH: Dashboard = {
       span: 2,
     },
     {
+      id: 'health-oldest',
+      title: 'Oldest open work by project',
+      help: 'How long the longest-waiting open task has been waiting. Finished work is not counted.',
+      viz: 'bar',
+      groupBy: 'project',
+      measure: 'age',
+      drillable: false,
+      span: 2,
+    },
+    {
       id: 'health-cycle',
       title: 'Cycle time by project',
       help: 'Median time from work starting to work finishing.',
@@ -499,14 +509,13 @@ export function breakdownsOf(dashboard: Dashboard): readonly Tile[] {
 /**
  * ## Not built
  *
- * Four tiles `docs/38` names are absent, because the measure set cannot express
+ * Three tiles `docs/38` names are absent, because the measure set cannot express
  * them and approximating a metric is worse than omitting it — a wrong number on
  * a dashboard gets quoted in a meeting, where a missing one gets asked about.
  *
  * | Tile | Needs | Why it cannot be faked |
  * | --- | --- | --- |
  * | Created vs completed | `created_vs_completed` (two series) | Two separate runs would be two scopes and two cache windows; the crossing point is the whole message. |
- * | Age of oldest open | `age` | `updated_at` is not age, and `created_at` ordering is a list query, not an aggregate. |
  * | Reopen rate | — | Needs completed→active transitions counted, which `task_state_interval` records but no measure exposes. |
  * | Time in state | `time_in_state` | The server refuses it by name (`TF-SYS-0007`). |
  *

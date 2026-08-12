@@ -46,6 +46,12 @@ export const MEASURES = [
   { key: 'cycle_time', label: 'Cycle time (median)', unit: 'seconds' },
   { key: 'p90_cycle_time', label: 'Cycle time (90th percentile)', unit: 'seconds' },
   { key: 'lead_time', label: 'Lead time (median)', unit: 'seconds' },
+  // The *oldest*, not the median: "how old is the work" is asked as "what has
+  // been sitting longest", and a median hides the one task the question is
+  // about. `docs/38` defines age over open work only, which the server enforces
+  // rather than trusting the filter to.
+  { key: 'age', label: 'Age of oldest open', unit: 'seconds' },
+  { key: 'p50_age', label: 'Age of open work (median)', unit: 'seconds' },
   { key: 'throughput', label: 'Throughput', unit: 'tasks' },
 ] as const
 

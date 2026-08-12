@@ -97,6 +97,8 @@ The documentation phase. All complete unless noted.
 | D-062 | **What a deployment with no malware scanner does with an attachment** | [28](28-ATTACHMENT-PIPELINE.md), [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) | **Accepted — fail closed. Countersigned by the project owner on 2026-08-10.** Implemented as: no scanner ⇒ the row stays `PENDING` ⇒ it is never downloadable. The opposite default is a silent lie, so it is not one an implementation may pick alone |
 | D-063 | **Time tracking: whether it exists, and in what shape** | [12](12-COMPETITIVE-ANALYSIS.md), [13](13-PARITY-CHECKLIST.md) | **Open** — surfaced by the parity review. It is on the category baseline [12](12-COMPETITIVE-ANALYSIS.md) names, and is in neither [01](01-ORD.md)'s FR list nor its non-goals. A duration on a task or timed entries; who may see whose time; whether it feeds `cycle_time`, which [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) currently derives from state intervals. Coding it first would settle all of that by accident |
 | D-064 | **How long an MFA step-up lasts** | [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — surfaced by C-001's MFA. `docs/40` says a workspace "demanding more than the session carries triggers a step-up" and sets no lifetime, so none is applied: a session that has stepped up stays satisfied until it ends. `session.mfa_satisfied_at` records the instant, so a lifetime is a comparison in one function with no migration and no client change. Accept before enforcement is offered to customers. (Asked for as D-056, which C-004 had already taken; then D-059, which C-016 took; then D-062, which C-010 took. Renumbered on integration each time.) |
+| D-067 | **Whether a workspace may define its own task types** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | **Open** — asked for directly. `task_type` is a PostgreSQL enum (migration 0001) read by the filter grammar, the `task_type_in` permission constraint (C-025), the create menu and every report dimension. Making it workspace-defined is a schema change plus a decision about what a *closed* set buys: today a filter naming an unknown type is refused at the edge rather than returning nothing, and a grant may name the types its holder may raise. Both properties come from the set being finite and shared. Accept before building — the migration is the cheap part and the grammar is not |
+| D-068 | **Whether SMTP is per-workspace or per-deployment** | [29](29-NOTIFICATIONS-AND-DELIVERY.md), [48](48-DEPLOYMENT-PROFILES.md) | **Open** — asked for directly. `TF_SMTP_*` is deployment configuration today ([48](48-DEPLOYMENT-PROFILES.md)), so one relay serves every tenant. A settings screen means relay credentials stored per workspace, which brings three questions the code cannot answer alone: where the password lives at rest and under which key; whether a tenant may send as any `FROM` domain it likes, which is a spoofing and deliverability decision, not a form field; and what happens to queued mail when a workspace's relay is wrong. Accept before a settings screen is drawn |
 | D-066 | **Whether a workflow belongs to a project or to a workspace** | [23](23-WORKFLOW-AND-STATE-MACHINE.md), [22](22-DATABASE-SCHEMA.md) | **Open** — surfaced by C-036. `project.workflow_id` is a real column and `ProjectView` has carried it since 0004, which reads as per-project workflows; but `ensure_default_workflow` hands every project in a workspace the *same* default and nothing creates a second one. So renaming a status renames a column on every board in the workspace, and the schema says otherwise. `/settings/workflow` states the shared reality rather than offering a project picker that would imply a choice the product does not have. Accept before a customer authors a second workflow |
 | D-065 | **A time-zone database, so an offset can be derived without a client** | [27](27-FILTER-AND-SAVED-VIEW-DSL.md), [40](40-IDENTITY-AUTH-AND-SESSION.md) | **Open** — `user_account.time_zone` stores an IANA name (migration 0030) and evaluation uses the offset the client sends, which a browser computes correctly including daylight saving. A server-side job has no client to ask, so digests and scheduled notifications cannot resolve `@today` for a user until a tz database is a dependency |
 
@@ -387,6 +389,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-040 | **Attachments reach the browser** — the preflight that made `docs/28` usable | `Built` |
 | C-041 | **The task drawer belongs to the address** — Home and Environments could not preview | `Built` |
 | C-042 | **The attachment scan** — `docs/28` step 4, the consumer that made uploads visible | `Built` |
+| C-043 | **The `age` measure** — how long open work has been waiting | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3032,3 +3035,34 @@ infected never commits and its object is deleted, a failed scan changes nothing
 and is retried, and no scanner is not a clean verdict. The last was verified by
 making the mistake it forbids: teaching the consumer to mark unscanned files
 `CLEAN` fails it and nothing else.
+
+**C-043 adds the measure `docs/38` already specified.** `age` is
+"`created_at` → now, for open tasks", and the dashboard was missing "oldest open
+work" because of its absence. Two properties are in the compiler rather than
+left to the caller:
+
+- **It does not join `task_state_interval`.** Age is bounded by the clock, not
+  by a transition, so joining the projection would drop a task created a second
+  ago — one with no intervals yet — out of a measure specifically about work
+  sitting untouched.
+- **Completed and cancelled work is excluded in the SQL.** The age of a finished
+  task is not a smaller number, it is a meaningless one: it keeps growing after
+  the work stopped. Leaving that to a filter would make the measure mean
+  different things depending on who wrote the filter.
+
+It defaults to `max`, not a percentile: "how old is the work" is asked as "what
+has been sitting longest", and a median hides the one task the question is
+about.
+
+**Adding one tile then broke the shell containment**, which is worth recording
+because it is the same defect twice. Every chart carries its numbers in a
+`position: absolute` `.visually-hidden` table, and a tile that is not a link had
+no positioned ancestor — so those boxes were laid out against the initial
+containing block, escaped the scrolling region, and stretched the *document*.
+One clipped pixel, at whatever offset the chart sits at, and the whole
+application scrolled again on that one route.
+
+The horizontal version of this was the hidden table making the page 62 px wider
+than the viewport (C-035). `position: relative` on `.tile` closes both, and the
+assertion that caught it is the one that injects its own height — verified by
+deleting the line and watching it fail.

@@ -48,7 +48,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 <!-- phase-1-landed:begin -->
-**Phase 1 is under way.** 41 items started, 11 gated:
+**Phase 1 is under way.** 42 items started, 11 gated:
 
 - **Projects, membership, visibility** (C-006) — `Gated`
 - **SSE + fan-out** (C-015) — `Gated`
@@ -78,6 +78,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **Attachments reach the browser — the preflight that made `docs/28` usable** (C-040) — `Built`
 - **The task drawer belongs to the address — Home and Environments could not preview** (C-041) — `Built`
 - **The attachment scan — `docs/28` step 4, the consumer that made uploads visible** (C-042) — `Built`
+- **The `age` measure — how long open work has been waiting** (C-043) — `Built`
 - **Identity, sessions, MFA, invitations** (C-001) — `Building`
 - **Permission resolver + `/explain`** (C-003) — `Building`
 - **Permission matrix + escalation suites** (C-004) — `Building`
@@ -157,7 +158,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
 | **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
-| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 11/42 (17 built, 13 building) | `███░░░░░░░` 26% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 11/43 (18 built, 13 building) | `███░░░░░░░` 26% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
 *Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*

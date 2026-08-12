@@ -101,6 +101,19 @@
   background: var(--tf-surface);
   border: 1px solid var(--tf-border);
   border-radius: var(--tf-radius-card);
+  /* Load-bearing, and the second time this exact mistake has cost something.
+     Every chart carries its numbers in a `position: absolute`
+     `.visually-hidden` table. An absolutely positioned box whose ancestors are
+     all static is laid out against the *initial containing block*, so it
+     escapes the scrolling region entirely — and although it is one clipped
+     pixel, its offset is wherever the chart sits, which on a long dashboard is
+     below the fold. It therefore stretched the **document**, and the whole
+     application scrolled again on this one route.
+
+     The horizontal version of this was the hidden table making the page 62 px
+     wider than the viewport. Positioning the tile gives those boxes a
+     containing block that is inside the scroller, which closes both. */
+  position: relative;
 }
 
 .tile__head {
