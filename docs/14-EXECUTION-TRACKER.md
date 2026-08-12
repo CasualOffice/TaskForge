@@ -393,6 +393,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-044 | **`created_vs_completed`, and the card that dragged behind the board** | `Built` |
 | C-045 | **Reports draws the same charts the dashboard does** | `Built` |
 | C-046 | **`time_in_state`** — the last measure the closed set specified | `Built` |
+| C-047 | **Deployment story and the public site** — build-from-source compose, environment reference, README, GitHub Pages | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3164,3 +3165,58 @@ which is what I first wrote: `ACTIVE` is a permanent state and the default
 workflow maps *two* statuses onto it, so the number covers In Progress and
 Blocked together. A title naming one column would have been a wrong number with
 a confident label.
+
+**C-047 is the gap between "it works" and "somebody else can run it".** Four
+things were missing at once and they are one item because they fail together: a
+`README` that still said there was no user interface and none was being built, a
+`docker-compose.yml` that could only pull a published image and never build the
+repository it sat in, an environment reference that did not mention the scanner
+address without which every attachment is invisible, and no public page at all.
+
+`build:` is declared beside `image:` rather than replacing it, so a plain `up`
+still pulls and `up --build` compiles. Somebody evaluating the product wants the
+image; somebody changing the code wants their own build, and making the second
+the default would put a Rust toolchain in the path of the first.
+
+The site is one hand-written HTML file with an inline stylesheet and no
+JavaScript, published by `.github/workflows/pages.yml` on changes under `site/`.
+No static site generator: a toolchain to maintain for a single document is a
+cost with no return, and the page is fast because there is nothing to load.
+
+Its palette is the product's own — the forge orange `#d8610b`, and `#f08a2e`
+where a dark background needs the lighter one — and the mark is
+`webapp/public/brand/taskforge-mark.svg` inlined so it inherits the text colour.
+The first draft used a teal accent and no mark at all, which taught a visitor
+the wrong thing about the product before they clicked through.
+
+The three screenshots are captured from a running build rather than drawn, and
+`og:image` points at the dashboard one. A marketing page for a product with a
+user interface that shows none of it is asking to be taken on trust, and this
+project's whole argument is that you should not have to.
+
+Three things carry the optimisation, and only one of them is conventional SEO:
+
+- **Search** — a title and description made of the words somebody would type
+  ("self-hosted", "work tracker", "Rust", "Apache-2.0") rather than a slogan, a
+  canonical URL, Open Graph tags, and a sitemap.
+- **Answer engines** — JSON-LD `SoftwareApplication` and `FAQPage`, so the
+  questions a machine is asked ("is it production ready", "what does it cost")
+  have answers on the page in the form that gets quoted.
+- **Models reading the repository** — `site/llms.txt`, which states in prose
+  what is built and what is designed-and-not-built.
+
+All three say the same thing, and what they say is that this is a Phase 1 core
+and not a finished product. That is the part worth defending: structured data
+is the half a machine trusts without reading the prose around it, so a
+`FAQPage` claiming production readiness would be the most load-bearing lie on
+the site. The status paragraph sits above the fold for the same reason.
+
+`twitter:card` is `summary`, not `summary_large_image`: there is no card image
+yet, and declaring one that does not exist renders a broken card rather than a
+small one.
+
+The workflow enables Pages itself (`actions/configure-pages` with
+`enablement: true`) so the first run is the whole setup, and it is a separate
+workflow from `ci.yml` because it deploys — `ci.yml` is `contents: read` by
+design, and a deploy job inside it would either hold a release behind a static
+page or publish one from a commit the gates rejected.

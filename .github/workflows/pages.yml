@@ -1,0 +1,58 @@
+name: pages
+
+# The marketing site in `site/`, published to GitHub Pages.
+#
+# Separate from `ci.yml` on purpose: this deploys, and a deploy job inside the
+# gate workflow would either hold a release behind a static page or publish one
+# from a commit the gates rejected. It also needs `pages: write` and
+# `id-token: write`, and `ci.yml` is deliberately `contents: read`.
+#
+# `paths` keeps a Rust change from redeploying an unchanged page, which is not
+# harmful but makes the deployment history unreadable.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Least privilege, and no more: the deploy needs an OIDC token to prove to the
+# Pages service which workflow produced the artifact.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One live deployment at a time, and never cancel one in flight — a cancelled
+# Pages deploy can leave the site mid-swap.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # `enablement: true` turns Pages on for the repository if it is off, so
+      # the first run of this workflow is all the setup there is — no click in
+      # a settings page that nobody records.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # No build step, and that is the point: the page is hand-written HTML with
+      # one inline stylesheet and no JavaScript. A static site generator here
+      # would be a toolchain to maintain for a single document.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

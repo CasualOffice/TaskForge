@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!--
+      Title and description are the two things every engine reads — search,
+      social, and the answer engines that quote a page instead of linking it.
+      Both say what this *is* rather than how it feels about itself:
+      "work tracker", "Rust", "self-hosted", "Apache-2.0" are the words somebody
+      would actually type, and a page that leads with a slogan matches no query.
+    -->
+    <title>TaskForge — the work tracker whose core stays small</title>
+    <meta
+      name="description"
+      content="An open-source work tracker you host yourself: one Rust binary plus PostgreSQL. Boards, lists and dashboards, permissions you can explain, and tenant isolation enforced by the database. Apache-2.0."
+    />
+    <link rel="canonical" href="https://casualoffice.github.io/TaskForge/" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+    <meta name="author" content="Casual Office" />
+    <meta name="theme-color" content="#0c0e12" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+
+    <!-- Open Graph and Twitter: a link pasted into a chat is often the first and
+         only impression, and the card is the whole of it. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TaskForge" />
+    <meta property="og:title" content="TaskForge — the work tracker whose core stays small" />
+    <meta
+      property="og:description"
+      content="One Rust binary plus PostgreSQL. Boards, lists, dashboards, explainable permissions, and tenant isolation enforced by the database. Apache-2.0."
+    />
+    <meta property="og:url" content="https://casualoffice.github.io/TaskForge/" />
+    <meta property="og:image" content="https://casualoffice.github.io/TaskForge/img/dashboard.jpg" />
+    <meta
+      property="og:image:alt"
+      content="The TaskForge project-health dashboard: overdue and unassigned tiles, a throughput chart, a donut of open work by state, and a raised-against-finished line chart."
+    />
+    <meta property="og:image:width" content="1562" />
+    <meta property="og:image:height" content="784" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TaskForge — the work tracker whose core stays small" />
+    <meta
+      name="twitter:description"
+      content="Self-hosted, Apache-2.0, one Rust binary plus PostgreSQL. Tenant isolation enforced in the database."
+    />
+    <meta name="twitter:image" content="https://casualoffice.github.io/TaskForge/img/dashboard.jpg" />
+
+    <!--
+      Structured data, for the engines that answer instead of linking.
+
+      `SoftwareApplication` is what this is; `FAQPage` is what gets quoted. Both
+      repeat only claims the prose on this page also makes — structured data
+      that overstates is worse than none, because it is the part a machine
+      trusts without reading the page around it.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "TaskForge",
+            "applicationCategory": "BusinessApplication",
+            "applicationSubCategory": "Project management",
+            "operatingSystem": "Linux, macOS, Docker",
+            "url": "https://casualoffice.github.io/TaskForge/",
+            "codeRepository": "https://github.com/CasualOffice/TaskForge",
+            "screenshot": "https://casualoffice.github.io/TaskForge/img/dashboard.jpg",
+            "programmingLanguage": ["Rust", "TypeScript"],
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "author": { "@type": "Organization", "name": "Casual Office" },
+            "description": "A self-hosted work tracker whose core stays small: one Rust binary plus PostgreSQL, with tenant isolation enforced by row-level security and a closed extension point registry.",
+            "featureList": [
+              "Kanban board and a filterable task list sharing one filter language",
+              "Dashboards with cycle time, lead time, throughput, age and time in state",
+              "Deployment environments and release records",
+              "Additive permissions with an endpoint that explains any decision",
+              "Configurable statuses above five permanent states",
+              "Self-hosted with Docker Compose"
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is TaskForge?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "TaskForge is an open-source work tracker you run on your own infrastructure. It ships as one Rust binary plus PostgreSQL and is licensed Apache-2.0."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I self-host TaskForge?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Clone the repository, copy deploy/.env.example to deploy/.env and edit every value marked CHANGE_ME, then run: docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d. Add --build to compile from source instead of pulling the published image."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is TaskForge production ready?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Not yet. It is a Phase 1 usable core: projects, tasks, boards, lists, dashboards, environments, releases, attachments and the permission model are built and gated by CI. Time tracking, automation rules and plugins are designed but not built. The execution tracker in the repository states the status of every item."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does TaskForge keep one customer's data from another's?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "PostgreSQL row-level security, with the application connecting as a non-superuser role. A forgotten WHERE clause cannot leak across tenants because the database refuses the row, and CI proves this as the application role rather than as the table owner."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I rename statuses without breaking reports?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Each team names and rewires its own statuses, and every status maps onto one of five permanent semantic states. Reports, automations and plugins are written against the states, so renaming a column cannot break them."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What does TaskForge cost?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Nothing. It is Apache-2.0 licensed and self-hosted, so there is no per-seat pricing and no hosted tier to buy."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
+    <style>
+      /*
+        One stylesheet, inline, no fonts and no scripts — a marketing page that
+        needs a framework to render a paragraph loads slowly on the connection
+        most visitors have, and page speed is a ranking input as well as a
+        courtesy.
+
+        The palette is the product's own (`webapp/src/styles/tokens.css`): the
+        forge orange #d8610b, and #f08a2e where a dark background needs the
+        lighter one. A site whose colour is not the application's colour teaches
+        the wrong thing before anybody clicks through.
+      */
+      :root {
+        --bg: #ffffff;
+        --bg-soft: #faf9f7;
+        --ink: #14181f;
+        --muted: #55606f;
+        --line: #e6e8ec;
+        --brand: #d8610b;
+        --brand-ink: #a94400;
+        --brand-wash: #fdf1e7;
+        /* Text on a brand-filled button. A variable, not `#fff`, because the
+           brand is lighter in dark mode where white on it is unreadable. */
+        --on-brand: #ffffff;
+        --code-bg: #f6f7f9;
+        --shadow: 0 1px 2px rgb(20 24 31 / 6%), 0 12px 32px -12px rgb(20 24 31 / 18%);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0c0e12;
+          --bg-soft: #11141a;
+          --ink: #e9edf2;
+          --muted: #9aa5b4;
+          --line: #1f2530;
+          --brand: #f08a2e;
+          --brand-ink: #f5a55e;
+          --brand-wash: #241708;
+          --on-brand: #16100a;
+          --code-bg: #131820;
+          --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 16px 40px -16px rgb(0 0 0 / 70%);
+        }
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        * { transition: none !important; }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-text-size-adjust: 100%;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.5rem; }
+      a { color: var(--brand-ink); text-underline-offset: 2px; }
+      /* `overflow-wrap: anywhere` because an inline path like
+         `/permissions/explain` has no break opportunity, and one unbreakable
+         token is all it takes to push a phone-width page sideways. */
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; overflow-wrap: anywhere; }
+      /* Keyboard focus must be visible on every interactive thing, including the
+         ones styled to look like blocks rather than links. */
+      :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 4px; }
+
+      /* ---------- header ---------- */
+      .top {
+        position: sticky; top: 0; z-index: 10;
+        background: color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .top__bar { display: flex; align-items: center; gap: 1rem; padding: 0.85rem 0; }
+      .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; letter-spacing: -0.015em; }
+      .brand svg { width: 26px; height: 26px; display: block; }
+      .top nav { margin-left: auto; display: flex; align-items: center; gap: 1.4rem; }
+      .top nav a { color: var(--muted); text-decoration: none; font-size: 0.94rem; }
+      .top nav a:hover { color: var(--ink); }
+      @media (max-width: 46rem) { .top nav .hide-sm { display: none; } }
+
+      /* ---------- hero ---------- */
+      .hero { position: relative; padding: 4.5rem 0 0; overflow: hidden; }
+      /* The glow is decorative and behind everything, so it is a pseudo-element
+         rather than a div — nothing in the accessibility tree, nothing to skip. */
+      .hero::before {
+        content: ''; position: absolute; inset: -30% 0 auto; height: 40rem; z-index: -1;
+        background: radial-gradient(60% 55% at 50% 45%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 70%);
+      }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        font-size: 0.82rem; font-weight: 600; letter-spacing: 0.02em;
+        color: var(--brand-ink); background: var(--brand-wash);
+        border: 1px solid color-mix(in srgb, var(--brand) 30%, transparent);
+        padding: 0.3rem 0.7rem; border-radius: 999px; margin: 0 0 1.25rem;
+      }
+      h1 {
+        font-size: clamp(2.2rem, 5.6vw, 3.75rem); line-height: 1.05;
+        letter-spacing: -0.03em; margin: 0 0 1.1rem; max-width: 20ch;
+      }
+      h1 .grad {
+        background: linear-gradient(100deg, var(--brand), color-mix(in srgb, var(--brand) 55%, var(--ink)));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .lede { font-size: 1.18rem; color: var(--muted); max-width: 48rem; margin: 0 0 1.9rem; }
+      .cta { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        padding: 0.75rem 1.2rem; border-radius: 10px; text-decoration: none;
+        font-weight: 600; font-size: 0.97rem; border: 1px solid transparent;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+      .btn--solid { background: var(--brand); color: var(--on-brand); box-shadow: var(--shadow); }
+      .btn--solid:hover { transform: translateY(-1px); }
+      .btn--ghost { border-color: var(--line); color: var(--ink); background: var(--bg); }
+      .btn--ghost:hover { border-color: var(--brand); }
+
+      /* The screenshot, framed. `aspect-ratio` plus explicit width/height stops
+         the page reflowing when it decodes, which is the cheapest layout-shift
+         fix there is. */
+      .shot {
+        margin: 3rem 0 0; border: 1px solid var(--line); border-radius: 14px;
+        overflow: hidden; box-shadow: var(--shadow); background: var(--bg-soft);
+      }
+      .shot img { display: block; width: 100%; height: auto; }
+      /* The hero shot is cropped to a deliberate ratio rather than ending
+         wherever the browser viewport happened to when it was captured — a
+         screenshot that stops mid-chart reads as a broken image. */
+      .hero .shot { margin-bottom: -3.5rem; aspect-ratio: 1562 / 660; }
+      .hero .shot img { height: 100%; object-fit: cover; object-position: top center; }
+
+      /* ---------- sections ---------- */
+      section { padding: 4.5rem 0; }
+      .hero + section { padding-top: 7rem; }
+      section + section { border-top: 1px solid var(--line); }
+      .kicker {
+        font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--brand-ink); margin: 0 0 0.6rem;
+      }
+      h2 { font-size: clamp(1.6rem, 3.4vw, 2.1rem); letter-spacing: -0.02em; margin: 0 0 0.7rem; }
+      .sub { color: var(--muted); max-width: 46rem; margin: 0 0 2.5rem; font-size: 1.05rem; }
+      h3 { font-size: 1.02rem; margin: 0 0 0.4rem; }
+
+      .grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+      .card {
+        border: 1px solid var(--line); border-radius: 12px; padding: 1.4rem;
+        background: var(--bg-soft);
+      }
+      .card p { color: var(--muted); margin: 0; font-size: 0.95rem; }
+      .card__icon {
+        width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+        background: var(--brand-wash); color: var(--brand-ink); margin-bottom: 0.9rem;
+      }
+      .card__icon svg { width: 18px; height: 18px; }
+
+      /* The purpose section: a claim, then the thing it rules out. Two columns
+         so the contrast is structural rather than a word like "unlike". */
+      .thesis { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+      .thesis > div { border-left: 2px solid var(--line); padding-left: 1.1rem; }
+      .thesis > div.is-brand { border-left-color: var(--brand); }
+      .thesis p { color: var(--muted); margin: 0; font-size: 0.95rem; }
+
+      figure { margin: 0; }
+      figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 0.75rem; }
+      .shots { display: grid; gap: 2.5rem; }
+
+      pre {
+        background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+        padding: 1.15rem 1.25rem; overflow-x: auto; font-size: 0.88rem; line-height: 1.7;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .muted-note { color: var(--muted); font-size: 0.95rem; max-width: 46rem; }
+
+      details {
+        border-bottom: 1px solid var(--line); padding: 1.1rem 0;
+      }
+      details summary { cursor: pointer; font-weight: 600; list-style: none; }
+      details summary::-webkit-details-marker { display: none; }
+      details summary::after { content: '+'; float: right; color: var(--brand-ink); font-weight: 700; }
+      details[open] summary::after { content: '−'; }
+      details p { color: var(--muted); margin: 0.7rem 0 0; max-width: 52rem; }
+
+      footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3.5rem; color: var(--muted); font-size: 0.92rem; }
+      footer a { color: var(--muted); }
+      .footer__row { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: center; }
+      .footer__row nav { margin-left: auto; display: flex; gap: 1.25rem; flex-wrap: wrap; }
+    </style>
+  </head>
+
+  <body>
+    <header class="top">
+      <div class="wrap top__bar">
+        <a class="brand" href="#top" style="color: inherit; text-decoration: none">
+          <!-- The product's own mark, inline so it inherits the text colour and
+               costs no request. `aria-hidden` because the word beside it already
+               says the name; announcing both reads "TaskForge TaskForge". -->
+          <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <g fill="none" stroke="var(--brand)" stroke-width="5.5" stroke-linecap="square" stroke-linejoin="round">
+              <path d="M13 13h27l11 11v27H24L13 40V13Z" />
+              <path d="M24 26h25" />
+              <path d="M32 26v25" />
+            </g>
+          </svg>
+          TaskForge
+        </a>
+        <nav aria-label="Primary">
+          <a class="hide-sm" href="#why">Why</a>
+          <a class="hide-sm" href="#product">Product</a>
+          <a class="hide-sm" href="#principles">Principles</a>
+          <a href="#self-host">Self-host</a>
+          <a href="https://github.com/CasualOffice/TaskForge">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <div class="hero">
+        <div class="wrap">
+          <p class="eyebrow">Open source · Apache-2.0 · Self-hosted</p>
+          <h1>The work tracker whose core <span class="grad">stays small</span></h1>
+          <p class="lede">
+            Every tracker starts simple and ends up configurable. TaskForge is built the other
+            way round: a deliberately small core, and a closed set of seams that new capability
+            plugs into instead of growing the middle. One Rust binary, one PostgreSQL, yours.
+          </p>
+          <div class="cta">
+            <a class="btn btn--solid" href="#self-host">Self-host in five minutes</a>
+            <a class="btn btn--ghost" href="https://github.com/CasualOffice/TaskForge">Read the source</a>
+          </div>
+
+          <div class="shot">
+            <img
+              src="img/dashboard.jpg"
+              width="1562"
+              height="784"
+              alt="The project-health dashboard: tiles for overdue, blocked, unassigned and open tasks, a throughput-per-week chart, a donut of open work by state, and a raised-against-finished line chart."
+            />
+          </div>
+        </div>
+      </div>
+
+      <section id="why">
+        <div class="wrap">
+          <p class="kicker">What we are trying to achieve</p>
+          <h2>Simple at ten minutes. Still yours at two million tasks.</h2>
+          <p class="sub">
+            Work tracking forces a bad trade, and the trade is what this project exists to
+            refuse. Here is the goal, stated as the three failures it is designed against.
+          </p>
+          <div class="thesis">
+            <div class="is-brand">
+              <h3>Heavyweight trackers</h3>
+              <p>
+                Can model any process, and every team pays for configuration surface it will
+                never use. The complexity is not optional; it is in the product you bought.
+              </p>
+            </div>
+            <div class="is-brand">
+              <h3>Lightweight trackers</h3>
+              <p>
+                Feel good until the first real requirement lands — a per-project role, a QA
+                gate, an environment, an auditable history — and there is no seam to add it.
+              </p>
+            </div>
+            <div class="is-brand">
+              <h3>Self-hosted forks</h3>
+              <p>
+                Give you control, and extension usually means forking the core. The fork works,
+                and then it can never be upgraded again.
+              </p>
+            </div>
+          </div>
+          <p class="sub" style="margin: 2.5rem 0 0">
+            So: a core small enough to hold in your head, a <strong>closed, typed extension
+            registry</strong> that adding a plugin never has to modify, and a deployment that is
+            one binary and one database on one machine — because a design that needs a broker to
+            start is a design that has already grown past the goal.
+          </p>
+        </div>
+      </section>
+
+      <section id="product">
+        <div class="wrap">
+          <p class="kicker">The product</p>
+          <h2>Board, list and dashboard — one filter language underneath</h2>
+          <p class="sub">
+            Screenshots from a running build, not a mockup. Switching view never changes which
+            rows you are looking at, because the board and the list compile the same query.
+          </p>
+
+          <div class="shots">
+            <figure>
+              <div class="shot" style="margin-top: 0">
+                <img
+                  src="img/board.jpg"
+                  width="1562"
+                  height="784"
+                  loading="lazy"
+                  alt="A kanban board with Backlog, Todo, In Progress, Blocked and Done columns, cards showing type, key, priority and due date, and a filter bar above."
+                />
+              </div>
+              <figcaption>
+                <strong>Board.</strong> Drag between columns; the column names belong to the
+                project's workflow, and the five states underneath them do not change.
+              </figcaption>
+            </figure>
+
+            <figure>
+              <div class="shot" style="margin-top: 0">
+                <img
+                  src="img/list.jpg"
+                  width="1562"
+                  height="784"
+                  loading="lazy"
+                  alt="A task list with type, key, title, status, assignee, priority, due and updated columns, plus filters for project, assignee, due date and grouping."
+                />
+              </div>
+              <figcaption>
+                <strong>List.</strong> Filter on any column, group it, sort it, then share the
+                URL — the address bar is the whole state, so a link is a saved search.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section id="principles">
+        <div class="wrap">
+          <p class="kicker">Design principles</p>
+          <h2>Make the wrong thing impossible, not discouraged</h2>
+          <p class="sub">
+            A rule in a document is a rule somebody will break on a Friday. Each of these is
+            enforced by a compile error, a database grant or a CI gate instead.
+          </p>
+
+          <div class="grid">
+            <div class="card">
+              <div class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6l-8-3Z"/></svg>
+              </div>
+              <h3>Isolation lives in the database</h3>
+              <p>
+                PostgreSQL row-level security, with the application connected as a non-superuser
+                role. A forgotten <code>WHERE</code> clause cannot cross a tenant boundary — and
+                CI proves it as that role, because as the table owner every such test passes
+                whether or not the policies work.
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+              </div>
+              <h3>Permissions you can explain</h3>
+              <p>
+                Effective access is the additive union of grants. No deny rules, no precedence
+                puzzle. Ask <code>/permissions/explain</code> why you cannot close something and
+                it answers with the grants that actually decided it.
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/></svg>
+              </div>
+              <h3>Status is yours; state is ours</h3>
+              <p>
+                Teams rename and rewire statuses freely, above five permanent semantic states.
+                Reports, automations and plugins are written against the states, so renaming a
+                column cannot break them years later.
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+              </div>
+              <h3>Nothing scans</h3>
+              <p>
+                The filterable and sortable field set is closed, each field has a named index,
+                and CI asserts no sequential scan on any tenant-scale table across every read
+                path. A filter on an unlisted field is a <code>400</code>, not a slow query.
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+              </div>
+              <h3>Every number is a link</h3>
+              <p>
+                Cycle time, lead time, throughput, age, time in state, raised against finished —
+                a closed set of measures, each drilling through to the tasks behind it. A metric
+                you cannot open is a metric you cannot check.
+              </p>
+            </div>
+
+            <div class="card">
+              <div class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              </div>
+              <h3>Fail closed, out loud</h3>
+              <p>
+                An uploaded attachment stays invisible until a scanner marks it clean — so a
+                deployment with no scanner stores files nobody can download. Deliberate: the
+                opposite default serves unscanned user content while appearing to work.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="self-host">
+        <div class="wrap">
+          <p class="kicker">Run it</p>
+          <h2>Docker and Docker Compose are the only prerequisites</h2>
+          <p class="sub">
+            No broker, no Redis, no object store. One binary, one database, one machine.
+          </p>
+
+          <pre><code>git clone https://github.com/CasualOffice/TaskForge
+cd TaskForge
+
+cp deploy/.env.example deploy/.env
+$EDITOR deploy/.env          # edit every value marked CHANGE_ME
+
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d</code></pre>
+
+          <p class="muted-note" style="margin-top: 1.25rem">
+            That pulls the published image. Add <code>--build</code> to compile this repository
+            instead. Every variable, what it does, and what happens when it is left empty is
+            documented in
+            <a href="https://github.com/CasualOffice/TaskForge/blob/main/deploy/.env.example"
+              >deploy/.env.example</a
+            >.
+          </p>
+          <p class="muted-note" style="margin-top: 1rem">
+            Two things to know before you start: the database connection is not TLS-encrypted in
+            this release, so PostgreSQL must sit on a trusted network; and attachments upload
+            but stay invisible until a malware scanner marks them clean.
+          </p>
+        </div>
+      </section>
+
+      <section id="status">
+        <div class="wrap">
+          <p class="kicker">Honestly</p>
+          <h2>Phase 1 — a usable core, not a finished product</h2>
+          <p class="sub">
+            Every claim above is about something that is built and gated by CI. What is not
+            built is listed here rather than left for you to discover after you deploy.
+          </p>
+          <div class="thesis">
+            <div class="is-brand">
+              <h3>Built and gated</h3>
+              <p>
+                Projects, tasks, subtasks, dependencies, comments and tags. Board, list, saved
+                views. Dashboards and reports. Environments and releases. Attachments with a
+                scan pipeline. Sessions, tokens, CSRF and the permission model.
+              </p>
+            </div>
+            <div>
+              <h3>Designed, not built</h3>
+              <p>
+                Time tracking, automation rules, the plugin registry, per-project workflows,
+                custom task types, per-workspace SMTP. Each has a design document and a row in
+                the tracker; none of them exists yet.
+              </p>
+            </div>
+            <div>
+              <h3>Known and stated</h3>
+              <p>
+                The database connection is not encrypted. Full-text search degrades to a
+                sequential scan under row-level security at two million tasks. The Phase 0
+                threat-model review was conducted by an agent, says so, and asks to be
+                countersigned.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq">
+        <div class="wrap">
+          <p class="kicker">Questions</p>
+          <h2>The ones worth asking first</h2>
+          <div style="margin-top: 1.5rem">
+            <details>
+              <summary>What is TaskForge?</summary>
+              <p>
+                An open-source work tracker you run on your own infrastructure: one Rust binary
+                plus PostgreSQL, licensed Apache-2.0.
+              </p>
+            </details>
+            <details>
+              <summary>Is it production ready?</summary>
+              <p>
+                Not yet. It is a Phase 1 usable core — the parts listed above are built and
+                gated by CI, and the rest is designed and written down.
+              </p>
+            </details>
+            <details>
+              <summary>How does it keep one customer's data from another's?</summary>
+              <p>
+                PostgreSQL row-level security, with the application connecting as a
+                non-superuser role, so a forgotten <code>WHERE</code> clause cannot cross a
+                tenant boundary. CI proves it as that role rather than as the table owner.
+              </p>
+            </details>
+            <details>
+              <summary>Can I rename statuses without breaking my reports?</summary>
+              <p>
+                Yes — that is the point of separating status from state. You name the columns;
+                each maps onto one of five permanent states, and everything downstream is
+                written against those.
+              </p>
+            </details>
+            <details>
+              <summary>What does it cost?</summary>
+              <p>Nothing. Apache-2.0 and self-hosted: no per-seat pricing, no hosted tier.</p>
+            </details>
+            <details>
+              <summary>Can I extend it without forking?</summary>
+              <p>
+                That is the architecture's whole purpose: extension happens at a closed, typed
+                registry of seams so the core stays small. The plugin surface is designed and
+                not yet built — until it is, extending means a fork, and saying otherwise would
+                be the one claim on this page you could catch us on.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap footer__row">
+        <span>
+          <strong>TaskForge</strong> — part of Casual Office. Apache-2.0.
+        </span>
+        <nav aria-label="Footer">
+          <a href="https://github.com/CasualOffice/TaskForge">Source</a>
+          <a href="https://github.com/CasualOffice/TaskForge/blob/main/docs/14-EXECUTION-TRACKER.md">What is built</a>
+          <a href="https://github.com/CasualOffice/TaskForge/issues">Issues</a>
+          <a href="llms.txt">llms.txt</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

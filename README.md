@@ -11,6 +11,10 @@ one binary plus PostgreSQL, Apache-2.0.
 Simple enough that a team is productive in ten minutes; rigorous enough that the
 same team, five years and two million tasks later, has not outgrown it.
 
+[**casualoffice.github.io/TaskForge**](https://casualoffice.github.io/TaskForge/)
+— the short version, for sending to somebody who has not read this file. Its
+source is `site/`, published by `.github/workflows/pages.yml`.
+
 TaskForge is the work-tracking service of **Casual Office**, alongside
 [OpenCalc](https://github.com/CasualOffice/opencalc) (Casual Sheets) and
 [OpenDoc](https://github.com/CasualOffice/opendoc) (Casual Editor).
@@ -41,7 +45,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 <!-- phase-1-landed:begin -->
-**Phase 1 is under way.** 45 items started, 11 gated:
+**Phase 1 is under way.** 46 items started, 11 gated:
 
 - **Projects, membership, visibility** (C-006) — `Gated`
 - **SSE + fan-out** (C-015) — `Gated`
@@ -75,6 +79,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **`created_vs_completed`, and the card that dragged behind the board** (C-044) — `Built`
 - **Reports draws the same charts the dashboard does** (C-045) — `Built`
 - **`time_in_state` — the last measure the closed set specified** (C-046) — `Built`
+- **Deployment story and the public site — build-from-source compose, environment reference, README, GitHub Pages** (C-047) — `Built`
 - **Identity, sessions, MFA, invitations** (C-001) — `Building`
 - **Permission resolver + `/explain`** (C-003) — `Building`
 - **Permission matrix + escalation suites** (C-004) — `Building`
@@ -154,7 +159,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
 | **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
-| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 11/46 (21 built, 13 building) | `██░░░░░░░░` 24% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 11/47 (22 built, 13 building) | `██░░░░░░░░` 23% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
 *Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*
@@ -257,8 +262,7 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 That pulls the published image. To build this repository instead:
 
 ```sh
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
-  --profile build up -d --build
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 ```
 
 Attachments upload with the stack above but stay invisible until something

@@ -1,0 +1,7 @@
+# Everything here is public documentation, and the crawlers that matter to this
+# project include the ones that answer questions rather than return links. Both
+# are welcome; there is nothing on this host worth withholding.
+User-agent: *
+Allow: /
+
+Sitemap: https://casualoffice.github.io/TaskForge/sitemap.xml

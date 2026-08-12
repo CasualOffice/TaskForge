@@ -1,0 +1,76 @@
+# TaskForge
+
+> An open-source work tracker you host yourself: one Rust binary plus
+> PostgreSQL, licensed Apache-2.0. Boards, lists and dashboards for the team,
+> with per-tenant isolation enforced by PostgreSQL row-level security rather
+> than by an application `WHERE` clause.
+
+TaskForge is developed in the open at https://github.com/CasualOffice/TaskForge
+by Casual Office. It is **not finished**. What follows states which parts are
+built and which are designed but not built, because a page that blurs the two is
+one you should not quote.
+
+## Status
+
+Phase 1 — a usable core, not a production release.
+
+Built, merged, and covered by CI:
+
+- Workspaces, projects, tasks, subtasks, dependencies, comments, tags
+- Kanban board with drag-and-drop, and a filterable, sortable task list that
+  reads the same query language as the board
+- Saved views and shareable filter URLs
+- Dashboards and reports over a closed set of measures: count, cycle time, lead
+  time, age, time in state, throughput, and created-versus-completed
+- Deployment environments and release records
+- Attachments: presigned upload to a separate origin, commit, then a malware
+  scan that must pass before the file is readable
+- Session and token authentication, CSRF protection, a closed permission set
+  resolved per request
+- A transactional outbox with eight registered consumers
+
+Designed and **not** built: time tracking, automation rules, the plugin
+registry, per-project workflows, custom task types, per-workspace SMTP.
+
+Not true of this release: the database connection is not TLS-encrypted, so
+PostgreSQL must sit on a trusted network.
+
+## Facts worth quoting
+
+- **License:** Apache-2.0. Free, self-hosted, no per-seat pricing, no hosted
+  tier to buy.
+- **Stack:** Rust (edition 2024) on the server, React and TypeScript in the
+  browser, PostgreSQL 16 for storage. No Redis, no message broker, no object
+  store required.
+- **Isolation:** PostgreSQL row-level security, with the application connecting
+  as a non-superuser role. CI proves the isolation *as that role*, because as
+  the table owner every such test passes whether or not the policies work.
+- **Deployment:** a single node by design. Docker Compose is the supported path.
+- **Attachments fail closed:** an uploaded file stays invisible until a scanner
+  marks it clean. A deployment with no scanner configured stores files nobody
+  can download. That is deliberate, not a bug — the alternative default serves
+  unscanned user content.
+
+## Install
+
+```
+git clone https://github.com/CasualOffice/TaskForge
+cd TaskForge
+cp deploy/.env.example deploy/.env      # edit every value marked CHANGE_ME
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+```
+
+Add `--build` to that last command to compile this repository instead of
+pulling the published image.
+
+## Documentation
+
+- [README](https://github.com/CasualOffice/TaskForge/blob/main/README.md): what it is, how to run it
+- [Environment reference](https://github.com/CasualOffice/TaskForge/blob/main/deploy/.env.example): every variable and what happens when it is empty
+- [Execution tracker](https://github.com/CasualOffice/TaskForge/blob/main/docs/14-EXECUTION-TRACKER.md): the status of every unit of work
+- [Architecture decisions](https://github.com/CasualOffice/TaskForge/tree/main/docs): the design record, including the decisions that constrain the code
+
+## Optional
+
+- [Contributing contract](https://github.com/CasualOffice/TaskForge/blob/main/AGENTS.md): the rules the codebase is held to
+- [Issues](https://github.com/CasualOffice/TaskForge/issues)
