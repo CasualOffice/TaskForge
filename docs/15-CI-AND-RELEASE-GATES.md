@@ -136,10 +136,24 @@ These are the difference between an architecture document and an architecture.
 | Every new filter field is in [26](26-SEARCH-INDEXING-AND-QUERY.md) **with an index and an `EXPLAIN` assertion** | ✅ |
 | Tracker row added or moved ([14](14-EXECUTION-TRACKER.md)) | ✅ |
 | No broken internal doc links | ✅ |
+| Numbers the README states about CI are derived, not typed | ✅ |
 
 The filter-field gate is the one that keeps the index contract honest over time:
 you cannot add a way to query without adding the index that serves it, in the
 same PR.
+
+The derived-numbers gate is two checks in the `documentation` job, and both
+exist because the same thing happened twice: a figure stated in the README has
+no reason to change when the thing it describes does. `phase-progress.py
+--check` holds the phase table and the landed list against
+[14](14-EXECUTION-TRACKER.md); `check-read-path-count.py` holds the read-path
+count against `tests/explain/queries/`, which is what `verify-queries.sh`
+actually globs. That count had drifted to 23 while the corpus reached 29 — and
+it is the one figure that tells a reader how much of the product the
+no-sequential-scan guarantee covers, so a stale one misstates the guarantee.
+The same check rejects duplicate `NN-` prefixes in the corpus, because three
+were used twice and a numbering scheme that does not number is read as an index
+anyway.
 
 ## Release gates
 

@@ -259,6 +259,16 @@ jobs:
         # change when the tracker does, which is exactly how the status badge
         # went a week out of date.
         run: python3 scripts/phase-progress.py --check
+
+      - name: README's read-path count matches the corpus the gate runs
+        # Same failure as the line above, one document over. `verify-queries.sh`
+        # globs tests/explain/queries/, so the number of read paths it proves is
+        # whatever is in that directory — and the README stated it in prose,
+        # which drifted to 23 while the corpus reached 29. That number is how a
+        # reader sizes the no-sequential-scan guarantee, so a stale one
+        # misstates the guarantee itself.
+        run: python3 scripts/check-read-path-count.py
+
       - name: Reject merge-conflict markers
         run: |
           if git grep -nE '^(<{7}|={7}|>{7})( |$)' -- ':!*.yml' ; then
