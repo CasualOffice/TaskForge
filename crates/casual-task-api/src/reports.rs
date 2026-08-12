@@ -50,6 +50,7 @@ use casual_task_model::{ProjectId, TeamId};
 use casual_task_persistence::compile::{
     AuthorizedProjectSet, Bucket, BucketField, Dimension, Interval, Reduce, Span, compile_age,
     compile_created_vs_completed, compile_duration, compile_group_count, compile_throughput,
+    compile_time_in_state,
 };
 use casual_task_persistence::{project, report};
 use serde::{Deserialize, Serialize};
@@ -83,6 +84,15 @@ pub struct RunRequest {
     pub bucket: Option<BucketRequest>,
     #[serde(default)]
     pub limit: Option<u32>,
+    /// Which state `time_in_state` measures. Ignored by every other measure.
+    ///
+    /// Its own field rather than a suffix on the measure name
+    /// (`time_in_state_active`) because the set of states is data — five today,
+    /// and `docs/23` owns it — while measure names are a closed vocabulary this
+    /// module parses. Folding one into the other would mean every new state
+    /// silently becoming a new measure name nobody registered.
+    #[serde(default)]
+    pub state: Option<String>,
 }
 
 fn count() -> String {
@@ -120,6 +130,10 @@ pub async fn run(
     let request_id = RequestId::of_parts(&headers);
     let dimension = dimension_of(&body.group_by, &request_id)?;
     let measure = measure_of(&body.measure, &request_id)?;
+    // Validated before anything is read: an unknown state would compile into a
+    // cast that raises at the database, which reaches the caller as a 500 for
+    // something they typed. The five are `docs/23`'s permanent states.
+    let measured_state = state_for(measure, body.state.as_deref(), &request_id)?;
     let bucket = body
         .bucket
         .as_ref()
@@ -215,6 +229,15 @@ pub async fn run(
             bucket.map_or(Interval::Week, |b| b.interval),
             limit,
         ),
+        Measure::TimeInState(reduce) => compile_time_in_state(
+            &filter,
+            ctx.workspace,
+            &authorized,
+            dimension,
+            measured_state.as_str(),
+            reduce,
+            limit,
+        ),
         Measure::Age(reduce) => compile_age(
             &filter,
             ctx.workspace,
@@ -260,7 +283,7 @@ pub async fn run(
             "unit": match measure {
                 // Age is a duration too, and a client that formatted it as a
                 // task count would render "1209600" where "14.0d" belongs.
-                Measure::Duration(_, _) | Measure::Age(_) => "seconds",
+                Measure::Duration(_, _) | Measure::Age(_) | Measure::TimeInState(_) => "seconds",
                 _ => "tasks",
             },
             "groups": rows
@@ -318,16 +341,48 @@ enum Measure {
     Age(Reduce),
     /// Two series per bucket: raised, and finished.
     CreatedVsCompleted,
+    /// How long tasks spent in one permanent state.
+    TimeInState(Reduce),
     Throughput,
 }
 
-/// The measure set this build maintains a bounded query for.
+/// `docs/23`'s permanent states — the closed set `time_in_state` may name.
+const STATES: &[&str] = &["BACKLOG", "PLANNED", "ACTIVE", "COMPLETED", "CANCELED"];
+
+/// The state a `time_in_state` report measures.
 ///
-/// `time_in_state` is still refused **by name** rather than ignored: a caller
-/// who asks for it and silently receives counts has a number wrong in a way
-/// nothing on the page reveals. It needs a state named — "how long in Code
-/// Review" — and the request has nowhere to say which, so it waits for the
-/// parameter rather than guessing one.
+/// Required for that measure and refused for every other: a `state` sent
+/// alongside `count` would be a parameter the answer ignores, and a caller who
+/// believes it narrowed the report has a number that means something else.
+fn state_for(measure: Measure, state: Option<&str>, request_id: &str) -> Result<String, ApiError> {
+    match (measure, state) {
+        (Measure::TimeInState(_), Some(named)) if STATES.contains(&named) => Ok(named.to_owned()),
+        (Measure::TimeInState(_), Some(named)) => Err(ApiError::bad_request(
+            codes::INVALID_ENUM,
+            "state must be one of BACKLOG, PLANNED, ACTIVE, COMPLETED or CANCELED",
+            request_id,
+        )
+        .with_details(serde_json::json!({ "state": named }))),
+        (Measure::TimeInState(_), None) => Err(ApiError::bad_request(
+            codes::MISSING_FIELD,
+            "time_in_state needs `state`: how long in which state",
+            request_id,
+        )),
+        (_, Some(_)) => Err(ApiError::bad_request(
+            codes::OUT_OF_RANGE,
+            "`state` applies to time_in_state alone; every other measure would ignore it",
+            request_id,
+        )),
+        (_, None) => Ok(String::new()),
+    }
+}
+
+/// The measure set this build maintains a bounded query for — now all of
+/// `docs/38`'s closed set except the two-period comparisons it does not define.
+///
+/// A measure outside it is refused **by name** rather than ignored: a caller
+/// who asks for one and silently receives counts has a number wrong in a way
+/// nothing on the page reveals.
 fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
     match name {
         "count" => Ok(Measure::Count),
@@ -347,19 +402,15 @@ fn measure_of(name: &str, request_id: &str) -> Result<Measure, ApiError> {
         "avg_age" => Ok(Measure::Age(Reduce::Avg)),
         "created_vs_completed" => Ok(Measure::CreatedVsCompleted),
         "throughput" => Ok(Measure::Throughput),
-        "time_in_state" => Err(ApiError::new(
-            StatusCode::NOT_IMPLEMENTED,
-            codes::NOT_BUILT,
-            "That measure needs the state to be named, and the request has \
-             nowhere to say which",
-            request_id,
-        )
-        .with_details(serde_json::json!({ "measure": name }))),
+        "time_in_state" | "p50_time_in_state" => Ok(Measure::TimeInState(Reduce::P50)),
+        "p90_time_in_state" => Ok(Measure::TimeInState(Reduce::P90)),
+        "avg_time_in_state" => Ok(Measure::TimeInState(Reduce::Avg)),
+        "max_time_in_state" => Ok(Measure::TimeInState(Reduce::Max)),
         _ => Err(ApiError::bad_request(
             codes::OUT_OF_RANGE,
             "measure must be count, cycle_time, lead_time, age, throughput or \
-             created_vs_completed (each duration also as avg_, p50_ or p90_; \
-             age also as max_)",
+             created_vs_completed or time_in_state (each duration also as avg_, \
+             p50_ or p90_; age and time_in_state also as max_)",
             request_id,
         )
         .with_details(serde_json::json!({ "measure": name }))),
@@ -420,11 +471,40 @@ mod tests {
             "avg_cycle_time",
             "lead_time",
             "throughput",
+            "age",
+            "created_vs_completed",
+            "time_in_state",
         ] {
             assert!(measure_of(built, "r").is_ok(), "{built:?}");
         }
-        // Still refused, and by name: it needs a state the request cannot say.
-        assert!(measure_of("time_in_state", "r").is_err());
+        // A measure outside the set is still refused by name rather than
+        // quietly answered with counts.
         assert!(measure_of("sum", "r").is_err());
+    }
+
+    #[test]
+    fn time_in_state_needs_a_state_and_only_it_may_have_one() {
+        let time_in_state = Measure::TimeInState(Reduce::P50);
+
+        assert_eq!(
+            state_for(time_in_state, Some("ACTIVE"), "r").expect("a permanent state"),
+            "ACTIVE",
+        );
+
+        // Named, not guessed: "how long in which state" has no sensible
+        // default, and picking one would answer a question nobody asked.
+        assert!(state_for(time_in_state, None, "r").is_err());
+
+        // Outside `docs/23`'s five. Refused here rather than at the database,
+        // where an unknown value reaches the caller as a 500 for something they
+        // typed.
+        assert!(state_for(time_in_state, Some("IN_REVIEW"), "r").is_err());
+        assert!(state_for(time_in_state, Some("active"), "r").is_err());
+
+        // And refused for every other measure: a `state` beside `count` is a
+        // parameter the answer ignores, and a caller who believes it narrowed
+        // the report has a number that means something else.
+        assert!(state_for(Measure::Count, Some("ACTIVE"), "r").is_err());
+        assert!(state_for(Measure::Count, None, "r").is_ok());
     }
 }

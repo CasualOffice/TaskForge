@@ -578,6 +578,68 @@ pub fn compile_age(
 /// # Errors
 ///
 /// None. The SQL is assembled, not executed.
+/// Compile a **validated** filter into how long tasks spent in one state
+/// (`docs/38` §Measures — `time_in_state`).
+///
+/// # Why the total per task and not per visit
+///
+/// A task can enter a state several times — sent back by review, reopened — and
+/// "how long was this in Code Review" means all of it. Reducing the intervals
+/// directly would answer "how long was a typical *visit*", which flatters a task
+/// that bounced five times into looking quick five times over.
+///
+/// # Why an open interval counts up to now
+///
+/// A task sitting in a state right now is exactly the one the question is
+/// usually about. `exited_at` is `NULL` while it is there, so `coalesce(…, now())`
+/// makes the open interval contribute its time so far — a measure that ignored
+/// it would report the state's cost as zero for the work currently stuck in it.
+///
+/// # Why a permanent state and not a status
+///
+/// `docs/38` asks it of "a given state" and the projection carries both. A
+/// status is named inside one project's workflow, so at workspace scope two
+/// projects can hold two different statuses called "Review" and a report naming
+/// one could not say which it meant. The five permanent states are closed and
+/// shared, which is what makes the answer comparable across projects.
+///
+/// # Errors
+///
+/// None. The SQL is assembled, not executed.
+pub fn compile_time_in_state(
+    filter: &Node,
+    workspace: WorkspaceId,
+    authorized: &AuthorizedProjectSet,
+    group: Dimension,
+    state: &str,
+    reduce: Reduce,
+    limit: u32,
+) -> Compiled {
+    let mut params: Vec<Param> = Vec::new();
+    params.push(Param::Workspace(workspace));
+    params.push(Param::Projects(authorized.as_slice().to_vec()));
+
+    let predicate = emit(filter, &mut params);
+    let join = if group.needs_assignees() {
+        " LEFT JOIN task_assignee a ON a.task_id = t.id"
+    } else {
+        ""
+    };
+    let group_expr = group.expression();
+    let seconds = reduce.over("seconds");
+
+    // The state is bound as a parameter and cast, never interpolated: it
+    // reaches here from a closed set, and a cast parameter uses `tsi_cycle_ix`
+    // where `i.state::text = $n` would not (the lesson from `t.state = $3`).
+    params.push(Param::Text(state.to_owned()));
+    let state_param = params.len();
+
+    let sql = format!(
+        "WITH per_task AS (            SELECT t.id AS task_id, {group_expr} AS group_key,                   sum(EXTRACT(EPOCH FROM (coalesce(i.exited_at, now()) - i.entered_at)))                     AS seconds              FROM task t              JOIN task_state_interval i                ON i.task_id = t.id AND i.state = ${state_param}::task_state{join}             WHERE t.workspace_id = $1               AND t.project_id = ANY($2)               AND t.deleted_at IS NULL               AND ({predicate})             GROUP BY t.id, group_key          )          SELECT group_key, NULL::timestamptz AS bucket_start,                 round({seconds})::bigint AS total            FROM per_task           WHERE seconds IS NOT NULL           GROUP BY group_key           ORDER BY total DESC, group_key NULLS LAST           LIMIT {limit}"
+    );
+    Compiled { sql, params }
+}
+
 /// Compile a **validated** filter into two series per bucket: work raised, and
 /// work finished (`docs/38` §Measures — `created_vs_completed`).
 ///

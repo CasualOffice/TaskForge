@@ -392,6 +392,7 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 | C-043 | **The `age` measure** — how long open work has been waiting | `Built` |
 | C-044 | **`created_vs_completed`, and the card that dragged behind the board** | `Built` |
 | C-045 | **Reports draws the same charts the dashboard does** | `Built` |
+| C-046 | **`time_in_state`** — the last measure the closed set specified | `Built` |
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -3128,3 +3129,38 @@ as one block.
 The chart's stylesheet is imported by `ReportsView` as well as the dashboard: a
 component that only looks right on one route has a hidden dependency on that
 route's stylesheet, which is a trap for whoever uses it third.
+
+**C-046 closes `docs/38`'s measure set.** `time_in_state` had been refused by
+name since the set was written, for a reason the refusal itself stated: it needs
+a state named and the request had nowhere to say which. That was a missing
+*field*, not a missing decision — the measure is in the closed set — so `state`
+is now a field of its own rather than a suffix on the measure name
+(`time_in_state_active`), because the states are data that `docs/23` owns while
+measure names are a vocabulary this module parses. Folding one into the other
+would make every new state a new measure name nobody registered.
+
+Four properties are enforced rather than assumed:
+
+- **Total per task, not per visit.** A task can enter a state several times, and
+  "how long was this in review" means all of it. Reducing the intervals directly
+  would answer "how long was a typical visit", which flatters a task that
+  bounced five times into looking quick five times over.
+- **An open interval counts up to now.** The task sitting in a state right now
+  is the one the question is usually about; ignoring it would report the state's
+  cost as zero for exactly the work stuck in it.
+- **A permanent state, not a status.** A status is named inside one project's
+  workflow, so at workspace scope two projects can both have a "Review" and the
+  answer could not say which it meant.
+- **`state` is refused for every other measure.** A parameter the answer ignores
+  is one a caller will believe narrowed their report.
+
+It is deliberately **not** in the client's `MEASURES`. That list is what the
+Reports toolbar offers, and the toolbar has no control for naming a state — so
+offering it there would be a menu entry that always produced a `400`. Dashboards
+use it through a tile, which names the state in its own definition.
+
+The tile that uses it is titled "Time in progress" and not "Time in Blocked",
+which is what I first wrote: `ACTIVE` is a permanent state and the default
+workflow maps *two* statuses onto it, so the number covers In Progress and
+Blocked together. A title naming one column would have been a wrong number with
+a confident label.

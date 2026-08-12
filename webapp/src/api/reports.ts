@@ -59,7 +59,18 @@ export const MEASURES = [
   { key: 'created_vs_completed', label: 'Raised against finished', unit: 'tasks' },
 ] as const
 
-export type MeasureKey = (typeof MEASURES)[number]['key']
+export type MeasureKey = (typeof MEASURES)[number]['key'] | 'time_in_state'
+
+/**
+ * `time_in_state` is a measure but deliberately **not** in `MEASURES`.
+ *
+ * `MEASURES` is what the Reports toolbar offers, and that toolbar has no
+ * control for naming a state — so choosing it there would send a request the
+ * server refuses with "time_in_state needs `state`". A menu is a promise, and
+ * this one could not be kept. Dashboards use it through a tile, which names the
+ * state in its own definition; it belongs in the toolbar the day the toolbar
+ * grows a state control.
+ */
 
 export interface ReportResult {
   readonly group_by: string
@@ -99,12 +110,22 @@ export interface Bucket {
   readonly interval: Interval
 }
 
+/** `docs/23`'s permanent states — the closed set `time_in_state` may name. */
+export const STATES = ['BACKLOG', 'PLANNED', 'ACTIVE', 'COMPLETED', 'CANCELED'] as const
+export type ReportState = (typeof STATES)[number]
+
 export interface ReportInput {
   readonly filter?: TaskFilter
   readonly groupBy: Dimension
   readonly measure?: MeasureKey
   /** Present only for a series; absent for a single slice. */
   readonly bucket?: Bucket
+  /**
+   * Which state `time_in_state` measures. Refused by every other measure, so
+   * it cannot be sent "just in case" — a parameter the answer ignores is a
+   * parameter someone will believe narrowed their report.
+   */
+  readonly state?: ReportState
   readonly limit?: number
 }
 
@@ -122,6 +143,7 @@ export function runReport(
       ...(input.measure === undefined ? {} : { measure: input.measure }),
       ...(input.filter === undefined ? {} : { filter: input.filter }),
       ...(input.bucket === undefined ? {} : { bucket: input.bucket }),
+      ...(input.state === undefined ? {} : { state: input.state }),
       ...(input.limit === undefined ? {} : { limit: input.limit }),
     },
   })

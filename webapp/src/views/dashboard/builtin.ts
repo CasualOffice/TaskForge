@@ -40,7 +40,7 @@
  * baked in here against the browser's.
  */
 import type { TaskFilter } from '../../api/tasks'
-import type { Bucket, Dimension, MeasureKey } from '../../api/reports'
+import type { Bucket, Dimension, MeasureKey, ReportState } from '../../api/reports'
 
 /**
  * The visualizations, closed (`docs/38`).
@@ -92,6 +92,8 @@ export interface Tile {
   readonly groupBy: Dimension
   readonly measure?: MeasureKey
   readonly bucket?: Bucket
+  /** Only for `time_in_state`, which is meaningless without one. */
+  readonly state?: ReportState
   readonly limit?: number
   /**
    * Whether this tile can be opened as a list of tasks.
@@ -286,6 +288,21 @@ const PROJECT_HEALTH: Dashboard = {
       groupBy: 'state',
       measure: 'created_vs_completed',
       bucket: WEEKLY,
+      drillable: false,
+      span: 2,
+    },
+    {
+      id: 'health-active-time',
+      title: 'Time in progress',
+      // `ACTIVE` is a permanent *state*, and a workflow can map several
+      // statuses onto it — In Progress and Blocked both do in the default one.
+      // Naming the tile "Blocked" would have been wrong for that reason: the
+      // number covers every status that maps to ACTIVE, not one column.
+      help: 'Median time a task spends in an active state, per project. Work still in progress counts its time so far.',
+      viz: 'bar',
+      groupBy: 'project',
+      measure: 'time_in_state',
+      state: 'ACTIVE',
       drillable: false,
       span: 2,
     },

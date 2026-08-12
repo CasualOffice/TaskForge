@@ -171,7 +171,7 @@ module, so the tenant predicate and the authorized project set are injected in
 exactly one place.
 
 `cycle_time`, `lead_time` and `throughput` joined it in C-030 and `age` in
-C-043; `time_in_state` and `created_vs_completed` are still refused **by name** (`TF-SYS-0007`) rather than approximated. Saved reports are
+C-043, `created_vs_completed` and `time_in_state` in C-044 and C-046. Every measure this document names is now built except the `sum`/`avg`/`p50`/`p90` of an arbitrary numeric field, which no field in the schema needs yet; anything outside the set is still refused **by name** rather than approximated. Saved reports are
 not built — a run is ad-hoc, and its "saved" form is the URL the toolbar already
 produces. Dashboards ship as the four built-ins (C-035, §Dashboards below).
 
@@ -271,7 +271,6 @@ about:
 | --- | --- |
 | Created vs completed | `created_vs_completed` — two series in one answer |
 | Reopen rate | a measure over `COMPLETED → ACTIVE` transitions |
-| Time in state | `time_in_state` (server refuses it by name) |
 
 Six of the seven visualizations are built: `number`, `bar`, `line`, `donut`,
 `stacked_bar`, `table`. `heatmap` is not, because no built-in tile needs one and

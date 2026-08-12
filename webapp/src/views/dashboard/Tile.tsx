@@ -85,6 +85,7 @@ export function Tile({
       slice: spec.groupBy,
       measure: spec.measure ?? 'count',
       bucket: spec.bucket,
+      state: spec.state,
     }),
     queryFn: ({ signal }) =>
       // Queued rather than fired: nine tiles mounting together would otherwise
@@ -99,6 +100,7 @@ export function Tile({
               ...(hasFilter ? { filter } : {}),
               ...(spec.measure === undefined ? {} : { measure: spec.measure }),
               ...(spec.bucket === undefined ? {} : { bucket: spec.bucket }),
+              ...(spec.state === undefined ? {} : { state: spec.state }),
               ...(spec.limit === undefined ? {} : { limit: spec.limit }),
             },
             signal,
