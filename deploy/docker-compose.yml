@@ -55,7 +55,23 @@ services:
     expose: ["5432"]
 
   api:
+    # Two ways to get the binary, and the default is the published image.
+    #
+    #   docker compose -f deploy/docker-compose.yml up -d
+    #       pulls ghcr.io/casualoffice/taskforge:latest
+    #
+    #   docker compose -f deploy/docker-compose.yml --profile build up -d --build
+    #       builds this repository instead, from the Dockerfile at its root
+    #
+    # `build` is declared beside `image` rather than replacing it: with both,
+    # `--build` builds and tags locally while a plain `up` still pulls. A
+    # compose file that could only build would make every deployment compile
+    # Rust; one that could only pull would make the source unrunnable without
+    # publishing it first.
     image: ${TASKFORGE_IMAGE:-ghcr.io/casualoffice/taskforge:latest}
+    build:
+      context: ..
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -101,6 +117,9 @@ services:
       # `clamav:3310` is the service below. Bring it up with:
       #     docker compose --profile scanning up -d
       TF_CLAMD_ADDR: ${TF_CLAMD_ADDR:-}
+      # Where the browser reaches this deployment. Used in emails and OIDC
+      # redirects, and — since C-040 — as the one origin the attachment origin
+      # accepts uploads from.
     volumes:
       - attachments:/data/attachments
     ports:

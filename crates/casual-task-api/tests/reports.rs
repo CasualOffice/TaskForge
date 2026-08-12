@@ -314,24 +314,48 @@ async fn a_filter_narrows_a_report_the_same_way_it_narrows_a_list() -> Result<()
 
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
-async fn an_unbuilt_measure_and_an_unknown_dimension_are_both_refused() -> Result<()> {
+async fn a_measure_outside_the_set_and_an_unknown_dimension_are_both_refused() -> Result<()> {
     let db = schema_harness::TestDatabase::start().await?;
     let workspace = Uuid::now_v7();
     test_support::insert_workspace(&db.pool, workspace, "acme").await?;
     let caller = signed_in(&db.pool, "lead@example.test", workspace, MEMBER).await?;
 
-    // Designed, scheduled, not built — and said so, rather than answered with a
-    // count somebody would quote. `cycle_time` used to be here and now works;
-    // `time_in_state` still needs a state named that the request cannot say.
+    // Outside the closed set — refused by name rather than answered with a
+    // count somebody would quote. `cycle_time` and `time_in_state` used to be
+    // here and are built now; what has to stay true is that a *name* the server
+    // does not know never falls through to a default.
     let (status, refused) = caller
+        .send_json(
+            "POST",
+            "/api/v1/reports/run",
+            &json!({ "group_by": "assignee", "measure": "reopen_rate" }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+
+    // `time_in_state` is built, and needs the state named. A request without
+    // one is refused for the missing field, not answered for a state nobody
+    // chose — "how long in which state" has no sensible default.
+    let (status, needs_state) = caller
         .send_json(
             "POST",
             "/api/v1/reports/run",
             &json!({ "group_by": "assignee", "measure": "time_in_state" }),
         )
         .await?;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{refused}");
-    assert_eq!(refused["error"]["code"], "TF-SYS-0007", "{refused}");
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{needs_state}");
+    assert_eq!(needs_state["error"]["code"], "TF-VAL-0003", "{needs_state}");
+
+    // And with one, it answers.
+    let (status, answered) = caller
+        .send_json(
+            "POST",
+            "/api/v1/reports/run",
+            &json!({ "group_by": "assignee", "measure": "time_in_state", "state": "ACTIVE" }),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["unit"], "seconds", "{answered}");
 
     // And a dimension outside the closed set never reaches the compiler.
     let (status, bad) = caller

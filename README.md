@@ -15,35 +15,28 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 [OpenCalc](https://github.com/CasualOffice/opencalc) (Casual Sheets) and
 [OpenDoc](https://github.com/CasualOffice/opendoc) (Casual Editor).
 
-> **Status: Phase 0 closed; Phase 1 — usable core — open.** The design record
-> covers Phases 0 through 4 (numbered documents in `docs/`, 32 accepted ADRs).
+> **Status: Phase 1 — usable core.** The design record covers Phases 0 through 4
+> (numbered documents in `docs/`, 32 accepted ADRs), and the tracker below is
+> generated from it rather than written by hand.
 >
-> Phase 0 built no product functionality, by design — it built the ability to
-> tell when a later phase is wrong. It closed with some items built and tested
-> but not yet behind an acceptance gate; those are reported separately in the
-> table below rather than rounded up, and the count there is generated from the
-> tracker. (This sentence used to repeat the number, and was wrong within a day
-> of the next merge.)
+> **There is a web client, and it works.** Sign in, create a project, raise a
+> task with a description, assignee, priority and due date, move it on a board,
+> filter a list on any column, watch a dashboard, upload an attachment. What is
+> *not* finished is written down: the open questions in the tracker are open
+> questions, not oversights.
 >
-> Gated on every pull request: the enforced dependency DAG, architecture lints, the database schema with row-level
-> security proven as the non-superuser role, a deployable image with a verified
-> deployment path, a deterministic 2,000,000-task reference corpus, an `EXPLAIN`
-> gate over all 23 read paths, and the ADR-024 bundle budget measured at 113.2
-> KiB of 200.
+> Gated on every pull request: the enforced dependency DAG, architecture lints,
+> the database schema with row-level security proven as the non-superuser role,
+> a deployable image with a verified deployment path, a deterministic
+> 2,000,000-task reference corpus, an `EXPLAIN` gate over every read path, an
+> axe accessibility pass, a real-browser geometry suite, and the ADR-024 bundle
+> budget — currently 166 KiB of 200.
 >
 > Two things that gate honestly rather than flatteringly: the `EXPLAIN` gate
 > runs against a reduced corpus, and **a green run does not mean the rule holds
 > at reference scale** — full-text search degrades to a sequential scan under
 > row-level security at 2 M tasks (**D-043**). And the Phase 0 threat-model
 > review was conducted by an agent, says so, and asks to be countersigned.
->
-> **There is no user interface, and none is being built yet.** Everything below
-> is backend: crates, migrations, and gates. The web client — shell, board,
-> list, My Work, task drawer, command palette — is C-018, and it is deliberately
-> late in Phase 1 because it consumes an HTTP API that does not exist yet
-> (C-001 through C-014 build it). The only frontend artefact in the repository
-> is a measurement harness for the ADR-024 bundle budget, which exists to hold a
-> number, not to render anything.
 >
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
@@ -257,9 +250,30 @@ pnpm --dir webapp install --frozen-lockfile && pnpm --dir webapp measure
 ### Deploy
 
 ```sh
-cp deploy/.env.example deploy/.env && $EDITOR deploy/.env
+cp deploy/.env.example deploy/.env && $EDITOR deploy/.env   # every CHANGE_ME
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 ```
+
+That pulls the published image. To build this repository instead:
+
+```sh
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
+  --profile build up -d --build
+```
+
+Attachments upload with the stack above but stay invisible until something
+scans them — that is deliberate and countersigned (D-062), because the
+alternative default serves unscanned user content. Turn scanning on with the
+daemon **and** the address, which are two steps so that doing one without the
+other warns instead of silently not scanning:
+
+```sh
+docker compose -f deploy/docker-compose.yml --profile scanning up -d
+#   then set TF_CLAMD_ADDR=clamav:3310 in deploy/.env and restart the api
+```
+
+Every variable, what it does and what happens when it is empty:
+[`deploy/.env.example`](deploy/.env.example).
 
 One binary plus PostgreSQL — no Redis, no object storage, no message broker.
 Keeping that profile genuinely supported is a **constraint on the architecture**,
@@ -282,14 +296,15 @@ not a convenience. Full walkthrough: [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 > The reason, and what holds the constraint, are in
 > [docs/52](docs/52-DEPLOYMENT-GUIDE.md).
 
-**The server runs, and there is still nothing to look at.** `taskforge-api`
-starts, refuses to start on a bad configuration or a superuser database role,
-and serves `/health/live`, `/health/ready` and `/metrics`. **No product endpoint
-exists** — you cannot create a task, and no page renders. What is real and gated
-is underneath: the image, the schema and its row-level security, the deployment
-path, and the crates listed in the status note above. If you are here to try the
-product, it is not ready; if you are here to read how it is built, start with
-`docs/`.
+`taskforge-api` refuses to start on a bad configuration or a superuser database
+role, and serves `/health/live`, `/health/ready` and `/metrics` alongside the
+product API and the web client.
+
+**It is a Phase 1 core, not a finished product.** Tasks, projects, boards,
+lists, dashboards, environments, releases, attachments and the permission model
+are built and gated. Time tracking, automation rules, plugins, saved reports and
+user-composed dashboards are designed and not built — `docs/` says which is
+which, and the tracker says how far each got.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full command set and the PR
 contract.
