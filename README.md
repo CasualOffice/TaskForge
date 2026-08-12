@@ -306,9 +306,12 @@ product API and the web client.
 
 **It is a Phase 1 core, not a finished product.** Tasks, projects, boards,
 lists, dashboards, environments, releases, attachments and the permission model
-are built and gated. Time tracking, automation rules, plugins, saved reports and
-user-composed dashboards are designed and not built — `docs/` says which is
-which, and the tracker says how far each got.
+all work. They are not all `Gated`, which is the only word here that means done:
+of 47 Phase 1 items, 11 carry an acceptance gate, 22 more are merged with their
+tests passing, 13 are in progress and 1 is not started. Time tracking,
+automation rules, plugins, saved reports and user-composed dashboards are
+designed and not built — `docs/` says which is which, and the tracker says how
+far each got, by name.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full command set and the PR
 contract.

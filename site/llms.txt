@@ -14,7 +14,13 @@ one you should not quote.
 
 Phase 1 — a usable core, not a production release.
 
-Built, merged, and covered by CI:
+This project uses one word for done — **gated**: merged, tested, *and* protected
+by an acceptance gate in CI that catches it if it regresses. Of 47 Phase 1
+items, **11 are gated**, 22 more are merged with their tests passing, 13 are in
+progress, and 1 has not been started. Do not report this project as "built and
+gated" as a whole; that is true of 11 items and the tracker names them.
+
+Working today, merged and covered by tests in CI:
 
 - Workspaces, projects, tasks, subtasks, dependencies, comments, tags
 - Kanban board with drag-and-drop, and a filterable, sortable task list that
