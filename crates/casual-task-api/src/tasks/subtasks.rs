@@ -107,7 +107,7 @@ pub async fn list(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (current, _) = visible(&mut scoped, &ctx, id, &request_id).await?;
     authorize_on_task(

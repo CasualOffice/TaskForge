@@ -124,7 +124,7 @@ pub async fn list(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let mut rows = notification::inbox(&mut scoped, ctx.actor.as_uuid(), after, limit)
         .await
@@ -175,7 +175,7 @@ pub async fn mark_read(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let actor = ctx.actor.as_uuid();
 
     // `actor`, never a user id from the body. Read state is per person, and the

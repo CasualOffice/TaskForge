@@ -175,7 +175,7 @@ pub async fn create(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     if let Some(role_id) = body.role_id {
         authorize_role_grant(&mut scoped, &ctx, role_id, &request_id).await?;
@@ -323,7 +323,7 @@ pub async fn revoke(
     let request_id = request_id.0;
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let revoked = repo::revoke(&mut scoped, id)
         .await

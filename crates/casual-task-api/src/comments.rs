@@ -128,7 +128,7 @@ pub async fn create(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (task_row, _) = task::read_visible(&mut scoped, &ctx.viewer, task_id)
         .await
@@ -248,7 +248,7 @@ pub async fn thread(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (task_row, _) = task::read_visible(&mut scoped, &ctx.viewer, task_id)
         .await
@@ -310,7 +310,7 @@ pub async fn edit(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let existing = comment::read(&mut scoped, comment_id)
         .await

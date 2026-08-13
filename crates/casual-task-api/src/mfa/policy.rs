@@ -117,7 +117,7 @@ pub async fn set_requirement(
     let request_id = request_id.0;
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // Changing an authentication policy for everyone in the workspace is
     // workspace administration, which `docs/04` gives `workspace.manage`. This

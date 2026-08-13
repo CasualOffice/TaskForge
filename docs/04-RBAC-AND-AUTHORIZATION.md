@@ -236,9 +236,11 @@ list of 200.
 
 **The cache:**
 
-- Key: `(workspace_id, actor_id, project_id, authz_epoch)`.
+- Key: `(workspace_id, actor_id, actor_type, project_id, authz_epoch)`. The
+  principal kind is part of the key because user and service-account ids come
+  from different tables and may contain the same UUID.
 - Value: the effective permission set + constraints for that project.
-- TTL: 60 s, in-process (moka) with Redis as an optional shared tier.
+- TTL: 60 s, in-process and bounded, with Redis as an optional shared tier.
 
 **`authz_epoch`** is a per-workspace counter bumped by any grant, role, team
 membership, or project membership change, in the same transaction as the change.

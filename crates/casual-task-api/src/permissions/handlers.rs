@@ -70,7 +70,15 @@ pub async fn effective(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load_read(
+        &state.metrics,
+        &mut scoped,
+        &member,
+        &headers,
+        &request_id,
+        query.project_id.map(ProjectId::from_uuid),
+    )
+    .await?;
 
     // The caller's own set only. Rendering affordances for someone else is not
     // a thing a client does, and accepting an actor_id here would be a second
@@ -196,7 +204,7 @@ pub async fn explain(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let subject = Subject::resolve(&mut scoped, &ctx, request.actor_id, &request_id).await?;
 
     let resource = request.resource.unwrap_or(ResourceRef {

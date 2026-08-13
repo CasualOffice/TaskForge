@@ -56,7 +56,7 @@ pub async fn transition(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let done = apply_transition(&mut scoped, &ctx, id, expected, &body, &request_id).await?;
     unit::commit(tx, &request_id).await?;
 
@@ -312,7 +312,7 @@ pub async fn assignees(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // Visibility is the whole check. Seeing a task and not who is on it is not
     // a distinction `docs/04` draws — there is no `task.assignee.read` in the
@@ -355,7 +355,7 @@ pub async fn assign(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (current, project_key) = visible(&mut scoped, &ctx, id, &request_id).await?;
     authorize_on_task(
@@ -458,7 +458,7 @@ pub async fn unassign(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (current, project_key) = visible(&mut scoped, &ctx, id, &request_id).await?;
     authorize_on_task(
@@ -526,7 +526,7 @@ pub async fn tag(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (current, project_key) = visible(&mut scoped, &ctx, id, &request_id).await?;
     // Applying an existing tag changes the TASK, not the tag vocabulary, so the

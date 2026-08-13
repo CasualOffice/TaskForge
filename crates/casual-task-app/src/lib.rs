@@ -31,8 +31,8 @@ pub use workflow::{CompositionError, StoredStatus, StoredTransition, compose, in
 // rather than reached for. A handler that could construct an `Actor` itself
 // would be a second place to get the principal wrong.
 pub use casual_task_authz::{
-    Decision, DenyReason, Principal, ProposedAssignment, Refusal, ResourceFacts, ResourceScopes,
-    Scope,
+    CacheKey, Decision, DenyReason, EpochCache, Principal, ProposedAssignment, Refusal,
+    ResourceFacts, ResourceScopes, Scope,
 };
 
 /// The state machine's vocabulary, re-exported for the same reason.

@@ -96,7 +96,7 @@ pub async fn create(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // Visibility first: an invisible project is a 404, and a 403 here would
     // tell an outsider it exists (`docs/04`).
@@ -318,7 +318,7 @@ pub async fn read(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let found = task::read_visible(&mut scoped, &ctx.viewer, id)
         .await
@@ -408,7 +408,15 @@ pub async fn list(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load_read(
+        &state.metrics,
+        &mut scoped,
+        &member,
+        &headers,
+        &request_id,
+        None,
+    )
+    .await?;
 
     // docs/04 §The list problem, step 1: resolved once, for the whole page.
     let accessible = project::accessible(&mut scoped, &ctx.viewer, MAX_ACCESSIBLE_PROJECTS)
@@ -590,7 +598,7 @@ pub async fn update(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // docs/23 §Validation order: readable (404), version (409), permission
     // (403). The version check precedes the permission check deliberately — the
@@ -722,7 +730,7 @@ pub async fn delete(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (current, project_key) = visible(&mut scoped, &ctx, id, &request_id).await?;
     if current.version != expected {

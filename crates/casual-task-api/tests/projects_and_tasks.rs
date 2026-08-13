@@ -36,9 +36,11 @@ const SECRET: &str = "a-test-secret-key-long-enough-for-hmac";
 /// they belong to, and a CSRF token bound to the session.
 struct Caller {
     app: Router,
+    metrics: Arc<Recorder>,
     cookie: String,
     csrf: String,
     workspace: Uuid,
+    user: Uuid,
 }
 
 impl Caller {
@@ -112,7 +114,7 @@ impl Caller {
     }
 }
 
-fn state(pool: sqlx::PgPool) -> AppState {
+fn state(pool: sqlx::PgPool, metrics: Arc<Recorder>) -> AppState {
     AppState {
         storage: std::sync::Arc::new(casual_task_infra::FilesystemStore::new(
             std::env::temp_dir().join("tf-test-objects"),
@@ -121,7 +123,7 @@ fn state(pool: sqlx::PgPool) -> AppState {
         )),
         broadcast: casual_task_api::sse::local_hub(),
         pool,
-        metrics: Arc::new(Recorder::new()),
+        metrics,
         secret_key: SECRET.into(),
         public_url: "https://tasks.example.test".into(),
         mailer: Arc::new(casual_task_infra::mail::LoggingMailer),
@@ -165,7 +167,8 @@ async fn member_of(
         test_support::grant_at_workspace(pool, workspace, user, permissions).await?;
     }
 
-    let app = router(state(pool.clone()));
+    let metrics = Arc::new(Recorder::new());
+    let app = router(state(pool.clone(), Arc::clone(&metrics)));
     let response = app
         .clone()
         .oneshot(
@@ -194,9 +197,11 @@ async fn member_of(
 
     Ok(Caller {
         app,
+        metrics,
         cookie,
         csrf,
         workspace,
+        user,
     })
 }
 
@@ -743,6 +748,51 @@ async fn a_list_pages_by_cursor_and_never_repeats_or_skips_a_row() -> Result<()>
     let unique: std::collections::HashSet<&String> = seen.iter().collect();
     assert_eq!(unique.len(), 5, "a row was served twice: {seen:?}");
     Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
+async fn a_full_task_page_resolves_authority_once() -> Result<()> {
+    let db = schema_harness::TestDatabase::start().await?;
+    let caller = caller(&db.pool, "member@example.com", "acme", MEMBER).await?;
+    let (_, project, _) = caller
+        .post(
+            "/api/v1/projects",
+            &serde_json::json!({ "key": "WR", "name": "Work" }),
+            Some(&key()),
+        )
+        .await?;
+    let project_id = project["id"].as_str().expect("id").parse()?;
+    test_support::insert_task_page(&db.pool, caller.workspace, project_id, caller.user, 100)
+        .await?;
+
+    let before = metric_count(
+        &caller.metrics.render(),
+        "authz_resolution_duration_count{outcome=\"cache_miss\"}",
+    );
+    let (status, body, _) = caller.get("/api/v1/tasks?limit=100").await?;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"].as_array().expect("data").len(), 100);
+    let after = metric_count(
+        &caller.metrics.render(),
+        "authz_resolution_duration_count{outcome=\"cache_miss\"}",
+    );
+    assert_eq!(
+        after - before,
+        1,
+        "one list page must perform one authorization resolution"
+    );
+    Ok(())
+}
+
+fn metric_count(rendered: &str, series: &str) -> u64 {
+    rendered
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix(series)
+                .and_then(|value| value.trim().parse().ok())
+        })
+        .unwrap_or(0)
 }
 
 #[tokio::test]

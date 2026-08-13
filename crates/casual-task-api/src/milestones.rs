@@ -125,7 +125,7 @@ pub async fn list(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let project_row = visible_project(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(
@@ -178,7 +178,7 @@ pub async fn create(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let project_row = visible_project(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(
@@ -287,7 +287,7 @@ pub async fn update(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // The milestone is read first, and then its PROJECT decides whether the
     // caller may see it at all. `docs/04`: visibility is resolved through the

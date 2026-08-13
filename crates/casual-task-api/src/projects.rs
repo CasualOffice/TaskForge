@@ -155,7 +155,15 @@ pub async fn list(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load_read(
+        &state.metrics,
+        &mut scoped,
+        &member,
+        &headers,
+        &request_id,
+        None,
+    )
+    .await?;
 
     let mut rows = project::list_visible(&mut scoped, &ctx.viewer, after, limit)
         .await
@@ -213,7 +221,7 @@ pub async fn create(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // `project.create` is a workspace-scope authority: there is no project yet
     // to scope it to.
@@ -374,7 +382,7 @@ pub async fn read(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let row = visible(&mut scoped, &ctx, id, &request_id).await?;
     unit::commit(tx, &request_id).await?;
@@ -422,7 +430,7 @@ pub async fn update(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // docs/23 §Validation order fixes this sequence: readable (404), version
     // (409), permission (403). The version check precedes the permission check

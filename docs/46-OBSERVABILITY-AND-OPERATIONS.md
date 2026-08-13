@@ -49,7 +49,7 @@ Beyond RED, these are the ones that describe *this* system's health:
 | `outbox_dlq_depth` — gauge, by `consumer` | Deliveries that gave up. Never expected to be non-zero. A dead letter is one `(event, consumer)` pair since migration [0013](../migrations/0013_outbox_delivery.sql), not an event — "which consumer" is the first question RB-02 asks. **Not** broken down by `event_type`: those round-trip through the database as runtime strings and there is no closed event-type registry to map them back to source literals, so the label would be unbounded (**D-053**). RB-02 groups by event type in SQL, where cardinality costs nothing. Sampled on the same cadence as the lag gauge and for the same reason: dead letters are never swept, so this count only ever grows. |
 | `outbox_dispatch_total` — counter, by `consumer` and `outcome` | Delivery attempts and how they ended. Answers "is the dispatcher running at all", which the lag gauge cannot distinguish from "it is running and everything is slow". |
 | `search_projection_lag_seconds` | How stale search is |
-| `authz_resolution_duration` + cache hit ratio | Permission cost, on every request |
+| `authz_resolution_duration` + cache hit ratio | Permission cost, on every tenant request. Resolution duration is labelled `uncached`, `cache_miss` or `cache_hit`; the hit ratio is cumulative since process start and is zero before the first lookup (D-047). |
 | `authz_epoch_bumps_total` | Cache churn; a spike means mass permission change |
 | `permission_denied_total` by permission | A burst signals compromise or misconfiguration |
 | `transition_rejected_total` by reason | Workflow friction, per project |

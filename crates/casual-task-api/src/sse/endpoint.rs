@@ -82,7 +82,7 @@ pub async fn stream(
     // outbox dispatcher, and worse here, because a stream lasts hours.
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let decision =
         authorize::may_subscribe(&mut scoped, &ctx, query.project_id, &request_id).await?;
     // Read in the SAME transaction as the authorization, so the pair cannot

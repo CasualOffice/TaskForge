@@ -175,6 +175,7 @@ async fn check(watch: &mut Watch) -> Result<Option<Ended>, sqlx::Error> {
     // not a second implementation of it, which is how one door ends up more
     // permissive than the other.
     let refused = match Context::load(
+        &watch.state.metrics,
         &mut scoped,
         &watch.member,
         &watch.headers,

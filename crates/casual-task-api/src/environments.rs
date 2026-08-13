@@ -135,7 +135,7 @@ pub async fn list(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // Visibility only. Reading the environments of a project you can see is
     // reading the vocabulary its tasks are labelled with — the same argument
@@ -171,7 +171,7 @@ pub async fn create(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let project = visible(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &project, &request_id).await?;
 
@@ -224,7 +224,7 @@ pub async fn rename(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let (before, project) = owned(&mut scoped, &ctx, environment_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &project, &request_id).await?;
 
@@ -269,7 +269,7 @@ pub async fn delete(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let (doomed, project) = owned(&mut scoped, &ctx, environment_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &project, &request_id).await?;
 
@@ -346,7 +346,7 @@ pub async fn set_on_task(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // `read_visible` returns the row and its project key; the key is the task's
     // human identifier and is not part of this answer.
@@ -566,7 +566,7 @@ pub async fn reorder(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let project = visible(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &project, &request_id).await?;

@@ -118,7 +118,7 @@ pub async fn read(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // Visibility of the task decides the status code; visibility of each
     // *related* task decides whether it appears at all — a blocker in a project
@@ -174,7 +174,7 @@ pub async fn add(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (task_row, project_key) = task::read_visible(&mut scoped, &ctx.viewer, task_id)
         .await
@@ -350,7 +350,7 @@ pub async fn remove(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let (task_row, project_key) = task::read_visible(&mut scoped, &ctx.viewer, task_id)
         .await

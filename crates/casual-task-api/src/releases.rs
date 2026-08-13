@@ -145,7 +145,7 @@ pub async fn cut(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let project = visible(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &project, &request_id).await?;
@@ -263,7 +263,7 @@ pub async fn list(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // Visibility only, like the environment list: what shipped is the project's
     // own vocabulary, and gating it would leave a member able to see a task on
@@ -310,7 +310,7 @@ pub async fn read(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let record = release::read(&mut scoped, release_id)
         .await

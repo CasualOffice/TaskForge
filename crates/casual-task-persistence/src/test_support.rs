@@ -989,6 +989,54 @@ pub async fn insert_task_fixture(
     Ok(task)
 }
 
+/// Insert `count` task rows into an existing project's initial status.
+///
+/// This is intentionally a test-only bulk fixture: acceptance tests that need
+/// a full page should measure the read path, not spend the API rate-limit
+/// budget constructing their corpus.
+///
+/// # Errors
+///
+/// Any database error, including a project without an initial status.
+pub async fn insert_task_page(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    user_id: Uuid,
+    count: u32,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let status: Uuid = sqlx::query_scalar(
+        "SELECT ws.id
+           FROM workflow_status ws
+           JOIN project p ON p.workflow_id = ws.workflow_id
+          WHERE p.id = $1 AND p.workspace_id = $2 AND ws.is_initial",
+    )
+    .bind(project_id)
+    .bind(workspace_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    for number in 1..=count {
+        sqlx::query(
+            "INSERT INTO task
+                 (id, workspace_id, project_id, number, title, status_id, state,
+                  reporter_id, position, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,'BACKLOG'::task_state,$7,$8,$7)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(workspace_id)
+        .bind(project_id)
+        .bind(i64::from(number))
+        .bind(format!("task {number}"))
+        .bind(status)
+        .bind(user_id)
+        .bind(format!("a{number:04}"))
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
 /// Rebuild one task's search document, as the projection consumer would.
 ///
 /// The consumer itself lives in `casual-task-worker` and is exercised by its

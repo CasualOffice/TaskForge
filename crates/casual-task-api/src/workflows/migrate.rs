@@ -76,7 +76,7 @@ pub async fn delete_status(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
 
     let doomed = status_of(&mut scoped, workflow_id, status_id, &request_id).await?;

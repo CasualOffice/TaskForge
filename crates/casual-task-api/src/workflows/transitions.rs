@@ -59,7 +59,7 @@ pub async fn create_transition(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
 
     // Both endpoints of the edge, checked against **this** workflow. Without
@@ -146,7 +146,7 @@ pub async fn update_transition(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
 
     let patch = TransitionPatch {
@@ -202,7 +202,7 @@ pub async fn delete_transition(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
 
     let removed = workflow_edge::delete_transition(&mut scoped, workflow_id, transition_id)

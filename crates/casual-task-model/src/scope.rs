@@ -29,7 +29,7 @@ pub struct AuthContext {
 
 /// Who is acting. Recorded on every audit event
 /// (`docs/25-EVENTS-OUTBOX-AND-AUDIT.md`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActorType {
     User,
     ServiceAccount,

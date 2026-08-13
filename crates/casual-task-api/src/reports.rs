@@ -157,7 +157,7 @@ pub async fn run(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     // `docs/04` §The list problem, step 1 — resolved once, and it *is* the
     // permission filter. A report that resolved it differently from the list

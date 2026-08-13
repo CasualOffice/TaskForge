@@ -11,11 +11,17 @@
 //! `casual-task-app`. This module's job is to make sure a handler cannot reach
 //! a row without having resolved who is asking.
 
+use std::sync::OnceLock;
+use std::time::Duration;
+
 use axum::http::HeaderMap;
-use casual_task_app::{Authority, ResourceFacts, StoredGrant};
-use casual_task_model::{ActorType, TeamId, UserId, WorkspaceId};
+use casual_task_app::{Authority, CacheKey, EpochCache, ResourceFacts, StoredGrant};
+use casual_task_model::{ActorType, ProjectId, TeamId, UserId, WorkspaceId};
+use casual_task_observability::Recorder;
+use casual_task_observability::labels::{LabelSet, keys};
+use casual_task_observability::metrics::{AUTHZ_CACHE_HIT_RATIO, AUTHZ_RESOLUTION_DURATION};
 use casual_task_persistence::project::Viewer;
-use casual_task_persistence::{Provenance, Scoped, authz};
+use casual_task_persistence::{Provenance, Scoped, authz, workspace};
 
 use crate::error::ApiError;
 use crate::middleware::WorkspaceMember;
@@ -33,6 +39,18 @@ pub struct Context {
     /// `not_external` constraint's only input.
     pub is_guest: bool,
     pub provenance: Provenance,
+}
+
+#[derive(Debug, Clone)]
+struct AuthoritySnapshot {
+    authority: Authority,
+    viewer: Viewer,
+    is_guest: bool,
+}
+
+fn read_cache() -> &'static EpochCache<CacheKey, AuthoritySnapshot> {
+    static CACHE: OnceLock<EpochCache<CacheKey, AuthoritySnapshot>> = OnceLock::new();
+    CACHE.get_or_init(|| EpochCache::new(10_000, Duration::from_secs(60)))
 }
 
 impl Context {
@@ -57,11 +75,87 @@ impl Context {
     /// `500` on a database failure. There is no authorization failure here:
     /// this resolves authority, it does not apply it.
     pub async fn load(
+        metrics: &Recorder,
         scoped: &mut Scoped<'_>,
         member: &WorkspaceMember,
         headers: &HeaderMap,
         request_id: &str,
     ) -> Result<Self, ApiError> {
+        let snapshot =
+            Self::resolve_measured(metrics, scoped, member, request_id, "uncached").await?;
+        Ok(Self::from_snapshot(snapshot, member, headers, request_id))
+    }
+
+    /// Resolve a read-side answer through the bounded epoch cache.
+    ///
+    /// Mutations call [`Self::load`] and therefore re-read authority inside
+    /// their transaction. Lists, reads and UI affordances may call this method;
+    /// an epoch bump changes the key, so a stale answer is unreachable.
+    pub async fn load_read(
+        metrics: &Recorder,
+        scoped: &mut Scoped<'_>,
+        member: &WorkspaceMember,
+        headers: &HeaderMap,
+        request_id: &str,
+        project: Option<ProjectId>,
+    ) -> Result<Self, ApiError> {
+        let epoch = workspace::authz_epoch(scoped).await.map_err(|error| {
+            tracing::error!(%error, "reading authz_epoch failed");
+            ApiError::internal(request_id)
+        })?;
+        let key = CacheKey {
+            workspace: member.context.scope().id(),
+            actor: member.context.actor_id(),
+            actor_type: member.context.actor_type(),
+            project,
+            epoch,
+        };
+        let snapshot = match read_cache().get(&key) {
+            Some(snapshot) => {
+                Self::record_resolution(metrics, "cache_hit", Duration::ZERO);
+                snapshot
+            }
+            None => {
+                let snapshot =
+                    Self::resolve_measured(metrics, scoped, member, request_id, "cache_miss")
+                        .await?;
+                read_cache().insert(key, snapshot.clone());
+                snapshot
+            }
+        };
+        let _ = metrics.set(
+            AUTHZ_CACHE_HIT_RATIO,
+            &LabelSet::for_metric(AUTHZ_CACHE_HIT_RATIO),
+            read_cache().hit_ratio(),
+        );
+        Ok(Self::from_snapshot(snapshot, member, headers, request_id))
+    }
+
+    async fn resolve_measured(
+        metrics: &Recorder,
+        scoped: &mut Scoped<'_>,
+        member: &WorkspaceMember,
+        request_id: &str,
+        outcome: &'static str,
+    ) -> Result<AuthoritySnapshot, ApiError> {
+        let started = std::time::Instant::now();
+        let resolved = Self::resolve(scoped, member, request_id).await;
+        Self::record_resolution(metrics, outcome, started.elapsed());
+        resolved
+    }
+
+    fn record_resolution(metrics: &Recorder, outcome: &'static str, elapsed: Duration) {
+        let labels = LabelSet::for_metric(AUTHZ_RESOLUTION_DURATION)
+            .with(keys::OUTCOME, outcome)
+            .expect("the authorization outcome label is declared");
+        let _ = metrics.observe(AUTHZ_RESOLUTION_DURATION, &labels, elapsed.as_secs_f64());
+    }
+
+    async fn resolve(
+        scoped: &mut Scoped<'_>,
+        member: &WorkspaceMember,
+        request_id: &str,
+    ) -> Result<AuthoritySnapshot, ApiError> {
         let actor = member.context.actor_id();
         let actor_type = member.context.actor_type();
         let workspace = member.context.scope().id();
@@ -117,13 +211,28 @@ impl Context {
                 .collect(),
         };
 
-        Ok(Self {
-            actor,
-            workspace,
-            actor_type,
+        Ok(AuthoritySnapshot {
             authority,
             viewer,
             is_guest: facts.is_guest,
+        })
+    }
+
+    fn from_snapshot(
+        snapshot: AuthoritySnapshot,
+        member: &WorkspaceMember,
+        headers: &HeaderMap,
+        request_id: &str,
+    ) -> Self {
+        let actor = member.context.actor_id();
+        let actor_type = member.context.actor_type();
+        Self {
+            actor,
+            workspace: member.context.scope().id(),
+            actor_type,
+            authority: snapshot.authority,
+            viewer: snapshot.viewer,
+            is_guest: snapshot.is_guest,
             provenance: Provenance {
                 actor: Some(actor),
                 actor_type,
@@ -143,6 +252,6 @@ impl Context {
                 )
                 .map(ToOwned::to_owned),
             },
-        })
+        }
     }
 }

@@ -67,7 +67,7 @@ pub async fn list_statuses(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     guard::visible(&mut scoped, workflow_id, &request_id).await?;
     guard::authorize(&mut scoped, &ctx, workflow_id, &request_id).await?;
@@ -116,7 +116,7 @@ pub async fn create_status(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
 
     let status = workflow_edit::insert_status(&mut scoped, workflow_id, &name, target.as_str())
@@ -182,7 +182,7 @@ pub async fn update_status(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
     let before = status_of(&mut scoped, workflow_id, status_id, &request_id).await?;
 
@@ -275,7 +275,7 @@ pub async fn reorder_statuses(
 
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
     let authored = guard::may_author(&mut scoped, &ctx, workflow_id, &headers, &request_id).await?;
 
     let (statuses, _) = workflow::load(&mut scoped, workflow_id)

@@ -759,7 +759,6 @@ pub const ROUTES: &[&str] = &[
     "/api/v1/projects/{id}/teams/{team_id}",
     "/api/v1/projects/{id}/environments",
     "/api/v1/projects/{id}/environments/order",
-    "/api/v1/projects/{id}/environments/order",
     "/api/v1/environments/{id}",
     "/api/v1/tasks/{id}/environment",
     "/api/v1/projects/{id}/releases",
@@ -919,6 +918,15 @@ mod tests {
                 declared_route(route).is_some(),
                 "{route} is served but not in ROUTES, so it records no metrics"
             );
+        }
+    }
+
+    #[test]
+    fn interned_routes_are_unique() {
+        let mut routes = ROUTES.to_vec();
+        routes.sort_unstable();
+        for pair in routes.windows(2) {
+            assert_ne!(pair[0], pair[1], "{} appears twice in ROUTES", pair[0]);
         }
     }
 

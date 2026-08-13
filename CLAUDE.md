@@ -27,7 +27,7 @@ Current state: **Phase 1 — usable core, well under way.** Phase 0 closed on
 dashboards, environments, releases, attachments.
 
 Counts, in this repository's own vocabulary, where `Gated` — not `Built` — means
-done: Phase 0 is 13 `Gated` / 3 `Built` of 16; Phase 1 is 11 `Gated` /
-25 `Built` / 13 `Building` / 1 not started, of 50. Never describe the project as
+done: Phase 0 is 13 `Gated` / 3 `Built` of 16; Phase 1 is 12 `Gated` /
+28 `Built` / 9 `Building` / 1 not started, of 50. Never describe the project as
 "built and gated" as a whole. See AGENTS.md §"Current state", which carries the
 same table, and docs/14 for every row by name.

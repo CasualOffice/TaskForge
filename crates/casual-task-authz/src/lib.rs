@@ -9,14 +9,16 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! Resolution is implemented (C-003); the `authz_epoch` cache and the grant and
-//! scope ceilings are not yet. See `docs/14-EXECUTION-TRACKER.md`.
+//! Resolution, the `authz_epoch` cache mechanics and the grant/scope ceilings
+//! are implemented (C-003). Database loading stays at the persistence boundary.
 
+pub mod cache;
 pub mod ceiling;
 pub mod constraint;
 pub mod resolver;
 pub mod scope;
 
+pub use cache::{CacheKey, EpochCache};
 pub use ceiling::{ProposedAssignment, Refusal, may_assign, plugin_ceiling};
 pub use constraint::{Constraint, ResourceFacts};
 pub use resolver::{

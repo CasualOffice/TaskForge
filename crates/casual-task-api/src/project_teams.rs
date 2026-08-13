@@ -73,7 +73,7 @@ pub async fn list(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let row = visible(&mut scoped, &ctx, project_id, &request_id).await?;
     let teams = project_team::list(&mut scoped, row.id)
@@ -123,7 +123,7 @@ pub async fn add(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let row = visible(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &row, &request_id).await?;
@@ -192,7 +192,7 @@ pub async fn remove(
     let request_id = RequestId::of_parts(&headers);
     let mut tx = unit::begin(&state, &request_id).await?;
     let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
-    let ctx = Context::load(&mut scoped, &member, &headers, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
 
     let row = visible(&mut scoped, &ctx, project_id, &request_id).await?;
     authorize(&mut scoped, &ctx, &row, &request_id).await?;

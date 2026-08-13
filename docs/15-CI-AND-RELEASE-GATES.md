@@ -104,7 +104,7 @@ Run by the `architecture` job over `crates/` **and** `tools/`.
 | `no-offset` | `OFFSET` is banned in application SQL | enforced |
 | `bounded-channels` | no unbounded channel constructor | enforced — see below |
 | `no-io-in-transaction` | no HTTP/object-store client reachable from a transaction scope | **not built** — needs a transaction type to scope against (C-011) |
-| `cache-key-scoped` | every cache key constructor takes a `WorkspaceScope` | **not built** — there is no cache until C-003 |
+| `cache-key-scoped` | every cache key carries workspace, principal id and type, optional project, and epoch | enforced by the only public key type; isolation and epoch-miss tests block CI |
 | `event-in-transaction` | handlers return events; they cannot publish directly | **not built** — needs the command layer (C-011) |
 
 The last three are listed because they are part of the design, and marked
@@ -211,13 +211,12 @@ a row in this table. Never neither.
 
 | Gate (from the tables above) | Lands with | Why not yet |
 | --- | --- | --- |
-| Schema gate asserts the auth `SECURITY DEFINER` definition | **C-001** | ADR-032 accepts the pre-workspace seam **on this condition**. The F-015 gate checks tables; a redefinition widening the function's `RETURNS TABLE` would pass today, which is exactly how a narrowed hole becomes a wide one. |
 | Latency (subset + full) | **F-007** | The harness and the comparison gate are built and tested. There is no baseline to compare against: `benchmarks/reference-8vcpu-32gb.reference.json` is a placeholder that no run can pass, because the docs/30 reference machine does not exist yet. |
 | ~~Frontend lint (`eslint`, `stylelint`)~~ | — | **Built (C-019).** `webapp/eslint.config.js` and the stylelint rules run as `pnpm lint` and `pnpm lint:css` in the `frontend-a11y` job. |
 | ~~Frontend tests (Vitest), E2E (Playwright)~~ | — | **Built (C-018, C-019).** `pnpm test` (Vitest) and `pnpm e2e` (Playwright, desktop and phone projects) run in the `frontend-a11y` job. `webapp/` stopped being the bundle-floor harness at C-018. |
 | ~~Integration (testcontainers)~~ | — | **Built (F-005).** `crates/casual-task-persistence/tests/schema_harness.rs` starts PostgreSQL 16, applies every migration, and reaches the invariants from Rust. Run by the `schema` job. The tests are `#[ignore]` so `cargo test` stays runnable without a Docker daemon; CI runs them explicitly, because otherwise nothing would. |
 | Query count (no N+1) | **C-012** | Needs a query layer to count. |
-| ~~Permission matrix, escalation, cross-tenant~~ | — | **Built (C-004, C-005).** `casual-task-api/tests/authz.rs` (16), `permissions.rs` (9), the escalation suite in `roles.rs`, and `casual-task-persistence/tests/tenant_isolation.rs`, which exercises `Scoped::apply` against migration 0010's policy rather than setting the GUC itself. All `#[ignore]`, all run by `cargo test --workspace -- --ignored` in the `schema` job. |
+| ~~Permission matrix, escalation, cross-tenant~~ | — | **Built (C-004) / Gated (C-005).** `authz.rs`, `permissions.rs`, `roles.rs`, `tenant_isolation.rs`, and the route-derived `route_isolation.rs` sweep run through `cargo test --workspace -- --ignored` in the blocking `schema` job. D-056 still blocks the final built-in-role matrix. |
 | OpenAPI diff, event schema diff, plugin contract diff, error registry | Phase 1 | Nothing to diff until `/v1` and the registry exist. |
 | Secret scan, SAST, container scan, enumeration, injection, fuzz | Phase 1 | Tracked with the security work in [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md). |
 | ~~Accessibility (axe, contrast)~~ | — | **Built (C-019).** axe runs over rendered output in `pnpm test`; the `frontend-a11y` job is named for it. |

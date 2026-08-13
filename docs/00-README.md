@@ -108,6 +108,7 @@ should be read before writing any code:
 | --- | --- | --- |
 | 50 | [Runbooks](50-RUNBOOKS.md) | Symptom → diagnosis → action, per incident |
 | 52 | [Deployment Guide](52-DEPLOYMENT-GUIDE.md) | How to actually run it: image, compose, upgrade, backup |
+| 54 | [Phase 1 Closure](54-PHASE-1-CLOSURE.md) | Depth-first order and evidence required to close the usable core |
 
 ## Status
 

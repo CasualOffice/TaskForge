@@ -79,7 +79,7 @@ The documentation phase. All complete unless noted.
 | D-044 | MSRV and toolchain-pin ADR | [08](08-ADR-REGISTER.md) | **Accepted** — ADR-031 |
 | D-045 | SSE vs WebSocket for bidirectional features | [05](05-API-SPEC.md) | **Deferred** — only if a feature needs client→server streaming |
 | D-046 | **Outbound mail security: STARTTLS requirement and certificate verification** | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | **Consumed** — STARTTLS + certificate/hostname verification, in `casual-task-infra::mail` with C-001's reset endpoints |
-| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** (lag half) — gauge, age of oldest actionable pending delivery, C-011. The cache-hit ratio half stays open until C-003's cache exists. |
+| D-047 | **What `outbox_lag_seconds` measures, and how a cache-hit ratio is exported** | [46](46-OBSERVABILITY-AND-OPERATIONS.md) | **Consumed** — outbox lag is the age of the oldest actionable pending delivery; the authorization cache exports cumulative process-lifetime hits divided by all lookups, zero before the first lookup. |
 | D-048 | Pin base images by digest rather than tag | [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md) | **Blocked** — Accept before the first release |
 | D-049 | Is assigning a role distinct from authoring one at workspace scope? | [04](04-RBAC-AND-AUTHORIZATION.md) | **Consumed** — yes, distinct: `role.assign` vs `role.manage`, migration 0015 |
 | D-053 | A closed event-type registry, as the permission set has | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | **Open** — surfaced by F-009 |
@@ -347,13 +347,19 @@ verification (D-046, [29](29-NOTIFICATIONS-AND-DELIVERY.md)), and
 
 ## Phase 1 — Core (C)
 
+Phase 1 closure follows [54](54-PHASE-1-CLOSURE.md): C-001–C-005 authority and
+isolation first, then C-007–C-011 command integrity, C-012–C-016 query and event
+contracts, and C-017–C-021 client and edge closure. No new Phase 2–4 capability
+lands in core until these rows are `Gated` or carry a named decision or external
+measurement blocker.
+
 | ID | Item | Status |
 | --- | --- | --- |
-| C-001 | Identity, sessions, MFA, invitations | `Building` |
+| C-001 | Identity, sessions, MFA, invitations | `Built` |
 | C-002 | Workspace, membership, teams | `Built` |
-| C-003 | **Permission resolver + `/explain`** | `Building` |
-| C-004 | Permission matrix + escalation suites | `Building` |
-| C-005 | Cross-tenant property suite | `Building` |
+| C-003 | **Permission resolver + `/explain`** | `Built` |
+| C-004 | Permission matrix + escalation suites | `Built` |
+| C-005 | Cross-tenant property suite | `Gated` |
 | C-006 | Projects, membership, visibility | `Gated` |
 | C-007 | Default workflow + transitions | `Building` |
 | C-008 | Task CRUD, assignees, tags | `Building` |
@@ -779,7 +785,11 @@ misses. The assertion is instead that compiling the same filter with **any**
 value produces byte-identical SQL. Verified by interpolating a value instead of
 binding it and watching the test name the string that leaked.
 
-**C-005 is `Building`, and the persistence seam is in.**
+**C-005 is `Gated`.** The persistence seam is backed by the route-derived API
+gate in `casual-task-api/tests/route_isolation.rs`: every route not explicitly
+classified as public, pre-workspace or actor-only is driven as an authenticated
+non-member and must hide the workspace with `404`. The test is Docker-backed
+and runs in CI's blocking schema job with every ignored acceptance suite.
 `casual-task-persistence::Scoped` is the only door to tenant data: it applies a
 `WorkspaceScope` to a transaction as the GUC migration 0010's policy reads, and
 a repository cannot hold one without that having happened. The setting is
@@ -847,13 +857,12 @@ Still missing before `Gated`: status editing and the status-migration path
 (docs/23 §Editing a workflow), and the transition command itself, which needs
 the command layer.
 
-**C-004 is `Building`.** Five of the seven escalation controls are implemented
-in `casual-task-authz` as `may_assign` and `plugin_ceiling`, each with a test
-that *attempts* the exploit rather than asserting about it. The other two are
-not, and the module says so rather than skipping them quietly: last-owner
-protection is a database constraint checked inside the transaction (docs/04
-control 4 says "not just in application code", so a check here would be
-advisory and would race), and auditing every grant needs C-011.
+**C-004 is `Built`.** Five controls live in `casual-task-authz`; last-owner
+protection is checked under a database lock; every grant and role edit records
+audit history through the unit of work. The API escalation suite attempts
+controls 1–5 and 7 end to end, while the plugin-ceiling test attempts control 6
+at the contract boundary that exists before Phase 3 supplies an installation
+route.
 
 Both property tests docs/04 §Acceptance gates names are in: additivity — "the
 invariant the whole model rests on" — and cross-workspace isolation. Both are
@@ -863,9 +872,9 @@ named seed. A third test asserts the generator produces both allows and denies,
 because a property test over a generator that never allows anything is
 vacuously true.
 
-Still missing before `Gated`: the golden matrix over every permission × role ×
-scope, and the no-N+1 and 404-not-403 gates, which need a query layer and
-endpoints respectively.
+Still missing before `Gated`: D-056 must settle the golden built-in-role matrix.
+The full-page one-resolution acceptance test and the route-derived 404 sweep now
+run in the blocking schema job.
 
 **Sessions are now consumed, not just created.** Two extractors, and the split
 between them is the design `docs/40` §Workspace-level SSO and MFA step-up
@@ -1628,15 +1637,18 @@ shape a load test finds and a unit test never does.
   exist without it, and a compile-time assertion in `outbox.rs` fails if the
   round trip is ever moved back into the constructor.
 
-**C-003 is `Building`.** The resolution core is implemented in
+**C-003 is `Built`.** The resolution core is implemented in
 `casual-task-authz` — the scope containment chain, the additive union, the
 closed five-constraint set, `allows`, and `explain` — with 17 tests and no
 database, which is what [19](19-WORKSPACE-SCAFFOLD-DESIGN.md) isolates that
-crate for. It did **not** depend on D-032: the resolver takes an
+crate for. A bounded 60-second read cache keys every answer by workspace,
+principal id and type, optional project, and `authz_epoch`; mutations bypass it.
+The cache exports the D-047 hit ratio and every tenant resolution records its
+duration. A full 100-task page is gated to one resolution. It did **not** depend on D-032: the resolver takes an
 already-authenticated actor, so the auth mechanism could be settled separately —
-and was. Still missing before it can be `Gated`: the `authz_epoch` cache, the
-grant and scope ceilings, and the C-004 matrix and escalation suites that are
-its acceptance gates.
+and was. D-056's built-in-role matrix keeps the row at `Built` rather than
+`Gated`; the resolver, cache, scope ceilings, property tests and explain surface
+are implemented and run in blocking CI.
 
 **C-020 is `Building`, and it is the auth class only.** `POST /api/v1/auth/login`
 had no limit of any kind. The per-account backoff in `casual-task-identity`
