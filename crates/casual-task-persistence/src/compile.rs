@@ -163,7 +163,7 @@ pub struct Compiled {
 /// apart.
 const RANK: &str = "ts_rank_cd(s.document, q)";
 
-/// How a typed term becomes a `tsquery`: the SQL function and its argument.
+/// How a typed term becomes the bound argument to `to_tsquery`.
 ///
 /// # Why not `plainto_tsquery` alone
 ///
@@ -202,10 +202,10 @@ const RANK: &str = "ts_rank_cd(s.document, q)";
 /// matches nothing — so the only real hazard is an operator reaching the
 /// parser, and none can.
 ///
-/// When nothing survives the filter there is no prefix to add, and the term
-/// goes to `plainto_tsquery` unchanged: it never parses operators, so it is the
-/// safe thing to hand text this function could not tokenize.
-fn tsquery_of(term: &str) -> (&'static str, String) {
+/// When nothing survives the filter there is no prefix to add, so an empty
+/// query is bound. PostgreSQL 16 turns that into an empty `tsquery`; binding the
+/// original punctuation would put operators back into the syntax parser.
+fn tsquery_of(term: &str) -> String {
     let tokens: Vec<String> = term
         .split_whitespace()
         .map(|token| {
@@ -221,9 +221,9 @@ fn tsquery_of(term: &str) -> (&'static str, String) {
         .collect();
 
     if tokens.is_empty() {
-        return ("plainto_tsquery", term.to_owned());
+        return String::new();
     }
-    ("to_tsquery", format!("{}:*", tokens.join(" & ")))
+    format!("{}:*", tokens.join(" & "))
 }
 
 /// The static identifier map. The only place a column name is written.
@@ -840,7 +840,7 @@ fn compile_search(filter: &Node, term: String, page: &Page, mut params: Vec<Para
     // the numbering stays positional and predictable. The term is rebuilt into
     // tsquery text first (see `tsquery_of`), so what is bound is a query, not
     // the raw typing.
-    let (parser, text) = tsquery_of(&term);
+    let text = tsquery_of(&term);
     let query = bind(&mut params, Param::Text(text));
 
     // Every other clause still applies. `Field::Q` emits TRUE inside this
@@ -872,7 +872,7 @@ fn compile_search(filter: &Node, term: String, page: &Page, mut params: Vec<Para
         "SELECT {columns}, {RANK} AS rank \
            FROM task_search s \
            JOIN task t ON t.id = s.task_id \
-           CROSS JOIN {parser}('{configuration}', {query}) q \
+           CROSS JOIN to_tsquery('{configuration}', {query}) q \
           WHERE s.workspace_id = $1 \
             AND s.project_id = ANY($2) \
             AND s.document @@ q \
@@ -1142,24 +1142,21 @@ mod tests {
         fn the_last_token_is_a_prefix_and_the_others_are_not() {
             // The last token is the one being typed. Making them all prefixes
             // would match far more than was asked for.
-            assert_eq!(
-                tsquery_of("restore backu"),
-                ("to_tsquery", "restore & backu:*".to_owned()),
-            );
+            assert_eq!(tsquery_of("restore backu"), "restore & backu:*",);
         }
 
         #[test]
         fn a_single_word_is_a_prefix() {
             // This is the whole point: `backu` has to find "Backup restore
             // drill" before the word is finished.
-            assert_eq!(tsquery_of("backu"), ("to_tsquery", "backu:*".to_owned()));
+            assert_eq!(tsquery_of("backu"), "backu:*");
         }
 
         #[test]
         fn a_task_key_keeps_its_hyphen() {
             // `OPS-1` is the search people use most. Dropping the hyphen with
             // the rest of the punctuation would break it.
-            assert_eq!(tsquery_of("OPS-1"), ("to_tsquery", "OPS-1:*".to_owned()));
+            assert_eq!(tsquery_of("OPS-1"), "OPS-1:*");
         }
 
         #[test]
@@ -1167,8 +1164,7 @@ mod tests {
             // `to_tsquery` parses its argument as syntax, so `&`, `|`, `!`, the
             // parens and the colon are operators unless they never arrive. The
             // only operators in the output are the ones this function adds.
-            let (parser, text) = tsquery_of("a & b | !c (d) e:f");
-            assert_eq!(parser, "to_tsquery");
+            let text = tsquery_of("a & b | !c (d) e:f");
             // `e:f` is one whitespace-delimited token and reduces to `ef`. The
             // colon does not survive to separate them, which is the point: a
             // `:` reaching `to_tsquery` is a weight or prefix marker, not text.
@@ -1179,27 +1175,23 @@ mod tests {
         fn punctuation_alone_never_becomes_a_token() {
             // A token reduced to `-` would emit `-:*`. Requiring one
             // alphanumeric is what stops that.
-            assert_eq!(
-                tsquery_of("backup - restore"),
-                ("to_tsquery", "backup & restore:*".to_owned()),
-            );
+            assert_eq!(tsquery_of("backup - restore"), "backup & restore:*",);
         }
 
         #[test]
-        fn text_that_tokenizes_to_nothing_goes_to_the_parser_that_cannot_be_confused() {
-            // `plainto_tsquery` never reads operators, so it is the safe home
-            // for text this function could not tokenize. Both yield an empty
-            // tsquery and match nothing; neither raises.
-            assert_eq!(tsquery_of("!!!"), ("plainto_tsquery", "!!!".to_owned()));
-            assert_eq!(tsquery_of(""), ("plainto_tsquery", String::new()));
+        fn text_that_tokenizes_to_nothing_binds_an_empty_query() {
+            // No user-supplied operator reaches `to_tsquery`. PostgreSQL turns
+            // the empty argument into an empty query that matches nothing.
+            assert_eq!(tsquery_of("!!!"), "");
+            assert_eq!(tsquery_of(""), "");
         }
 
         #[test]
         fn a_name_outside_ascii_is_still_a_term() {
             // `is_alphanumeric` is Unicode-aware, and a colleague's name is the
             // most likely non-ASCII thing anybody types here.
-            assert_eq!(tsquery_of("Bekele"), ("to_tsquery", "Bekele:*".to_owned()));
-            assert_eq!(tsquery_of("Ökafor"), ("to_tsquery", "Ökafor:*".to_owned()));
+            assert_eq!(tsquery_of("Bekele"), "Bekele:*");
+            assert_eq!(tsquery_of("Ökafor"), "Ökafor:*");
         }
     }
 
@@ -1297,7 +1289,6 @@ mod tests {
         for (field, op) in [
             (Field::Title, Operator::Contains),
             (Field::State, Operator::Eq),
-            (Field::Q, Operator::Matches),
             (Field::Assignee, Operator::Eq),
             (Field::DueAt, Operator::Before),
         ] {
@@ -1314,6 +1305,27 @@ mod tests {
                     "`{value}` was not bound as a parameter either"
                 );
             }
+        }
+
+        // Search deliberately rebuilds the raw typing as tsquery text before
+        // binding it. The SQL remains value-independent, while the bound value
+        // is the sanitized derivative rather than the hostile input itself.
+        let benign = compiled(&clause(
+            Field::Q,
+            Operator::Matches,
+            Value::Literal("benign".into()),
+        ));
+        for value in hostile {
+            let c = compiled(&clause(
+                Field::Q,
+                Operator::Matches,
+                Value::Literal(value.to_owned()),
+            ));
+            assert_eq!(c.sql, benign.sql, "the search SQL changed with `{value}`");
+            assert!(
+                c.params.contains(&Param::Text(tsquery_of(value))),
+                "the sanitized search value derived from `{value}` was not bound"
+            );
         }
     }
 
