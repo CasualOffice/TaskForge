@@ -98,7 +98,8 @@ impl Failure {
 /// *fails* is not an error here — it is recorded against the job and the loop
 /// continues, which is what keeps one bad filter from stopping every export.
 pub async fn run(
-    pool: &PgPool,
+    dispatch_pool: &PgPool,
+    app_pool: &PgPool,
     storage: Arc<dyn ObjectStore>,
     worker_id: &str,
     mut cancel: Cancel,
@@ -107,12 +108,12 @@ pub async fn run(
     // reads across tenants and a role that cannot bypass RLS would claim
     // nothing, forever, without erroring.
     let role = {
-        let mut conn = pool.acquire().await?;
+        let mut conn = dispatch_pool.acquire().await?;
         DispatcherRole::verify(&mut conn).await?
     };
 
     while !cancel.is_cancelled() {
-        let mut tx = pool.begin().await?;
+        let mut tx = dispatch_pool.begin().await?;
         let mut dispatcher = role.dispatcher(&mut tx);
         let claimed = store::claim_next(&mut dispatcher, worker_id).await?;
         tx.commit().await?;
@@ -125,9 +126,9 @@ pub async fn run(
         };
 
         tracing::info!(job = %job.id, format = %job.format, "running an export");
-        let outcome = run_job(pool, storage.as_ref(), &job).await;
+        let outcome = run_job(app_pool, storage.as_ref(), &job).await;
 
-        let mut tx = pool.begin().await?;
+        let mut tx = dispatch_pool.begin().await?;
         let mut dispatcher = role.dispatcher(&mut tx);
         match outcome {
             Ok(done) => {

@@ -365,7 +365,7 @@ pub async fn tasks_on(
 /// The most tasks one request may migrate.
 ///
 /// `docs/23`: "bulk moves above 10,000 tasks run as a tracked background job
-/// with progress, not a request." The job does not exist (D-063), so this is
+/// with progress, not a request." The job does not exist, so this is
 /// the boundary at which the API refuses rather than quietly doing the thing
 /// the design record says a request must not do.
 pub const MIGRATION_LIMIT: i64 = 10_000;
@@ -473,35 +473,4 @@ pub async fn delete_status(scoped: &mut Scoped<'_>, status: Uuid) -> Result<u64,
     Ok(edges)
 }
 
-/// Every project on this workflow, as `(project_id, team_ids, actor_is_member)`.
-///
-/// The authority question for a workflow edit is asked once per project in this
-/// list — see `crates/casual-task-api/src/workflows/guard.rs` for why one
-/// project's grant is not enough. Membership comes back in the same row because
-/// `is_project_member` is one of `docs/04`'s constraints, and resolving it with
-/// a query per project would be the per-row resolution `docs/04` §The list
-/// problem forbids.
-///
-/// # Errors
-///
-/// Any database error.
-pub async fn projects_on(
-    scoped: &mut Scoped<'_>,
-    workflow: Uuid,
-    actor: Uuid,
-) -> Result<Vec<(Uuid, Vec<Uuid>, bool)>, sqlx::Error> {
-    sqlx::query_as(
-        "SELECT p.id,
-                ARRAY(SELECT pt.team_id FROM project_team pt
-                       WHERE pt.project_id = p.id ORDER BY pt.team_id),
-                EXISTS (SELECT 1 FROM project_membership pm
-                         WHERE pm.project_id = p.id AND pm.user_id = $2)
-           FROM project p
-          WHERE p.workflow_id = $1 AND p.deleted_at IS NULL
-       ORDER BY p.id",
-    )
-    .bind(workflow)
-    .bind(actor)
-    .fetch_all(scoped.conn())
-    .await
-}
+include!("workflow_projects.rs");

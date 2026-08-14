@@ -1,14 +1,14 @@
-//! The six consumers `docs/25` §Consumer fan-out names.
+//! The active delivery consumers shared by the API-facing features.
 //!
 //! One module each, because they fail independently and change for unrelated
 //! reasons: a webhook signature scheme and a search projection have nothing to
 //! say to each other, and a file holding both would be edited by two people for
 //! two reasons every time either changed.
 //!
-//! Four are not built yet — search projection, automation matcher, webhook
-//! delivery and plugin subscribers arrive with C-013 and the Phase 3 work.
-//! Their delivery rows are already written by `UnitOfWork::record`, so an event
-//! that happens before a consumer exists is waiting for it rather than lost.
+//! Search and state-interval projections live at the crate root because each is
+//! also a rebuild boundary. Automation, webhooks and plugin subscribers remain
+//! Phase 3 work; their delivery rows wait in PostgreSQL until those consumers
+//! exist rather than disappearing from history.
 
 pub mod notification;
 pub mod sse;

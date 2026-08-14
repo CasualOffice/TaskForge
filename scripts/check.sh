@@ -34,6 +34,9 @@ run env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-dep
 
 # ── documentation ─────────────────────────────────────────────────────────────
 run ./scripts/verify-no-secrets.sh
+run python3 scripts/check-security-static.py
+run python3 scripts/check-error-registry.py
+run python3 scripts/check-module-size.py
 run python3 scripts/check-doc-links.py
 # The README's phase percentages are derived from the tracker, not typed. This
 # is the check that keeps them honest — the status badge that still said
@@ -55,7 +58,7 @@ fi
 
 # ── dependency policy ─────────────────────────────────────────────────────────
 if command -v cargo-deny >/dev/null 2>&1; then
-  run cargo deny check bans licenses sources
+  run cargo deny check advisories bans licenses sources
 else
   skip "dependency-policy" "cargo-deny not installed"
 fi

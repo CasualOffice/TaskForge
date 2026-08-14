@@ -33,7 +33,7 @@
 //! Changing a project's workflow. `docs/23` calls it "the heaviest operation",
 //! requires an explicit status-by-status mapping, and specifies it as a
 //! background job — the same job a >10,000-task status migration needs, which
-//! does not exist yet (**D-063**). It is left unbuilt rather than approximated,
+//! does not exist yet. It is left unbuilt rather than approximated,
 //! because a half-built version of it would move real work.
 
 pub mod audit;

@@ -1,0 +1,118 @@
+/* ── donut ────────────────────────────────────────────────────────────────────
+ *
+ * Ring plus key, side by side where there is room. The ring alone is a picture;
+ * the key is what makes it a chart, because a proportion nobody can name is
+ * just a coloured circle. */
+
+.chart--donut {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--tf-gap-section);
+  flex-wrap: wrap;
+}
+
+.chart__ring {
+  position: relative;
+  flex: 0 0 auto;
+  width: 108px;
+  height: 108px;
+}
+
+.chart__ring svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart__ringtrack {
+  fill: none;
+  stroke: var(--tf-surface-sunken);
+  stroke-width: 14;
+}
+
+.chart__slice {
+  fill: none;
+  stroke: var(--tf-accent);
+  stroke-width: 14;
+}
+
+/* The total, in the hole. Absolutely positioned over the ring rather than an
+   SVG `<text>`, so it inherits the page's font and its own tabular figures. */
+.chart__ringtotal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: 0;
+}
+
+.chart__ringvalue {
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--tf-text);
+}
+
+.chart__ringunit {
+  font-size: 0.625rem;
+  color: var(--tf-text-muted);
+}
+
+/* Beside the ring, the key gets a column of its own and stacks rather than
+   wrapping into a paragraph of names. */
+.chart--donut .chart__key {
+  flex: 1 1 140px;
+  flex-direction: column;
+  gap: var(--tf-gap-hair);
+}
+
+.chart--donut .chart__key li {
+  justify-content: flex-start;
+  gap: var(--tf-gap-tight);
+  width: 100%;
+}
+
+.chart--donut .chart__keyvalue {
+  margin-left: auto;
+}
+
+/* ── the trend's scale ────────────────────────────────────────────────────── */
+
+.chart__grid {
+  stroke: var(--tf-border);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart__tick {
+  font-size: 9px;
+  fill: var(--tf-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One bucket is a fact, not a trend, and the caption says so rather than
+   letting a lone dot imply a flat line. */
+.chart__single {
+  color: var(--tf-text-muted);
+}
+
+/* A second line, distinguishable without relying on hue: a different colour
+   *and* a dashed stroke, because two lines told apart by colour alone are two
+   lines some readers cannot tell apart at all. The key names both. */
+.chart__series--1 .chart__line {
+  stroke: var(--tf-success);
+  stroke-dasharray: 5 3;
+}
+
+.chart__series--1 .chart__dot {
+  fill: var(--tf-success);
+}
+
+.chart__swatch--1 {
+  background: var(--tf-success);
+}

@@ -4,8 +4,13 @@
 > building the image, configuring, upgrading, backing up, and verifying a
 > deployment is actually secure — see [52](52-DEPLOYMENT-GUIDE.md).
 
-Three supported shapes. The security model is **identical** across all three —
+Three designed shapes. The security model is **identical** across all three —
 a smaller deployment is smaller, never weaker ([28](28-ATTACHMENT-PIPELINE.md)).
+
+> **Implementation status:** only the single-node filesystem profile is built.
+> Profiles 2 and 3 are target architectures; Redis coordination, S3 storage and
+> replica routing are not implemented. [52](52-DEPLOYMENT-GUIDE.md) is the
+> executable support boundary.
 
 ## Profile 1 — Single node
 
@@ -40,9 +45,10 @@ Every one of those was a deliberate choice made *because* of this profile. A
 design requiring Kafka would have eliminated it.
 
 **Capacity:** ~50 users, ~100k tasks on 2 vCPU / 4 GB.
-**Backup:** `pg_dump` + the attachment directory. Documented and drilled.
+**Backup:** `pg_dump` + the attachment directory. The procedure is documented;
+the scheduled restore-rehearsal gate remains pending.
 
-## Profile 2 — Small production
+## Profile 2 — Small production target
 
 **For:** a real team, self-hosted or single-tenant cloud.
 
@@ -66,7 +72,7 @@ handling for CPU.
 ([30](30-PERFORMANCE-AND-CAPACITY-TARGETS.md)).
 **Backup:** WAL archiving + PITR; object-store versioning.
 
-## Profile 3 — Scaled
+## Profile 3 — Scaled target
 
 **For:** multi-tenant hosted.
 
@@ -100,12 +106,13 @@ TF_BIND_ADDR                 0.0.0.0:8080
 TF_PUBLIC_URL                required — used in emails and OIDC redirects
 TF_SECRET_KEY                required — CSRF token binding (ADR-032). NOT cookie signing:
                              the session cookie is opaque and unsigned
-TF_STORAGE_BACKEND           fs | s3            (default fs)
+TF_STORAGE_BACKEND           fs (default); s3 is reserved and refused at startup
 TF_STORAGE_PATH              ./data/attachments
-TF_S3_*                      endpoint, bucket, region, credentials
+TF_S3_*                      reserved; not implemented
 TF_ATTACHMENT_ORIGIN         required in prod — the separate user-content origin
-| `TF_OBJECT_BIND_ADDR` | — | Where this process serves the attachment origin. A **different port** from `TF_BIND_ADDR`: a different port is a different origin, which is the control §Serving downloads rests on. Unset means the origin is served elsewhere — a bucket, a CDN — and this process serves no file bytes |
-TF_REDIS_URL                 optional; required with >1 api instance
+TF_OBJECT_BIND_ADDR          optional address for the filesystem attachment origin;
+                             must use a different origin from the application
+TF_REDIS_URL                 reserved; multi-instance operation is not supported
 TF_WORKER_EMBEDDED           true | false       (default true)
 DISPATCHER_DATABASE_URL      required to run the outbox dispatcher — a SECOND DSN,
                              connecting as taskforge_dispatcher (migration 0014).

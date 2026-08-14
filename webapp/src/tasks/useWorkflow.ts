@@ -3,13 +3,11 @@
  *
  * # The failure this module prevents
  *
- * Four components each deciding, differently, what to do about a missing
- * `GET /api/v1/workflows/{id}`. The endpoint is specified in `docs/05` and not
- * yet served (see `api/workflow.ts`, tracked as **D-061**), which means every
- * status-changing control in the app has the same three-way answer to give:
- * available, unavailable-because-unbuilt, or refused. Deciding that once, here,
- * is what stops the board disabling a drag while the drawer happily sends a
- * transition that cannot succeed.
+ * Four components each deciding, differently, what to do when
+ * `GET /api/v1/workflows/{id}` is unavailable. Every status-changing control
+ * has the same three-way answer to give: available, temporarily unavailable,
+ * or refused. Deciding that once, here, is what stops the board disabling a
+ * drag while the drawer sends a transition that cannot succeed.
  */
 import { useQuery } from '@tanstack/react-query'
 
@@ -61,9 +59,7 @@ export interface Move {
   readonly needed: string | null
 }
 
-const NOT_SERVED =
-  'Status changes need the workflow’s statuses, and this server does not serve ' +
-  'GET /api/v1/workflows/{id} yet (docs/05 specifies it; C-007 has not shipped it).'
+const NOT_SERVED = 'The workflow could not be loaded, so status changes are unavailable.'
 
 const NO_PROJECT = 'Choose a project — a workflow belongs to one, not to the whole workspace.'
 
@@ -85,8 +81,8 @@ export function useProjectWorkflow(projectId: string | undefined): WorkflowState
     queryFn: ({ signal }) => readWorkflow(workspaceId, workflowId ?? '', signal),
     enabled: workspaceId !== '' && workflowId !== undefined,
     staleTime: 5 * 60_000,
-    // The route being absent is not a transient failure; retrying it four times
-    // per mount would spend four round trips learning the same thing.
+    // The screen already exposes the unavailable state. Repeating a refused
+    // request per mount adds delay without making the answer more useful.
     retry: false,
   })
 

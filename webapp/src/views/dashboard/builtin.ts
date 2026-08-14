@@ -41,6 +41,7 @@
  */
 import type { TaskFilter } from '../../api/tasks'
 import type { Bucket, Dimension, MeasureKey, ReportState } from '../../api/reports'
+import { QUALITY } from './quality'
 
 /**
  * The visualizations, closed (`docs/38`).
@@ -417,95 +418,6 @@ const TEAM_WORKLOAD: Dashboard = {
   ],
 }
 
-const QUALITY: Dashboard = {
-  id: 'quality',
-  name: 'Quality',
-  description: 'Unplanned work — what is breaking, and how long it takes to fix.',
-  tiles: [
-    {
-      id: 'quality-open-incidents',
-      title: 'Open incidents',
-      viz: 'number',
-      intent: 'alert',
-      filter: { state: OPEN, type: 'INCIDENT' },
-      groupBy: 'state',
-      drillable: true,
-      span: 1,
-    },
-    {
-      id: 'quality-urgent-bugs',
-      title: 'Urgent bugs',
-      viz: 'number',
-      intent: 'alert',
-      filter: { state: OPEN, type: 'BUG', priority: 'URGENT' },
-      groupBy: 'state',
-      drillable: true,
-      span: 1,
-    },
-    {
-      id: 'quality-blocked-bugs',
-      title: 'Blocked bugs',
-      viz: 'number',
-      intent: 'watch',
-      filter: { state: OPEN, type: 'BUG', is_blocked: 'true' },
-      groupBy: 'state',
-      drillable: true,
-      span: 1,
-    },
-    {
-      id: 'quality-open-bugs',
-      title: 'Open bugs',
-      viz: 'number',
-      intent: 'plain',
-      filter: { state: OPEN, type: 'BUG' },
-      groupBy: 'state',
-      drillable: true,
-      span: 1,
-    },
-    {
-      id: 'quality-bug-throughput',
-      title: 'Bugs closed per week',
-      help: 'Cancelled bugs are not counted as fixed.',
-      viz: 'line',
-      filter: { type: 'BUG' },
-      groupBy: 'state',
-      measure: 'throughput',
-      bucket: WEEKLY,
-      drillable: false,
-      span: 2,
-    },
-    {
-      id: 'quality-bugs-by-priority',
-      title: 'Open bugs by priority',
-      viz: 'bar',
-      filter: { state: OPEN, type: 'BUG' },
-      groupBy: 'priority',
-      drillable: true,
-      span: 2,
-    },
-    {
-      id: 'quality-bug-cycle',
-      title: 'Bug cycle time by priority',
-      help: 'Median time to fix. If urgent is not faster than low, priority is not doing anything.',
-      viz: 'bar',
-      filter: { type: 'BUG' },
-      groupBy: 'priority',
-      measure: 'cycle_time',
-      drillable: false,
-      span: 2,
-    },
-    {
-      id: 'quality-unplanned-by-team',
-      title: 'Open bugs and incidents by team',
-      viz: 'bar',
-      filter: { state: OPEN, type: 'BUG,INCIDENT' },
-      groupBy: 'team',
-      limit: 20,
-      drillable: true,
-      span: 2,
-    },
-  ],
-}
 
 export const DASHBOARDS: readonly Dashboard[] = [
   MY_WORK,

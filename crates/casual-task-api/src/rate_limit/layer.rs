@@ -304,9 +304,9 @@ mod tests {
         // 300/min, and putting a project list or a task read under the auth
         // bucket would throttle the product into uselessness while looking like
         // a security improvement. Those classes are keyed per (workspace, actor)
-        // and are not implemented; until they are, everything outside auth is
-        // deliberately ungoverned, and this test is what stops a route being
-        // added to the wrong list by reflex.
+        // by the principal middleware; this earlier IP limiter must govern only
+        // authentication routes. This test stops a route being added to the
+        // wrong, much smaller bucket by reflex.
         for route in LIMITED_ROUTES {
             assert!(
                 route.starts_with("/api/v1/auth/"),

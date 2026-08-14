@@ -1,13 +1,15 @@
 # 15 — CI & Release Gates
 
-The PR contract. A gate that can be skipped is not a gate — everything below
-blocks merge, and disabling one requires an ADR.
+The PR contract. The tables name what is required to block merge. The
+**Pending gates** table records any requirement whose harness is not yet in CI;
+those rows are gaps, not green checks. Disabling an implemented gate requires
+an ADR.
 
 ## Per-PR gates
 
 ### Build & style
 
-| Gate | Command | Blocks |
+| Gate | Command | Required |
 | --- | --- | --- |
 | Format | `cargo fmt --check` | ✅ |
 | Lint | `cargo clippy --all-targets -- -D warnings` | ✅ |
@@ -15,10 +17,11 @@ blocks merge, and disabling one requires an ADR.
 | Docs build | `cargo doc --no-deps` | ✅ |
 | Dependencies | `cargo deny check` (licenses, advisories, bans, sources) | ✅ |
 | Frontend lint/types | `eslint`, `tsc --noEmit` | ✅ |
+| Module responsibility bound | `scripts/check-module-size.py` rejects Rust, TypeScript, TSX or CSS modules over 500 lines | ✅ |
 
 ### Correctness
 
-| Gate | What | Blocks |
+| Gate | What | Required |
 | --- | --- | --- |
 | Unit + property | `cargo nextest run` | ✅ |
 | Integration | testcontainers PostgreSQL | ✅ |
@@ -31,7 +34,7 @@ blocks merge, and disabling one requires an ADR.
 
 ### Contracts
 
-| Gate | What | Blocks |
+| Gate | What | Required |
 | --- | --- | --- |
 | OpenAPI diff | vs committed snapshot; breaking change requires a version bump | ✅ |
 | Event schema diff | payload changes require a `schema_version` bump | ✅ |
@@ -40,7 +43,7 @@ blocks merge, and disabling one requires an ADR.
 
 ### Performance
 
-| Gate | What | Blocks |
+| Gate | What | Required |
 | --- | --- | --- |
 | **`EXPLAIN` no-seq-scan** | every endpoint × sortable field, reference corpus | ✅ |
 | Query count | no N+1; one authorization resolution per list | ✅ |
@@ -50,7 +53,7 @@ blocks merge, and disabling one requires an ADR.
 
 ### Schema & deployment
 
-| Gate | What | Blocks |
+| Gate | What | Required |
 | --- | --- | --- |
 | **Schema verification** | every migration applied to a clean PostgreSQL 16; 8 structural assertions (every tenant table has `workspace_id`; every such table has a **FORCEd** RLS policy; no policy casts `current_setting` without `NULLIF`; the [26](26-SEARCH-INDEXING-AND-QUERY.md) index inventory exists; the five states are unchanged; the app role is not a superuser) | ✅ |
 | **Tenant isolation, behavioural** | run as `taskforge_app`: unscoped sees nothing, scoped sees only its tenant, no pool bleed after COMMIT, no cross-tenant row | ✅ |
@@ -69,19 +72,19 @@ blocks merge, and disabling one requires an ADR.
 
 ### Security
 
-| Gate | What | Blocks |
+| Gate | What | Required |
 | --- | --- | --- |
 | Secret scan | no credentials in the diff (incl. `tf_pat_`/`tf_sat_` prefixes) | ✅ |
-| SAST | `cargo audit` + semgrep rules | ✅ |
+| SAST | `cargo deny check advisories` + repository security rules | ✅ |
 | Container scan | base image CVEs | ✅ |
 | Enumeration test | login/reset/invite responses indistinguishable | ✅ |
 | Injection property test | filter compiler emits no user-derived SQL strings | ✅ |
-| Fuzz (smoke) | filter grammar + manifest parser, short budget | ✅ |
+| Fuzz (smoke) | filter grammar + plugin contract identifiers, short budget | ✅ |
 | Fuzz (deep) | extended budget | nightly |
 
 ### Accessibility
 
-| Gate | What | Blocks |
+| Gate | What | Required |
 | --- | --- | --- |
 | axe automated | core flows, no violations | ✅ |
 | Contrast | design system tokens, light + dark | ✅ |
@@ -103,7 +106,7 @@ Run by the `architecture` job over `crates/` **and** `tools/`.
 | `auth-context-at-edge` | only `casual-task-api` may mint an `AuthContext` | enforced |
 | `no-offset` | `OFFSET` is banned in application SQL | enforced |
 | `bounded-channels` | no unbounded channel constructor | enforced — see below |
-| `no-io-in-transaction` | no HTTP/object-store client reachable from a transaction scope | **not built** — needs a transaction type to scope against (C-011) |
+| `no-io-in-transaction` | no storage, scanner, mail or broadcast call between transaction begin and commit | enforced over API and worker sources; the attachment commit/scan split is the regression case |
 | `cache-key-scoped` | every cache key carries workspace, principal id and type, optional project, and epoch | enforced by the only public key type; isolation and epoch-miss tests block CI |
 | `event-in-transaction` | handlers return events; they cannot publish directly | **not built** — needs the command layer (C-011) |
 
@@ -174,6 +177,10 @@ than no gate.
 
 Beyond per-PR, before a version ships:
 
+- **Static release readiness**: D-048 is Accepted, every Dockerfile base is
+  digest-pinned, and an existing-volume upgrade runner exists. The release
+  workflow blocks publication while any of these are false.
+
 - Full latency suite at reference capacity, within targets.
 - Deep fuzz run, clean.
 - Manual keyboard-only accessibility pass.
@@ -202,12 +209,10 @@ which makes a deliberate trade visible and an accidental one obvious.
 
 ## Pending gates
 
-The tables above are the **contract**: every row marked ✅ blocks merge once its
-harness exists. Some do not exist yet, and a ✅ beside a gate nobody runs is the
-single most misleading thing this document could contain. So they are listed
-here, with the tracker item that lands each one. `.github/workflows/ci.yml`
-points at this section, and the rule is: a gate is either a job in that file or
-a row in this table. Never neither.
+The tables above are the **required contract**, not a claim that every harness
+exists. Missing harnesses are listed here with the tracker item that lands each
+one. `.github/workflows/ci.yml` points at this section, and the rule is: a gate
+is either a blocking workflow step or a row in this table. Never neither.
 
 | Gate (from the tables above) | Lands with | Why not yet |
 | --- | --- | --- |
@@ -215,11 +220,18 @@ a row in this table. Never neither.
 | ~~Frontend lint (`eslint`, `stylelint`)~~ | — | **Built (C-019).** `webapp/eslint.config.js` and the stylelint rules run as `pnpm lint` and `pnpm lint:css` in the `frontend-a11y` job. |
 | ~~Frontend tests (Vitest), E2E (Playwright)~~ | — | **Built (C-018, C-019).** `pnpm test` (Vitest) and `pnpm e2e` (Playwright, desktop and phone projects) run in the `frontend-a11y` job. `webapp/` stopped being the bundle-floor harness at C-018. |
 | ~~Integration (testcontainers)~~ | — | **Built (F-005).** `crates/casual-task-persistence/tests/schema_harness.rs` starts PostgreSQL 16, applies every migration, and reaches the invariants from Rust. Run by the `schema` job. The tests are `#[ignore]` so `cargo test` stays runnable without a Docker daemon; CI runs them explicitly, because otherwise nothing would. |
-| Query count (no N+1) | **C-012** | Needs a query layer to count. |
+| ~~Query count (no N+1)~~ | — | **Built (C-012).** The 100-task list integration test asserts one authorization resolution for the whole page through the exported resolution metric. |
 | ~~Permission matrix, escalation, cross-tenant~~ | — | **Built (C-004) / Gated (C-005).** `authz.rs`, `permissions.rs`, `roles.rs`, `tenant_isolation.rs`, and the route-derived `route_isolation.rs` sweep run through `cargo test --workspace -- --ignored` in the blocking `schema` job. D-056 still blocks the final built-in-role matrix. |
-| OpenAPI diff, event schema diff, plugin contract diff, error registry | Phase 1 | Nothing to diff until `/v1` and the registry exist. |
-| Secret scan, SAST, container scan, enumeration, injection, fuzz | Phase 1 | Tracked with the security work in [07](07-QUALITY-SECURITY-AND-COMPATIBILITY.md). |
-| ~~Accessibility (axe, contrast)~~ | — | **Built (C-019).** axe runs over rendered output in `pnpm test`; the `frontend-a11y` job is named for it. |
+| OpenAPI diff | Phase 1 contract artifact | `/api/v1` exists, but there is no canonical committed OpenAPI snapshot. Generating and reviewing that public artifact is design work; until it lands, compatibility changes are not machine-checked. |
+| Event schema diff | **D-053** | Events carry `schema_version`, but D-053's event registry is open and there is no canonical payload-schema snapshot to compare. |
+| Plugin contract diff | Phase 1 contract artifact | Contract identifiers and versions exist, but CI has no committed compatibility baseline. Fuzzing checks parser safety, not semantic-version compatibility. |
+| ~~Error registry~~ | — | **Built.** `check-error-registry.py` extracts compile-time `Code::new`/`ErrorCode::new` declarations and rejects any code absent from `docs/20`; the documentation job blocks on it. |
+| ~~Security static rules and container scan~~ | — | **Built.** Dependency advisories, secret scanning and TaskForge-specific source rules block CI; the image job scans the built runtime with Trivy and fails on fixed high/critical findings. |
+| ~~Enumeration and injection~~ | — | **Built.** Login/reset/invite indistinguishability is exercised against PostgreSQL; filter compilation tests prove user values remain bound parameters. Both run in blocking test jobs. |
+| ~~Fuzz smoke~~ | — | **Built.** The `fuzz-smoke` job gives the recursive filter JSON surface and plugin-contract identifiers bounded libFuzzer budgets on every PR. Deep campaigns remain nightly. |
+| ~~Accessibility (axe)~~ | — | **Built (C-019).** axe runs over rendered output in `pnpm test`; the `frontend-a11y` job is named for it. |
+| Contrast automation | **C-019** | jsdom has no layout and cannot evaluate color contrast. CI checks token use; the actual light/dark contrast pass is still a release check. |
+| Migration rehearsal from a prior production version, with timing | Release engineering | CI applies every migration to a clean PostgreSQL 16. It does not yet restore a production-shaped prior version and time the upgrade. |
 
 ## Future gates
 

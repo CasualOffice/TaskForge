@@ -87,8 +87,17 @@ def main() -> int:
         (
             "CLAUDE.md",
             r"Phase 0 is (\d+) `Gated` / (\d+) `Built` of (\d+); Phase 1 is (\d+) `Gated` /\s*"
-            r"(\d+) `Built` / (\d+) `Building` / 1 not started, of (\d+)\.",
-            (f["Gated"], f["Built"], sum(f.values()), gated, built, building, total),
+            r"(\d+) `Built` / (\d+) `Building` / (\d+) not started, of (\d+)\.",
+            (
+                f["Gated"],
+                f["Built"],
+                sum(f.values()),
+                gated,
+                built,
+                building,
+                not_started,
+                total,
+            ),
         ),
         (
             "README.md",

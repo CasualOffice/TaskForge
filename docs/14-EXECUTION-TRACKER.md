@@ -362,20 +362,20 @@ measurement blocker.
 | C-005 | Cross-tenant property suite | `Gated` |
 | C-006 | Projects, membership, visibility | `Gated` |
 | C-007 | Default workflow + transitions | `Building` |
-| C-008 | Task CRUD, assignees, tags | `Building` |
-| C-009 | Comments | Accepted |
+| C-008 | Task CRUD, assignees, tags | `Built` |
+| C-009 | Comments | `Built` |
 | C-010 | Attachment pipeline | `Built` |
 | C-011 | Activity + audit + **outbox** | `Building` |
 | C-012 | Filter grammar + compiler | `Building` |
 | C-013 | Search projection + full-text | `Built` |
-| C-014 | Cursor pagination | `Building` |
+| C-014 | Cursor pagination | `Built` |
 | C-015 | SSE + fan-out | **Gated** |
 | C-016 | Notifications (in-app + email) | `Building` |
 | C-017 | Extension point registry (core panels only) | `Built` |
 | C-018 | Web shell, board, list, My Work, drawer, palette | `Building` |
 | C-019 | Bundle + a11y gates wired | `Built` |
-| C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
 | C-020 | Rate limiting at the edge | `Building` |
+| C-021 | **Export** — CSV/JSONL of any task query, as a job | `Building` |
 | C-022 | **Chain of custody** — team transfer, environment promotion, verification, `/me/queue` | `Built` |
 | C-023 | **Releases** — what went out together, cut from the pipeline | **Gated** |
 | C-024 | **Team scope** — team as a place to stand, beside project and workspace | **Gated** |
@@ -405,6 +405,13 @@ measurement blocker.
 | C-048 | **People in the palette** — the third of "tasks, projects and people" nothing fetched | `Built` |
 | C-049 | **A search result that says why it matched** | `Built` |
 | C-050 | **Prefix search** — a word finds its task before it is finished (D-069 part one) | `Built` |
+
+The implementation notes below are chronological evidence: they record what a
+change found, why it took its shape, and what was missing at that point. The
+table above and the closure note in [54](54-PHASE-1-CLOSURE.md) are the current
+status. When an older “still to come” statement conflicts with them, the table
+wins; known contradictions are corrected in place rather than treated as open
+work.
 
 **C-023, C-024 and C-025 are `Gated` at both ends.** The servers are protected by
 `cargo test --workspace -- --ignored`, which CI runs; the clients by
@@ -853,9 +860,11 @@ permissions, and plugin hooks belong to persistence, `casual-task-authz` and
 Phase 3. The caller passes their results in, which is what lets the whole state
 machine be tested with no database and no runtime.
 
-Still missing before `Gated`: status editing and the status-migration path
-(docs/23 §Editing a workflow), and the transition command itself, which needs
-the command layer.
+Status authoring, ordering, migration, workflow reads and the transition command
+have since landed. C-007 remains `Building`: migrations above the synchronous
+10,000-task ceiling need the tracked background path `docs/23` specifies, and
+Phase 3 transition hooks remain intentionally absent until the plugin runtime
+exists.
 
 **C-004 is `Built`.** Five controls live in `casual-task-authz`; last-owner
 protection is checked under a database lock; every grant and role edit records
@@ -1053,11 +1062,10 @@ Both schema assertions were verified by breaking them deliberately: widening the
 projection and removing the pinned `search_path` each fail with the message that
 names the risk.
 
-**Still to come before C-001 is `Built`:** the HTTP surface — login, logout,
-session cookies, CSRF, the enrolment and invitation endpoints — which needs the
-API server that does not exist yet, and the remaining acceptance gates in
-[40](40-IDENTITY-AUTH-AND-SESSION.md) that are end-to-end by nature (enumeration
-timing envelope, CSRF, break-glass). SSO is **Phase 2**, not here.
+The HTTP surface — login, logout, session cookies, CSRF, MFA enrolment and
+invitations — has since landed. C-001 is `Built`; the remaining move to `Gated`
+is the complete acceptance contract in [40](40-IDENTITY-AUTH-AND-SESSION.md).
+SSO remains **Phase 2**.
 
 **C-002 is `Built`.** Eleven routes — create, list, read and rename a workspace;
 list, add and remove its members; list and create its teams; add and remove team
@@ -1115,18 +1123,13 @@ are not the last. And a user added to a team must already be a member of the
 workspace — `team_membership` has no policy of its own, so that check is its
 tenant boundary.
 
-**Still to come before C-002 is `Gated`:** D-057, and two gates that exist as
-tests here but not yet as CI-enforced suites — the cross-tenant property test
-[32](32-TENANCY-AND-ISOLATION.md) says must be *generated from the route table*
-(C-005), and the 404-not-403 sweep across every endpoint (C-004). This PR's
-version of both is hand-written and covers this route family only.
+**Still to come before C-002 is `Gated`: D-057.** The cross-tenant suite is now
+generated from the production route table and the visibility sweep runs in the
+blocking Docker job. Those gates no longer block this row.
 
-**Deferred, with the reason.** `Idempotency-Key` is not implemented on the three
-`POST` creates, though [05](05-API-SPEC.md) §Idempotency requires it: the
-`idempotency_key` table exists (migration 0008) and nothing reads or writes it,
-and building that layer is a unit of work in its own right with no tracker row.
-It is a gap in the contract, not an oversight, and it applies to every `POST`
-create Phase 1 will add.
+**Idempotency is now consumed by the create paths that require it.** Migration
+0008's claim/replay store is live, conflicting reuse is refused, and the API
+tests exercise the replay contract rather than leaving the table dormant.
 
 **D-055 is consumed.** Four codes this API emitted — `TF-REQ-0001`,
 `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` — were not in
@@ -1942,12 +1945,13 @@ identically.
 name here would make every typo a new tag. Applying an existing tag is a change
 to the *task*, so the permission is `task.update` rather than `tag.manage`.
 
-**Not in C-008 yet:** dependencies (`POST /tasks/{id}/dependencies`, which needs
-the cycle check under an advisory lock from
-[24](24-CONCURRENCY-AND-IDEMPOTENCY.md)) and the filter grammar
-on `GET /tasks` beyond `project_id`. `GET /tasks` compiles through the C-012
-compiler, so adding the grammar is supplying a richer AST rather than a second
-query path.
+Dependencies and the complete C-012 filter path have since landed. Dependency
+insertion closes the cycle check inside the guarded statement under a
+workspace-scoped advisory lock; task lists attach assignees for the page in one
+query. C-008 is `Built`, and the generated transition invariant now proves over
+1,000 deterministic cases that the stored status and permanent state move as a
+pair. It is not `Gated` until the wider task acceptance contract has one named
+blocking suite.
 
 **The lifecycle is on screen** — the custody panel and the environment board.
 
@@ -2111,9 +2115,9 @@ the surface said so in one grey line.
 
 - `GET /api/v1/tasks/{id}/assignees` — the set was returned by `POST` and by
   nothing else, so the only way to learn who was on a task was to assign someone.
-  `TaskView` still carries no `assignees` field on purpose: a 200-card board would
-  fetch 200 sets it does not draw, which is the N+1 `docs/04` §The list problem
-  forbids. Ids, not names — the client resolves them through the member directory
+  `TaskView` now carries assignee ids, attached for the whole page in one query
+  rather than fetched once per card. The detail endpoint remains the mutable-set
+  surface. Ids, not names — the client resolves them through the member directory
   it already holds, and a second name source would be a second thing to keep in
   step with anonymization (ADR-026).
 - `DELETE /api/v1/tasks/{id}/dependencies/{other_id}` — dependencies were
@@ -2130,14 +2134,11 @@ end need **not** be visible — `docs/03` shows an unreadable blocker as
 exactly those edges permanent while protecting nothing the caller cannot already
 see on their own panel. The authority is `task.update` on the task in the path.
 
-**Attachments stay declared and unbuilt, and now the reason is written down.**
-The pipeline exists end to end — presign, commit, scan status, download — but
-`presign_put` returns `{origin}/attachments/{key}?…` and **no route in this
-deployment serves that origin**. A client would receive an upload URL with
-nowhere to PUT the bytes. An upload control would therefore be a button that
-always fails, which is worse than the line that says the panel is not available.
-The missing piece is the object-serving handler (or an S3 backend configured to
-answer the presigned URL).
+**The attachment-origin gap is closed.** `TF_OBJECT_BIND_ADDR` serves the
+filesystem origin with a method-bound signature and the browser preflight now
+reaches it. The pipeline — presign, upload, commit, scan and download — is
+reachable end to end. S3 remains an explicitly unsupported backend rather than
+a configuration value that silently selects filesystem storage.
 
 **A wrong client type crashed the surface, and the test had encoded the same
 mistake.** `Relationship` carries `Subtasks` under `#[serde(flatten)]`, so the
@@ -2285,12 +2286,11 @@ thirty-nine.
 async job endpoint, which is C-024 and does not exist; the refusal names the
 limit rather than pointing at a URL that would 404.
 
-**Still to come before C-008 is `Gated`:** the derived-state property test
-[23](23-WORKFLOW-AND-STATE-MACHINE.md) §Acceptance gates names — a property test
-over *random* transitions asserting `task.state == status.state` always. The
-invariant is covered here by example rather than by generation, and it is
-asserted from the stored row rather than from the response so a handler that
-returned the right JSON and wrote the wrong column would fail.
+**The derived-state property is now built.** A deterministic 1,000-case
+generator chooses transitions across workflows and asserts every accepted move
+carries the destination status and its permanent state together. Database
+integration tests still assert the stored row, so a correct response over an
+incorrect write cannot satisfy the suite.
 
 **One pre-existing divergence, reported rather than fixed here.** `ApiError`'s
 original codes — `TF-REQ-0001`, `TF-REQ-0004`, `TF-SRV-0001`, `TF-SRV-0003` —
@@ -2649,41 +2649,26 @@ what makes a registry decorative.
 surface, so a browser cannot read it. `webapp/src/extensions/coreContributions.ts`
 copies the rows and says so at the top. The two will drift the first time
 someone edits one side; the fix is C-017's remaining half, an endpoint.
-#### D-061: a board column is a permanent state, and the cost of that
+#### Workflow-backed board columns
+
 `docs/23` fixes five permanent states, and every `TaskView` carries the one it is
 in, derived from its status in the same statement so the two cannot disagree.
-Statuses are workspace-authored, and today a browser cannot read them at all —
-see below. Columns keyed on the closed set are the only grouping that is correct
-for every workspace *and* stable when the endpoint lands, so status columns
-become a refinement rather than a rewrite.
-**The losing side, stated:** a workspace with three statuses inside `ACTIVE` sees
-all three in one column, and the board cannot show the distinction its author
-created. That is real, and it is why the decision is `Open` rather than settled —
-it should be re-decided once statuses are readable.
-#### What blocks drag-and-drop, and it is not the client
-`GET /api/v1/workflows/{id}` is specified in [05](05-API-SPEC.md) §Other
-resources and **no route is registered for it**. `POST /tasks/{id}/transitions`
-requires a `to_status_id`, and there is no other way for a browser to learn one:
-`TaskView` carries the current `status_id` and the derived `state`, never the
-workflow's status set.
-So cards render and cannot be dragged, and the board says exactly that on screen
-rather than sending a move that would be refused with a code the user cannot act
-on. `webapp/src/api/workflow.ts` is already written against the documented
-contract, so registering the route makes the board work with **no client
-change**. It is C-007's remaining half.
-#### The gaps C-018 could not close, each with its owner
+The browser now reads the workflow and renders its authored statuses as columns;
+the permanent state remains the cross-workflow reporting and policy contract.
+D-066, not an old board placeholder, tracks the remaining workflow-ownership
+question.
+#### The gaps that remain after the server and browser surfaces landed
+
+Workflow reads, drag-and-drop, assignee reads, relations, activity, attachments
+and live browser updates have all landed since the original C-018 audit. The
+remaining gaps are narrower and retain their owning row:
+
 | Not built | Why | Row |
 | --- | --- | --- |
-| Drag-and-drop on the board | `GET /api/v1/workflows/{id}` is not served | C-007 |
-| A task's assignees, anywhere | `TaskView` has no `assignees` field and there is no `GET /tasks/{id}/assignees` — the set is write-only, though `assignee=@me` filters correctly | C-008 |
-| Relations and dependencies | `POST /tasks/{id}/dependencies` is specified and not routed | C-008 |
-| Activity in the drawer | Every change writes an activity record already; `GET /tasks/{id}/activity` is not served | C-011 |
-| Attachments in the drawer | The pipeline exists in `casual-task-attachment`; no route is registered | C-010 |
 | Watched tasks in My Work | `watcher` is not in the filter grammar's closed field set and no endpoint exposes watchers | C-008 |
-| Live updates | The SSE endpoint exists; the client does not subscribe, and `docs/42`'s `BroadcastChannel` sharing and `Last-Event-ID` replay are unwritten | C-015 |
-| Permission invalidation within a second | `docs/42` invalidates the permission set on an `authz_epoch` bump over SSE; the stream carries no such event, so the window is the five-minute stale time | C-003 |
+| Permission controls invalidated within a second | The server revalidates and closes a stream on an `authz_epoch` bump, but the browser reconnect does not invalidate its effective-permission query; controls can remain for the five-minute stale time while server authorization already refuses them | C-003 |
 | Saved views, the filter builder, bulk operations, the rich-text editor, offline drafts and the retry queue | Not started | C-018 |
-| The design system | AGENTS.md forbids depending on `../design-system`, and `docs/42` requires re-measuring the budget when it is wired in. Tokens are declared locally under the design system's own names, so adopting it is a changed import in one file | C-018 |
+| Full design-system adoption | The dependency is consumed by newer surfaces, but the older local token and component layer has not been fully retired; bundle and geometry budgets must remain green during migration | C-018 |
 **C-019 is `Built`, not `Gated`, and the reason is contrast.** Two layers run on
 every push: `eslint` with `jsx-a11y` over the source, and `axe-core` over
 rendered DOM under jsdom. jsdom has no layout, so axe's `color-contrast` rule
@@ -2755,16 +2740,12 @@ The seam is in place: `guard::scanned_clean` matches on the verdict with no
 catch-all arm, so a fifth scan state cannot be added without deciding whether it
 may be served, and an unrecognised verdict is refused.
 
-**Still to come before C-010 is `Gated`:** the scan worker itself (the consumer
-that turns `attachment.uploaded` into a verdict), the orphan sweeper
-`docs/28` §Orphan and lifecycle cleanup requires in **both** directions, the S3
-backend, inline preview, download auditing, and the per-workspace size and
-storage quota — `size_limit` takes the configured value and there is nowhere yet
-to configure one. Of `docs/28` §Acceptance gates, four are implemented
-(type-confusion, invisibility, cross-tenant, and the download-before-scan half
-of the infected-file gate); the streaming test needs a 2 GB fixture, the
-EICAR test needs the scanner, the orphan test needs the sweeper, and the
-separate-origin test needs a browser.
+**Still to come before C-010 is `Gated`:** the orphan sweeper `docs/28` requires
+in both directions, the S3 backend, inline preview, download auditing, and the
+per-workspace size and storage quota. The scan consumer and its clean,
+infected, unavailable and unconfigured outcomes are now tested against
+PostgreSQL. The streaming test still needs a 2 GB fixture, the EICAR path needs
+a live ClamAV daemon, and the orphan test needs the sweeper.
 
 **One gap in the checksum check, stated.** `docs/28` §Validation requires the
 client-supplied SHA-256 to match at commit. C-010 validates its *shape* and
@@ -2842,11 +2823,10 @@ card would be the N+1 [04](04-RBAC-AND-AUTHORIZATION.md) §The list problem
 exists to prevent. A bulk endpoint was the alternative and was rejected — it is
 a second round trip that can disagree with the first.
 
-**What is not covered:** removing a dependency (`DELETE`) is not implemented, so
-a relation added in the drawer cannot be undone through the API; the activity
-stream has no project-level feed (`activity_project_ix` exists and nothing reads
-it); `is_blocked` still has no `EXPLAIN` probe, so the fix above is covered by
-unit and integration tests rather than by the plan gate; and the subtask rollup
+**What is not covered:** the activity stream has no project-level feed
+(`activity_project_ix` exists and nothing reads it); `is_blocked` still has no
+`EXPLAIN` probe, so the fix above is covered by unit and integration tests
+rather than by the plan gate; and the subtask rollup
 and the `task.dependency.override` reason are **not** implemented here — the
 override lives on the transition endpoint (C-007), and its required-reason field
 is a change to that surface rather than to these two.
@@ -2997,13 +2977,11 @@ storing the bytes.
 Proved end to end from a browser against the running stack: presign `201`,
 `PUT` `200`, commit `202`.
 
-**What is still not there, and it is not the client.** No scanner exists —
-nothing in the worker sets `CLEAN`, and "Attachment virus scanning" is a task in
-the seeded backlog. `GET /tasks/{id}/attachments` returns only rows with
-`committed_at`, which only the `PENDING → CLEAN` transition sets, so an uploaded
-file is invisible and undownloadable until something scans it. That is D-062
-working as countersigned — fail closed — and the panel says so after an upload
-rather than showing "Nothing attached" over a file that arrived safely.
+**The scan consumer now exists.** With `TF_CLAMD_ADDR` configured it is the only
+path that moves an upload from `PENDING` to `CLEAN`; without a scanner the file
+remains invisible and undownloadable. That is D-062 working as countersigned —
+fail closed — and the panel says so after an upload rather than showing
+"Nothing attached" over a file that arrived safely.
 
 **Also on the create form**, since a task you cannot attach to is half the
 request: files are chosen before the task exists and uploaded after it, because
@@ -3243,6 +3221,14 @@ says so where somebody forking this will read it.
 It is a separate workflow from `ci.yml` because it deploys — `ci.yml` is `contents: read` by
 design, and a deploy job inside it would either hold a release behind a static
 page or publish one from a commit the gates rejected.
+
+The deployment claim is now bounded by a release preflight. It refuses to
+publish while D-048 is unresolved, a Dockerfile base is mutable, or the
+existing-volume upgrade runner is absent. The single-node first-start path is
+still `Built`; production release remains blocked rather than inferred from a
+green clean-database compose test. [18](18-SUPPORT-MATRIX.md),
+[48](48-DEPLOYMENT-PROFILES.md), and [52](52-DEPLOYMENT-GUIDE.md) state the same
+boundary.
 
 
 **C-048 is the third of a promise the shell has always made.** The search button

@@ -1,0 +1,340 @@
+/* ── Metadata column ───────────────────────────────────────────────────────
+ * One line per field, no headings, nothing behind a disclosure. If this needs
+ * to scroll, something belongs in the left column instead. */
+.meta2 {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meta2__row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+.meta2__label {
+  font-size: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.meta2__value {
+  margin: 0;
+  font-size: 13px;
+  min-width: 0;
+}
+/* A value that reads as text and acts as a control. The border appears on
+ * hover/focus so the column is legible at rest and obviously interactive the
+ * moment a pointer or the keyboard reaches it. */
+.meta2__button {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 4px 8px;
+  /* Optical, not rhythm: pulls the control's own padding back so its *label*
+     lines up with the text above it rather than its box. A grid step would
+     misalign the thing this exists to align. */
+  /* stylelint-disable-next-line declaration-property-value-allowed-list */
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.meta2__button:hover {
+  border-color: var(--tf-border-strong, var(--color-border-strong));
+  background: var(--tf-surface, var(--color-surface));
+}
+.meta2__button--late {
+  color: var(--tf-danger, var(--color-danger));
+  font-weight: 600;
+}
+.meta2__unset {
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.meta2__date {
+  width: 200px;
+  margin: 0;
+  padding: 4px;
+}
+.prio {
+  font-weight: 600;
+}
+.prio--URGENT,
+.prio--HIGH {
+  color: var(--tf-danger, var(--color-danger));
+}
+.prio--MEDIUM {
+  color: var(--tf-warning, var(--color-warning));
+}
+
+/* ── Peek: the deliberately partial drawer ─────────────────────────────────
+ * It does not scroll. If a field would not fit, it belongs on the full route
+ * and not here (design/LAYOUT §4). */
+.peek {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.peek__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 28%);
+}
+.peek__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--tf-border-strong, var(--color-border-strong));
+  border-radius: 12px 0 0 12px;
+  background: var(--tf-surface, var(--color-surface));
+  box-shadow: -12px 0 32px rgb(0 0 0 / 12%);
+}
+.peek__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+  flex: none;
+}
+.peek__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  min-height: 0;
+}
+.peek__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.peek__signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.peek__due {
+  font-size: 12px;
+  color: var(--tf-text-secondary, var(--color-text-muted));
+}
+.peek__due--late {
+  color: var(--tf-danger, var(--color-danger));
+  font-weight: 600;
+}
+/* Clipped by the component, not by CSS: an ellipsis painted over text a
+ * reader cannot reach is the same hiding this surface is meant to stop. The
+ * snippet ends on a character count and the full view is one click away. */
+.peek__desc {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--tf-text-secondary, var(--color-text));
+}
+.peek__open {
+  align-self: flex-start;
+}
+
+.peek__who {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.peek__wholabel {
+  flex: none;
+  width: 72px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+  font-size: 12px;
+}
+
+/* A metadata value never wraps: the column is sized for its longest value, and
+ * a date broken across two lines is the same "read it in pieces" failure the
+ * detail surface exists to remove. A list of names that genuinely exceeds the
+ * column is clipped with an ellipsis and readable in full from the control. */
+.meta2__button,
+.meta2__value > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.meta2__button {
+  display: inline-block;
+  line-height: 22px;
+}
+/*
+ * The metadata column's popover triggers fill their cell.
+ *
+ * `.pop` is `inline-flex`, and its trigger carries `overflow: hidden` for the
+ * ellipsis. Together those make the trigger a flex item whose automatic minimum
+ * size is zero, so the shrink-to-fit `.pop` collapsed to about 40 px inside a
+ * 203 px cell and *every* value in the column rendered as three characters and
+ * an ellipsis — "Nob…", "N…", "T…". The column exists to be read at rest, so
+ * this was the whole surface's worst bug and it looked like a design choice.
+ *
+ * Block, full width: the cell decides the width, and the ellipsis engages only
+ * when a value genuinely exceeds it. Scoped to `.meta2` because the toolbar's
+ * popovers do want to be inline and sized to their content.
+ */
+.meta2 .pop {
+  display: block;
+  max-width: 100%;
+}
+.meta2 .pop > .meta2__button {
+  width: 100%;
+  text-align: left;
+}
+/* Anchors that behave as the surrounding text: the row already reads as a row,
+ * and an underlined blue title in every list row is noise. The link nature is
+ * carried by hover, focus and the status bar, which is what a reader checks
+ * before ⌘-clicking. */
+.list__open,
+.card__title,
+.mywork__row {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── A section of the task page ──────────────────────────────────────────
+ *
+ * The complaint was "no separation between things", and it was accurate: the
+ * description, the custody forms, the subtasks, the blockers and the comments
+ * were all flush left at one indent on one background, divided by hairlines
+ * that grouped nothing. A boundary and a ground is what tells a reader where
+ * one thing ends.
+ */
+.dsec {
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
+  border: 1px solid var(--tf-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--tf-surface, var(--color-surface));
+}
+.dsec + .dsec,
+.acts + .dsec {
+  margin-top: var(--tf-gap-tight);
+}
+/* The wrappers are gone, so the gap belongs to the panels themselves. */
+.detail__scrollable > .dsec + .dsec {
+  margin-top: var(--tf-gap-tight);
+}
+
+/* ── Where it stands ─────────────────────────────────────────────────────
+ *
+ * `docs/45` makes "whose turn is it" the question a task page answers. It used
+ * to be a definition list below three open forms. It is the first line now.
+ */
+.standing {
+  /* Prose, not a row of boxes. As a flex line the gap landed between every
+     child, so "Backend" and "'s court" were two words apart. */
+  margin: 0 0 var(--tf-gap-tight);
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+}
+.standing strong {
+  color: var(--tf-text, var(--color-text));
+  font-weight: 600;
+}
+.standing__sep {
+  margin: 0 8px;
+  color: var(--tf-border-strong, var(--color-border-strong));
+}
+.standing__quiet {
+  color: var(--color-text-muted);
+}
+.standing__untriaged {
+  font-weight: 600;
+  color: var(--color-warning, var(--color-text));
+}
+.standing__pass {
+  color: var(--color-success);
+  font-weight: 600;
+}
+.standing__fail {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+/* ── The acts ────────────────────────────────────────────────────────────
+ *
+ * Three forms held open at once made a page somebody opened to *read* into a
+ * page that was two-thirds machinery, and put the rarest action above the
+ * description. Each is a button now, and opens where it stands.
+ */
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-gap-hair);
+  margin-bottom: var(--tf-gap-tight);
+}
+.acts__one--open {
+  flex: 1 1 100%;
+}
+.acts__body {
+  margin-top: var(--tf-gap-hair);
+  padding: var(--tf-gap-tight);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+}
+
+/* Provenance, as a footnote rather than three rows the size of the status. */
+.meta2__foot {
+  margin-top: var(--tf-gap-tight);
+  padding-top: var(--tf-gap-tight);
+  border-top: 1px solid var(--tf-border, var(--color-border));
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* ── The peek, per `docs/47` §4.1 ────────────────────────────────────────
+ *
+ * An overview, not a small page. Its budget is about five seconds from a list,
+ * so every element here answers "is this the one I mean, and where does it
+ * stand" — and anything that would need a second decision belongs on the page.
+ */
+.peek__standing {
+  margin: 0 0 var(--tf-gap-tight);
+  font-size: var(--text-md);
+}
+/* A property band. Four facts on one line rather than four label/value rows,
+ * which is the difference between a glance and a read (`docs/47` §2). */
+.peek__signals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--tf-gap-hair);
+  margin-bottom: var(--tf-gap-tight);
+}
+.peek__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--tf-border, var(--color-border));
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+/* Prose is capped near 70 characters wherever it runs long — a line that
+ * crosses a 1440 px window is a line nobody finishes (`docs/47` §3). */
+.peek__desc,
+.narr__body {
+  max-width: 70ch;
+}
+

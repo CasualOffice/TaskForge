@@ -45,7 +45,7 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 > Live state: [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md).
 
 <!-- phase-1-landed:begin -->
-**Phase 1 is under way.** 49 items started, 12 gated:
+**Phase 1 is under way.** 50 items started, 12 gated:
 
 - **Cross-tenant property suite** (C-005) — `Gated`
 - **Projects, membership, visibility** (C-006) — `Gated`
@@ -63,8 +63,11 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **Workspace, membership, teams** (C-002) — `Built`
 - **Permission resolver + `/explain`** (C-003) — `Built`
 - **Permission matrix + escalation suites** (C-004) — `Built`
+- **Task CRUD, assignees, tags** (C-008) — `Built`
+- **Comments** (C-009) — `Built`
 - **Attachment pipeline** (C-010) — `Built`
 - **Search projection + full-text** (C-013) — `Built`
+- **Cursor pagination** (C-014) — `Built`
 - **Extension point registry (core panels only)** (C-017) — `Built`
 - **Bundle + a11y gates wired** (C-019) — `Built`
 - **Chain of custody — team transfer, environment promotion, verification, `/me/queue`** (C-022) — `Built`
@@ -88,10 +91,8 @@ TaskForge is the work-tracking service of **Casual Office**, alongside
 - **A search result that says why it matched** (C-049) — `Built`
 - **Prefix search — a word finds its task before it is finished (D-069 part one)** (C-050) — `Built`
 - **Default workflow + transitions** (C-007) — `Building`
-- **Task CRUD, assignees, tags** (C-008) — `Building`
 - **Activity + audit + outbox** (C-011) — `Building`
 - **Filter grammar + compiler** (C-012) — `Building`
-- **Cursor pagination** (C-014) — `Building`
 - **Notifications (in-app + email)** (C-016) — `Building`
 - **Web shell, board, list, My Work, drawer, palette** (C-018) — `Building`
 - **Rate limiting at the edge** (C-020) — `Building`
@@ -162,7 +163,7 @@ why there are no sprints and no epics ([docs/17](docs/17-GLOSSARY.md)).
 | Phase | Delivers | Gated | Progress |
 | --- | --- | --- | --- |
 | **0 — Foundation** | workspace, CI gates, schema + RLS, corpus, image | 13/16 (3 built) | `████████░░` 81% |
-| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 12/50 (28 built, 9 building) | `██░░░░░░░░` 24% |
+| **1 — Usable core** | auth, projects, tasks, workflow, outbox, search, **then** the web client | 12/50 (31 built, 7 building) | `██░░░░░░░░` 24% |
 | 2 — Administration · 3 — Extensions · 4 — Advanced | custom roles, plugins, automation, reporting | 0/— | `░░░░░░░░░░` 0% |
 
 *Generated from [docs/14-EXECUTION-TRACKER.md](docs/14-EXECUTION-TRACKER.md) by `scripts/phase-progress.py`, and gated in CI so it cannot go stale. **Progress counts `Gated` items only** — merged, tested, and protected by an acceptance gate ([AGENTS.md](AGENTS.md): "done means Gated"). Work that is built and tested but not yet gated is shown separately rather than counted.*
@@ -310,8 +311,8 @@ product API and the web client.
 **It is a Phase 1 core, not a finished product.** Tasks, projects, boards,
 lists, dashboards, environments, releases, attachments and the permission model
 all work. They are not all `Gated`, which is the only word here that means done:
-of 50 Phase 1 items, 12 carry an acceptance gate, 28 more are merged with their
-tests passing, 13 are in progress and 1 is not started. Time tracking,
+of 50 Phase 1 items, 12 carry an acceptance gate, 31 more are merged with their
+tests passing, and 7 are in progress. Time tracking,
 automation rules, plugins, saved reports and user-composed dashboards are
 designed and not built — `docs/` says which is which, and the tracker says how
 far each got, by name.

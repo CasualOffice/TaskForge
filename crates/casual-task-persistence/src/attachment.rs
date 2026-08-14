@@ -36,6 +36,8 @@ pub struct AttachmentRow {
     pub checksum: String,
     /// `PENDING` | `CLEAN` | `INFECTED` | `FAILED`.
     pub scan_status: String,
+    /// Set once size and magic bytes have been verified outside the transaction.
+    pub verified_at: Option<OffsetDateTime>,
     pub committed_at: Option<OffsetDateTime>,
     pub uploaded_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -48,7 +50,7 @@ pub const SCAN_STATUSES: &[&str] = &["PENDING", "CLEAN", "INFECTED", "FAILED"];
 pub const CLEAN: &str = "CLEAN";
 
 const COLUMNS: &str = "a.id, a.task_id, a.object_key, a.filename, a.content_type,
-                       a.byte_size, a.checksum, a.scan_status, a.committed_at,
+                       a.byte_size, a.checksum, a.scan_status, a.verified_at, a.committed_at,
                        a.uploaded_by, a.created_at";
 
 fn row_of(row: &sqlx::postgres::PgRow) -> Result<AttachmentRow, sqlx::Error> {
@@ -62,6 +64,7 @@ fn row_of(row: &sqlx::postgres::PgRow) -> Result<AttachmentRow, sqlx::Error> {
         byte_size: row.try_get("byte_size")?,
         checksum: row.try_get("checksum")?,
         scan_status: row.try_get("scan_status")?,
+        verified_at: row.try_get("verified_at")?,
         committed_at: row.try_get("committed_at")?,
         uploaded_by: row.try_get("uploaded_by")?,
         created_at: row.try_get("created_at")?,
@@ -241,11 +244,11 @@ pub async fn count_for_task(scoped: &mut Scoped<'_>, task_id: Uuid) -> Result<i6
     .await
 }
 
-/// Record what the bytes turned out to be, after the commit handshake verified
-/// them.
+/// Claim verification and record what the bytes turned out to be.
 ///
-/// Writes the sniffed type and leaves `committed_at` alone: verification is not
-/// the same event as becoming visible, and only a `CLEAN` scan does the second.
+/// Writes the sniffed type once and leaves `committed_at` alone: verification
+/// is not the same event as becoming visible, and only a `CLEAN` scan does the
+/// second. `false` means another request already claimed verification.
 ///
 /// # Errors
 ///
@@ -257,8 +260,9 @@ pub async fn record_verified_type(
 ) -> Result<bool, sqlx::Error> {
     let affected = sqlx::query(
         "UPDATE attachment
-            SET content_type = $3
-          WHERE id = $1 AND workspace_id = $2 AND committed_at IS NULL",
+            SET content_type = $3, verified_at = now()
+          WHERE id = $1 AND workspace_id = $2
+            AND committed_at IS NULL AND verified_at IS NULL",
     )
     .bind(id)
     .bind(scoped.workspace_id().as_uuid())

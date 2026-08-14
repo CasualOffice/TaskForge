@@ -116,6 +116,9 @@ impl Consumer for AttachmentScan {
             // Deleted between commit and scan. Nothing to do, and not an error.
             return Ok(());
         };
+        tx.commit()
+            .await
+            .map_err(|error| format!("the scan read could not commit: {error}"))?;
 
         // Read once, in full: a scanner has to see every byte, and `docs/28`
         // caps an attachment at 100 MB by default for exactly this reason —
@@ -138,6 +141,28 @@ impl Consumer for AttachmentScan {
             Verdict::Clean => ("CLEAN", None),
             Verdict::Infected(signature) => ("INFECTED", Some(signature.as_str())),
         };
+
+        // Re-enter the tenant only after external I/O has finished. The row may
+        // have been deleted while scanning; in that case the delivery has no
+        // remaining state to update and can be acknowledged.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| format!("the verdict could not begin: {error}"))?;
+        let mut scoped = Scoped::apply(&mut tx, &scope)
+            .await
+            .map_err(|error| format!("the verdict could not scope: {error}"))?;
+        if attachment::find_for_commit(&mut scoped, event.aggregate_id)
+            .await
+            .map_err(|error| format!("re-reading the attachment failed: {error}"))?
+            .is_none()
+        {
+            tx.commit()
+                .await
+                .map_err(|error| format!("the empty verdict could not commit: {error}"))?;
+            return Ok(());
+        }
 
         attachment::mark_scanned(&mut scoped, row.id, status, detail)
             .await

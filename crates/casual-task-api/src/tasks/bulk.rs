@@ -27,7 +27,7 @@
 //! # What this does not do
 //!
 //! Above the limit the client is directed to the async job endpoint (`docs/05`),
-//! which does not exist yet — C-024. Until it does, the refusal names the limit
+//! which does not exist yet. Until it does, the refusal names the limit
 //! and the client splits the batch.
 
 use std::collections::{HashMap, HashSet};

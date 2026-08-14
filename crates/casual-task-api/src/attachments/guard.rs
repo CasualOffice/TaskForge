@@ -166,6 +166,7 @@ mod tests {
             byte_size: 10,
             checksum: "x".repeat(64),
             scan_status: scan_status.to_owned(),
+            verified_at: Some(OffsetDateTime::UNIX_EPOCH),
             committed_at: Some(OffsetDateTime::UNIX_EPOCH),
             uploaded_by: Uuid::now_v7(),
             created_at: OffsetDateTime::UNIX_EPOCH,

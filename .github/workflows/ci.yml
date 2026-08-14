@@ -23,7 +23,8 @@ env:
 # Gates whose harnesses do not exist yet are recorded in that document's
 # "Pending gates" section and are added by their own tracker items — latency
 # (F-007, waiting on a baseline measured on the docs/30 reference machine),
-# openapi-diff and error-registry (Phase 1), a11y (C-019), fuzz (Phase 1).
+# openapi-diff and event/plugin schema snapshots (Phase 1). Fuzz smoke is a
+# blocking job below; deep fuzzing remains a scheduled external run.
 # A gate is never silently omitted; it is either here or recorded as pending.
 jobs:
   format:
@@ -236,7 +237,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cargo install cargo-deny --locked
-      - run: cargo deny check bans licenses sources
+      - run: cargo deny check advisories bans licenses sources
+
+  # Short, deterministic-budget fuzzing on every change. The two targets are
+  # the untrusted recursive filter tree and the plugin contract's bounded
+  # identifiers. Extended campaigns remain a nightly/release input because a
+  # PR runner cannot provide a meaningful deep budget.
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install nightly --profile minimal
+      - run: cargo +nightly install cargo-fuzz --version 0.13.2 --locked
+      - run: cargo +nightly fuzz run filter_json -- -max_total_time=20 -timeout=3
+      - run: cargo +nightly fuzz run plugin_contract -- -max_total_time=20 -timeout=3
 
   # docs/16-DOCUMENTATION-MAINTENANCE.md — the design record is the source of
   # truth, so a broken cross-reference is a build failure.
@@ -253,6 +267,15 @@ jobs:
         # half that makes it worth anything. A token in a commit survives in the
         # history and in every clone, so the only cheap moment is before it lands.
         run: ./scripts/verify-no-secrets.sh
+
+      - name: TaskForge-specific security source rules
+        run: python3 scripts/check-security-static.py
+
+      - name: Every emitted error code is in the public registry
+        run: python3 scripts/check-error-registry.py
+
+      - name: Source modules stay within the review bound
+        run: python3 scripts/check-module-size.py
 
       - name: README phase progress matches the execution tracker
         # Derived, not typed. A percentage in a second place has no reason to
@@ -307,6 +330,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the image
         run: docker build -t taskforge:ci .
+      - name: No high or critical known CVEs in the runtime image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: taskforge:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
       - name: Binaries run, migrations shipped, non-root
         # --version, not a bare invocation. This step used to run each binary
         # with no arguments and require exit 0, which passed only because they

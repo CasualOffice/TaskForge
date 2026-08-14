@@ -103,6 +103,26 @@ merged. It moves from `Built` to `Gated` only when the blocking workflow invokes
 its acceptance suite. Stale prose naming a route or worker as absent is removed
 in the same increment that records the evidence proving it present.
 
+## Module boundary gate
+
+The 500-line contract applies to Rust, TypeScript, TSX and CSS source under the
+workspace crates, tools and web client. CI counts physical lines and rejects an
+oversized module. Existing large files are divided by reason to change: API
+reads from mutations, worker runtime from route construction, persistence reads
+from maintenance, tests from production code, and CSS by surface. The gate does
+not exempt tests, because a test file nobody can review can conceal divergent
+fixtures as readily as production code can conceal divergent guards.
+
+## Deployment release boundary
+
+Phase 1 has an executable single-node first-start path, not a production release
+path. Publication is blocked until D-048 is Accepted and the Dockerfile bases
+are digest-pinned, and until an existing-volume upgrade runner exists. Profiles
+that require Redis, S3 or replica routing remain design targets. This closure
+pass makes those boundaries executable in the release workflow and consistent
+across the support matrix and deployment notes; it does not settle D-048 or
+invent an upgrade protocol.
+
 ## Cost
 
 This closure pass delays new visible features and spends review capacity on

@@ -1,0 +1,299 @@
+/* ── View chrome ─────────────────────────────────────────────────────────── */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+/* The toolbar. Its own ground and a single border, so the controls read as one
+ * band rather than as loose parts floating on the content. */
+.view__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  padding: var(--tf-gap-tight) var(--tf-content-pad);
+  border-bottom: 1px solid var(--tf-border);
+  background: var(--tf-surface);
+  flex-wrap: wrap;
+}
+
+.view__title {
+  margin: 0;
+  font: var(--tf-section-title);
+}
+.view__count {
+  font: var(--tf-meta);
+  color: var(--tf-text-muted);
+}
+
+/* ── Home: the courts ─────────────────────────────────────────────────────
+ * One block per court, each headed by what it is and *why* these tasks are in
+ * it. A heading alone names the list; the sentence is what makes it actionable
+ * at a glance, which is the whole budget this surface has. */
+.court {
+  margin-bottom: var(--tf-gap-page);
+}
+.court__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--tf-gap-tight);
+  flex-wrap: wrap;
+  margin-bottom: var(--tf-gap-tight);
+}
+.court__title {
+  margin: 0;
+  font: var(--tf-card-title);
+  font-size: 15px;
+}
+.court__count {
+  min-width: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--tf-surface-sunken);
+  font: var(--tf-meta);
+  font-weight: 600;
+  color: var(--tf-text-secondary);
+  text-align: center;
+}
+.court__why {
+  font: var(--tf-meta);
+  color: var(--tf-text-muted);
+}
+/* A grid, not a column: a court with nine cards should not be nine screens. */
+.court__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+  gap: var(--tf-gap-tight);
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────
+ * Breadcrumb, title with its primary action, and the project's tabs. Every
+ * view began with a row of dropdowns before this: nothing said which project
+ * you were in, nothing said how you got there, and the first thing the eye met
+ * was a control rather than a subject. */
+
+.page {
+  padding: var(--tf-gap-field) var(--tf-content-pad) 0;
+  background: var(--tf-surface);
+}
+
+.page__crumbs ol {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tf-gap-hair);
+  margin: 0;
+  padding: 0;
+  font: var(--tf-meta);
+  color: var(--tf-text-muted);
+}
+/* The separator is generated, so a crumb is a crumb and no component has to
+   remember to draw a slash after itself. */
+.page__crumbs li + li::before {
+  content: '/';
+  margin-right: var(--tf-gap-hair);
+  color: var(--tf-border-strong);
+}
+.page__crumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+.page__crumbs a:hover {
+  color: var(--tf-accent-hover);
+  text-decoration: underline;
+}
+.page__crumbs [aria-current='page'] {
+  color: var(--tf-text-secondary);
+}
+
+.page__head {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  margin: var(--tf-gap-hair) 0 var(--tf-gap-tight);
+}
+.page__title {
+  margin: 0;
+  font: var(--tf-page-title);
+}
+.page__count {
+  font: var(--tf-meta);
+  color: var(--tf-text-muted);
+}
+.page__spacer {
+  flex: 1;
+}
+
+/* Tabs, not a second row of buttons: they are the project's views, they are
+   mutually exclusive, and the underline is what says which one you are on. */
+.page__tabs {
+  display: flex;
+  gap: var(--tf-gap-field);
+  margin-bottom: -1px;
+}
+.page__tab {
+  padding: var(--tf-gap-hair) 4px var(--tf-gap-tight);
+  border-bottom: 2px solid transparent;
+  color: var(--tf-text-secondary);
+  font: var(--tf-control-text);
+  text-decoration: none;
+}
+.page__tab:hover {
+  color: var(--tf-text);
+  border-bottom-color: var(--tf-border-strong);
+}
+.page__tab[aria-current='page'] {
+  color: var(--tf-accent-hover);
+  border-bottom-color: var(--tf-accent);
+  font-weight: 600;
+}
+
+.view__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--tf-content-pad) var(--tf-gap-page);
+}
+
+/* ── Sign in ─────────────────────────────────────────────────────────────── */
+
+.signin {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--tf-gap-tight);
+}
+.signin__card {
+  width: min(360px, 100%);
+  padding: var(--tf-gap-field);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+}
+.signin__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+.signin__submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: var(--tf-gap-tight);
+}
+
+.workspace__single {
+  font-weight: 600;
+}
+/* ── List ────────────────────────────────────────────────────────────────── */
+
+.view__bar--sub {
+  background: var(--tf-surface-subtle);
+}
+
+.scope__select {
+  width: auto;
+  max-width: 260px;
+}
+.scope__search {
+  width: min(280px, 40vw);
+}
+
+/* The list is a card, not a bare table bleeding to the window edge. A border
+ * and a radius give it somewhere to end, which is what lets the sticky header
+ * sit *inside* something rather than floating over the page. */
+.list {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-card);
+  background: var(--tf-surface);
+  overflow: hidden;
+}
+.list__head {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--tf-surface-subtle);
+  border-bottom: 1px solid var(--tf-border);
+}
+.list__head tr,
+.list__row {
+  display: grid;
+  /* Type, key, title, status, assignee, priority, due, updated. The title keeps
+     the only flexible track: `docs/47` §5 makes it the one column that must
+     never be what shrinks. */
+  grid-template-columns: 76px 84px minmax(0, 1fr) 116px 132px 88px 92px 96px;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  padding: 0 var(--tf-gap-field);
+}
+.list__cell {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--tf-body);
+  /* After the shorthand, not before it. `font:` resets every longhand it does
+     not name, so this sat above it doing nothing and a cell never inherited the
+     weight its row set — which is why a bold row had unbold cells. */
+  font-weight: inherit;
+  color: var(--tf-text-secondary);
+  padding: var(--tf-gap-tight) 0;
+}
+.list__head .list__cell {
+  font: var(--tf-meta);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tf-text-muted);
+  padding: var(--tf-gap-tight) 0;
+}
+.list__row {
+  border-bottom: 1px solid var(--tf-border);
+}
+.list__row:last-child {
+  border-bottom: 0;
+}
+.list__row:hover {
+  background: var(--tf-hover);
+}
+.list__cell--overdue {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.list__open,
+.list__sort {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list__open--title {
+  color: var(--tf-text);
+  font-weight: 500;
+}
+.list__open--title:hover {
+  color: var(--tf-accent-hover);
+  text-decoration: underline;
+}
+.list__sort {
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+.list__notice {
+  padding: var(--tf-gap-tight) var(--tf-gap-tight);
+}
+

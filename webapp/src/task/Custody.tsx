@@ -47,7 +47,7 @@ import { useAnnounce } from '../shell/announce'
 import { ErrorNotice } from '../shell/notice'
 import type { Authority } from '../shell/permissions'
 import { useWorkspaceId } from '../shell/session'
-import { formatRelative } from '../tasks/present'
+import { CustodyTrail } from './CustodyTrail'
 
 export function Custody({
   task,
@@ -105,7 +105,7 @@ export function Custody({
         <h2 id="custody-heading" className="narr__heading">
           Chain of custody
         </h2>
-        <Trail data={data} envName={envName} teamName={teamName} nameOf={nameOf} />
+      <CustodyTrail data={data} envName={envName} teamName={teamName} nameOf={nameOf} />
       </section>
     )
   }
@@ -440,90 +440,5 @@ function Verify({
         <p className="field__hint">A failure needs evidence before it can be recorded.</p>
       ) : null}
     </div>
-  )
-}
-
-/**
- * The three logs, merged into one timeline.
- *
- * Merged and not stacked, because the question is "what happened to this", and
- * three separate lists make the reader interleave them by timestamp themselves —
- * which is the work the panel exists to do.
- */
-function Trail({
-  data,
-  envName,
-  teamName,
-  nameOf,
-}: {
-  data: CustodyData
-  envName: (id: string) => string
-  teamName: (id: string | null) => string
-  nameOf: (id: string) => string
-}): ReactElement {
-  // Defensive against a partial payload: a missing list makes this panel render
-  // less, not the whole route disappear. The task surface is one route, and a
-  // field this component happens to trust should not be able to take the
-  // comments and the description down with it.
-  const transfers = data.transfers ?? []
-  const promotions = data.promotions ?? []
-  const verifications = data.verifications ?? []
-
-  const events = [
-    ...transfers.map((t) => ({
-      at: t.moved_at,
-      who: t.moved_by,
-      what:
-        t.from_team_id === null
-          ? `routed it to ${teamName(t.to_team_id)}`
-          : `handed it from ${teamName(t.from_team_id)} to ${teamName(t.to_team_id)}`,
-      note: t.note,
-      tone: '',
-    })),
-    ...promotions.map((p) => ({
-      at: p.promoted_at,
-      who: p.promoted_by,
-      what: `promoted it to ${envName(p.environment_id)}`,
-      note: null,
-      tone: '',
-    })),
-    ...verifications.map((v) => ({
-      at: v.verified_at,
-      who: v.verified_by,
-      what: `${v.verdict === 'PASS' ? 'passed' : 'failed'} it on ${envName(v.environment_id)}`,
-      note: v.note,
-      tone: v.verdict === 'FAIL' ? 'cust__fail' : '',
-    })),
-  ].sort((a, b) => b.at.localeCompare(a.at))
-
-  if (events.length === 0) {
-    return <p className="cust__empty">Nothing has happened to this yet.</p>
-  }
-
-  const failures = verifications.filter((v) => v.verdict === 'FAIL').length
-  const bounces = transfers.filter((t) => t.from_team_id !== null).length
-
-  return (
-    <>
-      {/* The two numbers that expose a broken process, stated rather than left
-          to be counted from the list below. */}
-      {failures > 1 || bounces > 1 ? (
-        <p className="cust__warn">
-          {failures > 1 ? `Failed verification ${failures} times. ` : ''}
-          {bounces > 1 ? `Handed between teams ${bounces} times.` : ''}
-        </p>
-      ) : null}
-      <ol className="cust__trail">
-        {events.map((event) => (
-          <li key={`${event.at}-${event.what}`} className={event.tone}>
-            <span className="cust__who">{nameOf(event.who)}</span> {event.what}{' '}
-            <time dateTime={event.at}>{formatRelative(event.at)}</time>
-            {event.note === null || event.note === '' ? null : (
-              <span className="cust__note"> — {event.note}</span>
-            )}
-          </li>
-        ))}
-      </ol>
-    </>
   )
 }

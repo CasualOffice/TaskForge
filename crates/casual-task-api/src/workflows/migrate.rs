@@ -63,7 +63,7 @@ pub struct DeleteParams {
 /// - `422 TF-WFL-0008` — `migrate_to` names a status in another workflow, or
 ///   the status being deleted.
 /// - `422 TF-WFL-0007` — the status is the workflow's entry point.
-/// - `422 TF-WFL-0010` — more tasks than one request may move (D-063).
+/// - `422 TF-WFL-0010` — more tasks than one request may move.
 /// - `403`, `404`, `409`, `428` as everywhere else in this module.
 pub async fn delete_status(
     State(state): State<AppState>,
@@ -109,7 +109,7 @@ pub async fn delete_status(
             codes::MIGRATION_TOO_LARGE,
             "More tasks are on this status than one request may move. docs/23 \
              runs a bulk move this size as a tracked background job with \
-             progress, and that job is not built yet (D-063)",
+             progress, and that job is not built yet",
             &request_id,
         )
         .with_details(serde_json::json!({

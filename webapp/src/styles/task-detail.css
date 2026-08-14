@@ -1,0 +1,354 @@
+/* ── Task detail: the full route ───────────────────────────────────────────
+ * design/LAYOUT §4. The page does not scroll; the columns are fixed and the
+ * conversation is the one region with a tail. */
+.detail {
+  display: grid;
+  grid-template-rows: 48px 1fr;
+  height: 100%;
+  min-height: 0;
+}
+.detail__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--tf-border, var(--color-border));
+}
+.detail__notice {
+  padding: 16px 20px;
+}
+.detail__cols {
+  display: grid;
+  /* Asymmetric on purpose (§1.9): the narrative owns the width, the metadata
+   * column is sized to its longest value and nothing more. */
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
+  height: 100%;
+}
+.detail__main {
+  display: grid;
+  /* Title, then everything else. Two rows, because there are two scroll
+   * regions' worth of ambition here and only one is honest. */
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  padding: 20px 24px;
+  gap: 16px;
+}
+.detail__side {
+  min-height: 0;
+  padding: 20px;
+  border-left: 1px solid var(--tf-border, var(--color-border));
+  background: var(--tf-surface-subtle, var(--color-surface-alt));
+  overflow: hidden;
+}
+/* The one scrolling region on the surface, and now actually the only one.
+ *
+ * It used to be capped at 52vh with the comments pinned in a second scroller
+ * beneath it, which produced the worst thing a page can do: a section cut off
+ * mid-control, with no scrollbar to say so and a different scroller below it
+ * that looked like the same column. A reader met "Verify on qa" with nothing
+ * under it and concluded the product was broken — a fair conclusion.
+ *
+ * So the cap is gone. The title stays pinned, everything under it — including
+ * the conversation — scrolls together, in one place, in reading order. */
+.detail__scrollable {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ── Custody ───────────────────────────────────────────────────────────────
+ * The hand-off panel. Actions first, evidence under them: the moment someone
+ * opens a task is usually the moment they are about to pass it on. */
+.cust {
+  margin-top: 16px;
+}
+.cust__now {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  font-size: var(--text-sm);
+}
+.cust__now dt {
+  color: var(--color-text-muted);
+}
+.cust__now dd {
+  margin: 0;
+}
+/* Untriaged is a state that needs a decision, not a blank. */
+.cust__untriaged {
+  color: var(--tf-warning);
+  font-weight: 600;
+}
+/* Each action is ONE ROW, not a stacked form.
+ *
+ * Three stacked forms — label, select, note, hint, button — filled the whole
+ * detail region on their own, and the surface's budget is a glance: `docs/44`
+ * puts the item surface at ten seconds, and a panel that pushes the comment
+ * thread off the fold has spent that budget on controls nobody had asked for
+ * yet. Laid out in a row the same three actions cost three lines. */
+.cust__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--tf-border);
+}
+.cust__form .field__label {
+  flex: none;
+  min-width: 6.5rem;
+}
+.cust__form .select {
+  flex: 0 1 12rem;
+  width: auto;
+}
+.cust__form .input {
+  flex: 1 1 12rem;
+  width: auto;
+}
+.cust__form .button {
+  flex: none;
+}
+/* The hint and any refusal take their own line under the row, so neither
+   squeezes the controls into uselessness. */
+.cust__form .field__hint,
+.cust__form .notice {
+  flex-basis: 100%;
+}
+.cust__verdicts {
+  display: flex;
+  gap: 8px;
+}
+/* The two numbers that expose a broken process. Warning-toned because they are
+   a finding about the process, not an error in the request. */
+.cust__warn {
+  margin: 8px 0;
+  padding: 8px 8px;
+  border-radius: var(--tf-radius-control);
+  background: var(--tf-warning-subtle);
+  color: var(--tf-warning);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.cust__trail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+}
+.cust__who {
+  font-weight: 600;
+}
+.cust__note,
+.cust__empty {
+  color: var(--color-text-muted);
+}
+/* A failure is carried by the word "failed" as well as the colour — styling is
+   never the sole carrier of meaning. */
+.cust__fail .cust__who {
+  color: var(--tf-danger);
+}
+
+/* ── The task's relations, tree and history ────────────────────────────────
+ * Structure only. Each is a headed section inside the scrollable region, and
+ * each says what it has rather than drawing a box around it. */
+.rel,
+.sub,
+.act {
+  margin-top: 16px;
+}
+.rel__group {
+  margin-top: 8px;
+}
+.rel__title,
+.sub__progress {
+  margin: 0 0 4px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.rel__empty,
+.act__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.rel__list,
+.sub__list,
+.act__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rel__row,
+.sub__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rel__row--restricted,
+.sub__state,
+.act__when {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+/* Resolved work reads as resolved. The strike-through is never alone — the row
+ * carries the state as text beside it, because styling must not be the sole
+ * carrier of meaning. */
+.rel__done,
+.sub__done {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+.rel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 28rem;
+  margin-top: 8px;
+}
+.sub__parent {
+  margin: 0 0 4px;
+}
+.act__row {
+  font-size: var(--text-sm);
+}
+.act__who {
+  font-weight: 600;
+}
+.detail__comments {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--tf-border, var(--color-border));
+  margin-top: 16px;
+  padding-top: 12px;
+  gap: 8px;
+}
+.detail__comments .thread-panel {
+  display: flex;
+  /* The composer sits above the thread in the reading order after the reverse,
+   * so a reader never scrolls to find the box they came to type in. */
+  flex-direction: column-reverse;
+  gap: 8px;
+}
+.detail__comments .thread {
+  margin: 0;
+}
+
+/* `docs/47` §3 and §8: the narrow composition.
+ *
+ * The rail used to be `order: -1` — eight fields between the reader and the
+ * title of the thing they opened. It is a disclosure at the end now, and the
+ * *route* scrolls rather than a region inside it, so no section can be cut off
+ * mid-control by a container it does not know about. */
+@media (max-width: 1024px) {
+  .detail,
+  .detail__cols,
+  .detail__main {
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+  .detail__scrollable {
+    overflow: visible;
+    min-height: 0;
+  }
+  .detail__main {
+    padding: var(--tf-gap-tight) var(--tf-gap-tight) 0;
+  }
+  .detail__side {
+    display: none;
+  }
+}
+
+/* The metadata disclosure. Present only on the narrow composition; the wide one
+ * has a rail and does not need a second way to say the same thing. */
+.moredetails {
+  margin: var(--tf-gap-tight) 0 var(--tf-gap-tight);
+  border-top: 1px solid var(--tf-border, var(--color-border));
+}
+.moredetails__head {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.moredetails__body {
+  padding-bottom: var(--tf-gap-tight);
+}
+
+/* ── Narrative: title and description ──────────────────────────────────── */
+.narr__titlerow,
+.narr__sectionhead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.narr__title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.narr__titleinput {
+  font-size: 20px;
+  font-weight: 600;
+}
+.narr__titleedit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Present but recessive: an action that is available without competing with
+ * the thing it acts on. It does not appear on hover only — LAYOUT §3, a
+ * discoverable action may not be hidden behind a gesture. */
+.narr__edit {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.narr__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* A section heading, not a label.
+ *
+ * It was 12 px uppercase muted — smaller and fainter than the form labels
+ * underneath it, so the controls read as more important than the sections that
+ * contained them. A heading has to win against its own contents or the page
+ * has no hierarchy, which is what "the layout is messy" describes. */
+.narr__heading {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--tf-text, var(--color-text));
+}
+.narr__body {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 21px;
+}
+.narr__none {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tf-text-muted, var(--color-text-muted));
+}
+.narr__textarea {
+  min-height: 140px;
+}
+

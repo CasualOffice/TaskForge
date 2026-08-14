@@ -22,11 +22,10 @@
  *
  * # Assignees are their own request, and that is deliberate
  *
- * `TaskView` still carries no `assignees` field, because a 200-card board would
- * fetch 200 assignee sets it does not draw — the N+1 `docs/04` §The list problem
- * forbids. The detail surface asks for one set, from
- * `GET /tasks/{id}/assignees`, and a write updates that cache directly rather
- * than re-reading what it was just told.
+ * List responses attach assignees for a whole page in one query. The detail
+ * surface still asks `GET /tasks/{id}/assignees` for the authoritative mutable
+ * set, and a write updates that cache directly rather than re-reading what it
+ * was told.
  */
 import { Button, Input } from '@schnsrw/design-system'
 import { type ReactElement } from 'react'

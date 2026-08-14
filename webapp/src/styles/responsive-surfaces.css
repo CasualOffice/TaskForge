@@ -1,0 +1,210 @@
+/* ── Starting a workspace ─────────────────────────────────────────────────────
+ *
+ * The first-run screen. It is the only route in the product that a person can
+ * reach with no tenant at all, so it carries its own `h1` and reads as a page
+ * rather than as an empty state — an empty state implies something should have
+ * been here, and nothing should have been. */
+.firstrun {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--tf-gap-page);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-field);
+}
+
+.firstrun__title {
+  margin: 0;
+  font: var(--tf-page-title);
+}
+
+.firstrun__lede {
+  margin: 0;
+  color: var(--tf-text-secondary);
+}
+
+/* `align-items: stretch` — the default — and it matters: `flex-start` made each
+   field shrink to its own content, so "Workspace name" ended up half the width
+   of "Address" purely because the hint under Address is a longer sentence. Two
+   inputs on one form that are different widths for no reason a reader can see
+   is the kind of thing that makes a form look unfinished. The button opts out
+   individually, because a submit stretched across the form reads as a banner. */
+.newws {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-field);
+}
+
+.newws button[type='submit'] {
+  align-self: flex-start;
+}
+
+/* ── The workspace control ────────────────────────────────────────────────────
+ *
+ * One button in the header showing where you are, opening a menu of everywhere
+ * you could be. It replaced a bare name, a `<select>` that only appeared once a
+ * second workspace existed, and a separate plus — three controls for one
+ * subject, none of which looked like what it was. */
+
+.wsbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  min-width: 0;
+  max-width: 15rem;
+  padding: 0 var(--tf-gap-tight);
+  min-height: var(--tf-control-default);
+  border: 1px solid transparent;
+  border-radius: var(--tf-radius-control);
+  background: none;
+  color: var(--tf-text);
+  font: var(--tf-control-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wsbtn:hover {
+  background: var(--tf-hover);
+  border-color: var(--tf-border);
+}
+
+.wsbtn[aria-expanded='true'] {
+  background: var(--tf-hover);
+  border-color: var(--tf-border);
+}
+
+.wsbtn__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wsbtn__chevron {
+  font-size: 18px;
+  color: var(--tf-text-muted);
+  flex: none;
+}
+
+/* The mark. An initial in a tinted square — a workspace has no avatar in this
+   schema, and adding an upload for one is a feature, not a fix. */
+.wsmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--tf-radius-badge);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.wsmenu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-gap-tight);
+  width: min(20rem, calc(100vw - 2 * var(--tf-gap-section)));
+}
+
+.wsmenu__heading {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tf-text-muted);
+}
+
+.wsmenu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+}
+
+.wsmenu__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Separated by a rule: everything above is a place to go, everything below is
+   an action. Without the line they read as one list with two odd entries. */
+.wsmenu__foot {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--tf-gap-tight);
+  border-top: 1px solid var(--tf-border);
+}
+
+.wsmenu__foot .pop__item {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-gap-tight);
+  text-decoration: none;
+  color: var(--tf-text);
+}
+
+.wsmenu__foot .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--tf-text-muted);
+}
+
+.wsmenu__head {
+  display: flex;
+}
+
+.wsmenu__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-gap-hair);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tf-text-secondary);
+  font: var(--tf-meta);
+  cursor: pointer;
+}
+
+.wsmenu__back:hover {
+  color: var(--tf-text);
+}
+
+.wsmenu__back .material-symbols-outlined {
+  font-size: 16px;
+}
+
+/* On a phone the header has room for the brand, search and the account. The
+   workspace is the scope you are already in, and it is named again on every
+   settings screen that can change it. */
+@media (max-width: 860px) {
+  .wsbtn {
+    display: none;
+  }
+}
+
+/* The card in the air.
+ *
+ * Rendered by `DragOverlay` outside every column, so it is not clipped by the
+ * scrolling region it came from and not painted under the columns to its right
+ * — which is what a translated card in place was doing. It carries a lift
+ * rather than a `z-index`, because at the top of the page there is nothing left
+ * to stack against. */
+.card__dragging {
+  /* No width: `DragOverlay` sizes itself to the card it picked up, and columns
+     are `minmax(240px, 1fr)` — a fixed width here would be wrong at every
+     viewport but one. */
+  cursor: grabbing;
+  transform: rotate(1.5deg);
+  box-shadow: var(--tf-shadow-drag);
+  border-radius: var(--tf-radius-card);
+}
+
+/* The chart above the table on Reports. Bounded so a report with forty slices
+   does not push the numbers — which are what this page is for — below the
+   fold. */
+.rep__chart {
+  max-width: 46rem;
+  margin-bottom: var(--tf-gap-section);
+}

@@ -1,0 +1,28 @@
+[package]
+name = "taskforge-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+casual-task-plugin-contract = { path = "../crates/casual-task-plugin-contract" }
+casual-task-search = { path = "../crates/casual-task-search" }
+libfuzzer-sys = "0.4"
+serde_json = "1"
+
+[[bin]]
+name = "filter_json"
+path = "fuzz_targets/filter_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "plugin_contract"
+path = "fuzz_targets/plugin_contract.rs"
+test = false
+doc = false
+bench = false

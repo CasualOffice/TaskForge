@@ -116,7 +116,7 @@ tower      = { version = "0.5", default-features = false }
 # connects to a remote database yet: the tests talk to a local container. The
 # feature goes back on when the API needs it, with the licence decided then.
 sqlx       = { version = "0.8", default-features = false, features = ["postgres", "runtime-tokio", "uuid", "time"] }
-testcontainers = "0.24"
+testcontainers = "0.27"
 # Outbound SMTP (D-046). rustls, NOT native-tls: the workspace already avoids a
 # system OpenSSL, and `tokio1-rustls` + `rustls-native-certs` reaches the
 # platform trust store WITHOUT `webpki-roots`, whose CDLA-Permissive-2.0 licence
@@ -131,7 +131,7 @@ testcontainers = "0.24"
 # twelve header lines this system's only outbound mail needs; lettre supplies
 # the protocol. The cost is stated where the code is.
 lettre = { version = "0.11", default-features = false, features = ["hostname", "smtp-transport", "tokio1", "tokio1-rustls", "rustls-native-certs", "ring"] }
-testcontainers-modules = { version = "0.12", features = ["postgres"] }
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tracing    = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 

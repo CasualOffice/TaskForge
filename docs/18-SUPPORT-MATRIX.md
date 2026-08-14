@@ -1,8 +1,8 @@
 # 18 — Support Matrix
 
-Target vs implemented, per surface. **Nothing here is implemented** — the project
-is in the documentation phase ([14](14-EXECUTION-TRACKER.md)). The "Phase" column
-is the commitment; the "Status" column will move as code lands.
+Target vs implemented, per surface. Phase 1 is active; [14](14-EXECUTION-TRACKER.md)
+is the authoritative capability ledger. `Built` means merged with tests, while
+`Gated` means a blocking acceptance gate protects the behavior.
 
 ## Browsers
 
@@ -22,14 +22,14 @@ notice rather than a subtly broken application.
 
 ## Server platform
 
-| | Target |
-| --- | --- |
-| Rust | **MSRV 1.88.0** — the floor the locked dependency tree forces, measured not chosen (ADR-031). Development pins current stable; CI tests both ends. |
-| PostgreSQL | **16+** (requires `NULLS NOT DISTINCT`, modern partitioning) |
-| Redis | 7+ (optional below 2 API instances) |
-| Object storage | S3-compatible, or filesystem |
-| OS | Linux x86-64 and aarch64 |
-| Container | distroless / minimal Debian, < 100 MB |
+| Surface | Target | Current support |
+| --- | --- | --- |
+| Rust | **MSRV 1.88.0** | CI tests the floor and pinned stable |
+| PostgreSQL | **16+** | PostgreSQL 16 is gated |
+| Redis | 7+ | **Not implemented**; one API instance only |
+| Object storage | S3-compatible, or filesystem | Filesystem only; S3 is **not implemented** |
+| OS | Linux x86-64 and aarch64 | Release workflow builds both architectures |
+| Container | distroless / minimal Debian, < 100 MB | Built and scanned; D-048 blocks a release until base digests are accepted and pinned |
 
 PostgreSQL 15 is not supported: `UNIQUE NULLS NOT DISTINCT` is load-bearing for
 workspace-scoped tag uniqueness ([22](22-DATABASE-SCHEMA.md)), and working around
@@ -39,33 +39,33 @@ it would mean a partial index and a second code path forever.
 
 | Capability | Phase | Designed | Status |
 | --- | --- | --- | --- |
-| Local auth, sessions, MFA | 1 | [40](40-IDENTITY-AUTH-AND-SESSION.md) | not started |
-| Workspaces, teams, projects | 1 | [03](03-DOMAIN-MODEL.md) | not started |
-| Built-in roles, permission resolver | 1 | [04](04-RBAC-AND-AUTHORIZATION.md) | not started |
-| `/permissions/explain` | 1 | [04](04-RBAC-AND-AUTHORIZATION.md) | not started |
-| Tasks, subtasks, assignees, tags | 1 | [03](03-DOMAIN-MODEL.md) | not started |
-| Comments, attachments | 1 | [28](28-ATTACHMENT-PIPELINE.md) | not started |
-| Default workflow, transitions | 1 | [23](23-WORKFLOW-AND-STATE-MACHINE.md) | not started |
-| Activity, audit, outbox | 1 | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | not started |
-| Filters, saved views (built-in) | 1 | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | not started |
-| Full-text search | 1 | [26](26-SEARCH-INDEXING-AND-QUERY.md) | not started |
-| Board, list, My Work, palette | 1 | [42](42-FRONTEND-ARCHITECTURE.md) | not started |
-| SSE live updates | 1 | [05](05-API-SPEC.md) | not started |
-| Notifications (in-app, email) | 1 | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | not started |
+| Local auth, sessions, MFA | 1 | [40](40-IDENTITY-AUTH-AND-SESSION.md) | Built |
+| Workspaces, teams, projects | 1 | [03](03-DOMAIN-MODEL.md) | Built; project isolation Gated |
+| Built-in roles, permission resolver | 1 | [04](04-RBAC-AND-AUTHORIZATION.md) | Built |
+| `/permissions/explain` | 1 | [04](04-RBAC-AND-AUTHORIZATION.md) | Built |
+| Tasks, subtasks, assignees, tags | 1 | [03](03-DOMAIN-MODEL.md) | Built |
+| Comments, attachments | 1 | [28](28-ATTACHMENT-PIPELINE.md) | Built |
+| Default workflow, transitions | 1 | [23](23-WORKFLOW-AND-STATE-MACHINE.md) | Building |
+| Activity, audit, outbox | 1 | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | Building |
+| Filters, saved views (built-in) | 1 | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | Building |
+| Full-text search | 1 | [26](26-SEARCH-INDEXING-AND-QUERY.md) | Built; reference-scale plan blocked by D-043 |
+| Board, list, My Work, palette | 1 | [42](42-FRONTEND-ARCHITECTURE.md) | Building |
+| SSE live updates | 1 | [05](05-API-SPEC.md) | Gated |
+| Notifications (in-app, email) | 1 | [29](29-NOTIFICATIONS-AND-DELIVERY.md) | Building |
 | Custom roles, scoped assignments | 2 | [04](04-RBAC-AND-AUTHORIZATION.md) | not started |
 | Custom workflows + status migration | 2 | [23](23-WORKFLOW-AND-STATE-MACHINE.md) | not started |
-| Environments, milestones, dependencies | 2 | [03](03-DOMAIN-MODEL.md) | not started |
+| Environments, milestones, dependencies | 2 | [03](03-DOMAIN-MODEL.md) | Built; environments Gated |
 | User saved views + sharing | 2 | [27](27-FILTER-AND-SAVED-VIEW-DSL.md) | not started |
 | Audit console + export | 2 | [25](25-EVENTS-OUTBOX-AND-AUDIT.md) | not started |
-| Export — CSV / JSON Lines | 2 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
+| Export — CSV / JSON Lines | 2 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Building |
 | SSO — OIDC | 2 | [40](40-IDENTITY-AUTH-AND-SESSION.md) | not started |
 | SSO — SAML | 2 | [40](40-IDENTITY-AUTH-AND-SESSION.md) | not started |
 | Declarative plugins | 3a | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | Remote HTTPS plugins, webhooks | 3b | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | Sandboxed frontend plugins | 3c | [34](34-PLUGIN-AND-EXTENSION-ARCHITECTURE.md) | not started |
 | Automation rules | 4 | [36](36-AUTOMATION-RULES-DESIGN.md) | not started |
-| Reports — measures, grouping, bucketing | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
-| Dashboards — tiles, six visualizations | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
+| Reports — measures, grouping, bucketing | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Gated for the implemented closed measure set |
+| Dashboards — tiles, six visualizations | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | Gated for four built-ins and five visualizations |
 | Export — XLSX via OpenCalc | 4 | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | not started |
 | Scheduled report delivery | later | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | **deferred** |
 | User-defined SQL / BI query builder | — | [38](38-REPORTING-EXPORT-AND-DASHBOARDS.md) | **non-goal** — export to a real BI tool |

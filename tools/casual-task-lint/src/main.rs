@@ -39,6 +39,7 @@ fn main() -> anyhow::Result<()> {
 
     check_no_cross_domain_dep(&root, &mut v)?;
     check_source_placement(&root, &mut v)?;
+    check_no_io_in_transaction(&root, &mut v)?;
 
     if v.is_empty() {
         println!("architecture lints: clean");
@@ -265,6 +266,62 @@ fn check_source_placement(root: &Path, out: &mut Vec<Violation>) -> anyhow::Resu
     Ok(())
 }
 
+/// External calls may not sit between opening and committing a transaction.
+///
+/// This is intentionally a source-shape lint. TaskForge exposes storage,
+/// scanner, mail and broadcast I/O through a small closed set of fields, so a
+/// transaction span containing one of those spellings is the failure. The
+/// domain types still enforce where SQL lives; this guard enforces when
+/// external latency may run.
+fn check_no_io_in_transaction(root: &Path, out: &mut Vec<Violation>) -> anyhow::Result<()> {
+    for entry in walk_rs(&root.join("crates")) {
+        let text = fs::read_to_string(&entry)?;
+        for (at, marker) in io_inside_transaction(&text) {
+            out.push(Violation {
+                file: entry.clone(),
+                line: text[..at].lines().count(),
+                lint: "no-io-in-transaction",
+                message: format!("external I/O `{marker}` occurs before this transaction commits"),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn io_inside_transaction(text: &str) -> Vec<(usize, &'static str)> {
+    const STARTS: &[&str] = &["unit::begin(", ".begin()"];
+    const ENDS: &[&str] = &["unit::commit(", ".commit()"];
+    const EXTERNAL: &[&str] = &[
+        ".storage.",
+        ".store.",
+        ".mailer.",
+        ".scan(",
+        ".broadcast.publish(",
+    ];
+
+    let mut found = Vec::new();
+    for start in positions(text, STARTS) {
+        let tail = &text[start..];
+        let Some(end) = positions(tail, ENDS).into_iter().min() else {
+            continue;
+        };
+        let span = &tail[..end];
+        for marker in EXTERNAL {
+            if let Some(at) = span.find(marker) {
+                found.push((start + at, *marker));
+            }
+        }
+    }
+    found
+}
+
+fn positions(text: &str, needles: &[&str]) -> Vec<usize> {
+    needles
+        .iter()
+        .flat_map(|needle| text.match_indices(needle).map(|(at, _)| at))
+        .collect()
+}
+
 /// The crate a file belongs to, under either `crates/` or `tools/`.
 ///
 /// `tools/` matters now that the walk covers it: without it every violation in
@@ -372,5 +429,19 @@ mod tests {
                 "bounded queue wrongly flagged: {ok}"
             );
         }
+    }
+
+    #[test]
+    fn external_io_inside_a_transaction_is_rejected() {
+        let source = "let mut tx = pool.begin().await?;\nstate.storage.read(key).await?;\ntx.commit().await?;";
+        let found = io_inside_transaction(source);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].1, ".storage.");
+    }
+
+    #[test]
+    fn external_io_after_commit_is_allowed() {
+        let source = "let mut tx = unit::begin(pool).await?;\nunit::commit(tx).await?;\nstate.storage.read(key).await?;";
+        assert!(io_inside_transaction(source).is_empty());
     }
 }

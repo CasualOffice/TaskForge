@@ -218,9 +218,9 @@ not `Built` — is the only word for done:
 | Phase | Items | `Gated` | `Built` | `Building` | Not started |
 | --- | --- | --- | --- | --- | --- |
 | 0 — foundation (`F`) | 16 | 13 | 3 | — | — |
-| 1 — core (`C`) | 50 | 12 | 28 | 9 | 1 |
+| 1 — core (`C`) | 50 | 12 | 31 | 7 | 0 |
 
-Do not describe this project as "built and gated" as a whole. That is true of 24
+Do not describe this project as "built and gated" as a whole. That is true of 25
 rows and [docs/14](docs/14-EXECUTION-TRACKER.md) names every one; anything less
 is reported as what it is.
 

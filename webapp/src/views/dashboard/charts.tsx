@@ -35,6 +35,8 @@ export interface Point {
   readonly formatted: string
 }
 
+export { TableChart } from './TableChart'
+
 /**
  * The data table every chart carries.
  *
@@ -471,45 +473,5 @@ export function StackedBarChart({
       </ul>
       <DataTable caption={caption} dimension={dimension} measure={measure} points={points} />
     </div>
-  )
-}
-
-/**
- * The numbers, plainly.
- *
- * Not a lesser chart: for a handful of precise values — p50 and p90 beside each
- * other — a table is what a reader actually wants, and `docs/38` lists it in the
- * closed set for that reason. Visible here, rather than the hidden twin the
- * drawn charts carry.
- */
-export function TableChart({
-  points,
-  caption,
-  dimension,
-  measure,
-}: {
-  points: readonly Point[]
-  caption: string
-  dimension: string
-  measure: string
-}): ReactElement {
-  return (
-    <table className="chart__table">
-      <caption className="visually-hidden">{caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">{dimension}</th>
-          <th scope="col">{measure}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {points.map((point) => (
-          <tr key={point.label}>
-            <th scope="row">{point.label}</th>
-            <td>{point.formatted}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   )
 }

@@ -102,8 +102,8 @@ mod tests {
     #[test]
     fn a_midpoint_is_always_available_between_two_appended_ranks() {
         // ADR-013's actual promise: "lexicographic ranks insert between any pair
-        // by generating a midpoint string". Dragging is not implemented yet, so
-        // this asserts the *space* exists — which is the part a bad alphabet
+        // by generating a midpoint string". Board dragging consumes this
+        // space; this assertion is the part a bad alphabet
         // would take away, silently, until the day someone dragged a card.
         for n in 1..2000 {
             let (low, high) = (appended(n), appended(n + 1));

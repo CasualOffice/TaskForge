@@ -209,6 +209,11 @@ pub async fn commit(
             .into_response());
     }
 
+    // Object-store I/O must not extend a database transaction. Authority is
+    // checked again in the write transaction below because membership or a
+    // grant can change while bytes are being inspected.
+    unit::commit(tx, &request_id).await?;
+
     let head = state.storage.head(&row.object_key).await.map_err(|error| {
         // Not an internal error: the ordinary case is a client that called
         // commit before its upload finished, or never uploaded at all.
@@ -261,13 +266,48 @@ pub async fn commit(
         ));
     }
 
-    let view_before = view(&row);
-    attachment::record_verified_type(&mut scoped, row.id, stored_type)
+    let mut tx = unit::begin(&state, &request_id).await?;
+    let mut scoped = unit::scope(&mut tx, &member, &request_id).await?;
+    let ctx = Context::load(&state.metrics, &mut scoped, &member, &headers, &request_id).await?;
+    let current = attachment::find_for_commit(&mut scoped, id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "re-reading the attachment failed");
+            ApiError::internal(&request_id)
+        })?
+        .ok_or_else(|| ApiError::missing(codes::ATTACHMENT_NOT_FOUND, &request_id))?;
+    guard::task_for(
+        &mut scoped,
+        &ctx,
+        current.task_id,
+        permission::TASK_ATTACHMENT_CREATE,
+        &request_id,
+    )
+    .await?;
+
+    let view_before = view(&current);
+    let claimed = attachment::record_verified_type(&mut scoped, current.id, stored_type)
         .await
         .map_err(|error| {
             tracing::error!(%error, "recording the verified type failed");
             ApiError::internal(&request_id)
         })?;
+    if !claimed {
+        unit::commit(tx, &request_id).await?;
+        return Ok((
+            if current.committed_at.is_some() {
+                StatusCode::OK
+            } else {
+                StatusCode::ACCEPTED
+            },
+            axum::Json(CommitResponse {
+                attachment_id: current.id,
+                scan_status: current.scan_status,
+                content_type: current.content_type,
+            }),
+        )
+            .into_response());
+    }
 
     // ADR-006: the domain change and its history in one transaction. The event
     // is what a scan consumer will claim (D-062's seam).
@@ -275,17 +315,17 @@ pub async fn commit(
         &mut scoped,
         &Change {
             aggregate_type: "attachment".to_owned(),
-            aggregate_id: row.id,
-            project_id: Some(row.task_id),
+            aggregate_id: current.id,
+            project_id: Some(current.task_id),
             event_type: "attachment.uploaded".to_owned(),
-            activity_changes: serde_json::json!({ "filename": row.filename }),
+            activity_changes: serde_json::json!({ "filename": current.filename }),
             audit_changes: serde_json::json!({
                 "before": { "content_type": view_before.content_type },
                 "after": { "content_type": stored_type },
             }),
             payload: serde_json::json!({
-                "attachment_id": row.id,
-                "task_id": row.task_id,
+                "attachment_id": current.id,
+                "task_id": current.task_id,
                 "content_type": stored_type,
             }),
             schema_version: 1,
@@ -304,8 +344,8 @@ pub async fn commit(
     Ok((
         StatusCode::ACCEPTED,
         axum::Json(CommitResponse {
-            attachment_id: row.id,
-            scan_status: row.scan_status,
+            attachment_id: current.id,
+            scan_status: current.scan_status,
             content_type: stored_type.to_owned(),
         }),
     )

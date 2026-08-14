@@ -31,8 +31,15 @@ jobs:
   gates:
     uses: ./.github/workflows/ci.yml
 
+  release-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Known deployment blockers are closed
+        run: python3 scripts/check-release-readiness.py
+
   publish:
-    needs: gates
+    needs: [gates, release-readiness]
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}

@@ -1,8 +1,8 @@
 //! # casual-task-worker
 //!
-//! The worker binary: outbox dispatch, search projection, notification fan-out,
-//! webhook delivery, scan coordination, automation execution, retention sweeps,
-//! and rank compaction (`docs/25`, `docs/36`, `docs/46`).
+//! The worker binary: outbox dispatch, search and state-interval projections,
+//! notification fan-out, attachment scanning, and export jobs (`docs/25`,
+//! `docs/28`, `docs/38`).
 //!
 //! Runs embedded in the API process on the single-node profile
 //! (`TF_WORKER_EMBEDDED=true`) and as a separate binary above it
@@ -26,7 +26,9 @@ use std::sync::Arc;
 
 use casual_task_worker::attachment_scan::AttachmentScan;
 use casual_task_worker::consumers::{NotificationFanout, SseFanout};
-use casual_task_worker::dispatcher::{self, CancelOnDrop};
+use casual_task_worker::dispatcher::{self, Cancel, CancelOnDrop, Consumer};
+use casual_task_worker::projection::SearchProjection;
+use casual_task_worker::state_interval::StateIntervalProjection;
 
 fn main() -> ExitCode {
     // See the note in casual-task-api's main: the image gate checks that the
@@ -159,6 +161,8 @@ async fn run() -> ExitCode {
         public_url,
     ));
     let sse = Arc::new(SseFanout::new(Arc::clone(&broadcast)));
+    let search = Arc::new(SearchProjection::new(app_pool.clone()));
+    let state_interval = Arc::new(StateIntervalProjection::new(app_pool.clone()));
 
     // Step 4 of `docs/28`. Built here rather than in the API because the scan
     // is the worker's job and the bytes must never enter a request handler.
@@ -179,10 +183,11 @@ async fn run() -> ExitCode {
             None
         }
     };
-    let attachment_scan = match object_store_from_env() {
+    let object_store = object_store_from_env();
+    let attachment_scan = match object_store.as_ref() {
         Some(store) => Some(Arc::new(AttachmentScan::new(
             app_pool.clone(),
-            store,
+            Arc::clone(store),
             scanner,
         ))),
         None => {
@@ -193,63 +198,57 @@ async fn run() -> ExitCode {
         }
     };
 
-    // Cloned before the loops below take ownership: three consumers, three
-    // handles on the same dispatch pool.
-    let (scan_pool, scan_cancel, scan_metrics) =
-        (dispatch_pool.clone(), cancel.clone(), Arc::clone(&metrics));
+    let notification_loop = spawn_consumer(
+        dispatch_pool.clone(),
+        notification,
+        worker_id.clone(),
+        cancel.clone(),
+        Arc::clone(&metrics),
+    );
+    let sse_loop = spawn_consumer(
+        dispatch_pool.clone(),
+        sse,
+        worker_id.clone(),
+        cancel.clone(),
+        Arc::clone(&metrics),
+    );
+    let search_loop = spawn_consumer(
+        dispatch_pool.clone(),
+        search,
+        worker_id.clone(),
+        cancel.clone(),
+        Arc::clone(&metrics),
+    );
+    let state_interval_loop = spawn_consumer(
+        dispatch_pool.clone(),
+        state_interval,
+        worker_id.clone(),
+        cancel.clone(),
+        Arc::clone(&metrics),
+    );
 
-    let notification_loop = tokio::spawn({
-        let (pool, cancel, metrics, id) = (
-            dispatch_pool.clone(),
-            cancel.clone(),
-            Arc::clone(&metrics),
-            worker_id.clone(),
-        );
-        async move {
-            dispatcher::run(
-                &pool,
-                notification,
-                &id,
-                dispatcher::Config::default(),
+    let export_loop = object_store.map(|storage| {
+        let dispatch_pool = dispatch_pool.clone();
+        let app_pool = app_pool.clone();
+        let worker_id = worker_id.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            if let Err(error) = casual_task_worker::export::runner::run(
+                &dispatch_pool,
+                &app_pool,
+                storage,
+                &worker_id,
                 cancel,
-                metrics,
             )
             .await
-        }
-    });
-    let sse_loop = tokio::spawn({
-        let (pool, cancel, metrics, id) = (dispatch_pool, cancel, metrics, worker_id.clone());
-        async move {
-            dispatcher::run(
-                &pool,
-                sse,
-                &id,
-                dispatcher::Config::default(),
-                cancel,
-                metrics,
-            )
-            .await
-        }
+            {
+                tracing::error!(%error, %worker_id, "export loop stopped unexpectedly");
+            }
+        })
     });
 
     let scan_loop = attachment_scan.map(|consumer| {
-        let (pool, cancel, metrics, id) = (
-            scan_pool,
-            scan_cancel,
-            Arc::clone(&scan_metrics),
-            worker_id.clone(),
-        );
-        tokio::spawn(async move {
-            dispatcher::run(
-                &pool,
-                consumer,
-                &id,
-                dispatcher::Config::default(),
-                cancel,
-                metrics,
-            )
-            .await
-        })
+        spawn_consumer(dispatch_pool, consumer, worker_id.clone(), cancel, metrics)
     });
 
     tracing::info!(
@@ -265,13 +264,41 @@ async fn run() -> ExitCode {
     drop(handle);
     let _ = notification_loop.await;
     let _ = sse_loop.await;
+    let _ = search_loop.await;
+    let _ = state_interval_loop.await;
     // Awaited like the others so an in-flight scan finishes rather than being
     // cut off mid-verdict, which would leave an attachment PENDING with the
     // delivery already claimed.
     if let Some(loop_handle) = scan_loop {
         let _ = loop_handle.await;
     }
+    if let Some(loop_handle) = export_loop {
+        let _ = loop_handle.await;
+    }
     ExitCode::SUCCESS
+}
+
+fn spawn_consumer<C: Consumer + 'static>(
+    pool: sqlx::PgPool,
+    consumer: Arc<C>,
+    worker_id: String,
+    cancel: Cancel,
+    metrics: Arc<casual_task_observability::recorder::Recorder>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        if let Err(error) = dispatcher::run(
+            &pool,
+            consumer,
+            &worker_id,
+            dispatcher::Config::default(),
+            cancel,
+            metrics,
+        )
+        .await
+        {
+            tracing::error!(%error, %worker_id, "consumer dispatch loop stopped unexpectedly");
+        }
+    })
 }
 
 /// `TF_SMTP_*`, the same five keys the API reads (`docs/48` §Configuration).

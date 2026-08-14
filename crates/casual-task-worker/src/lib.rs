@@ -1,8 +1,8 @@
 //! # casual-task-worker
 //!
-//! The worker: outbox dispatch, search projection, notification fan-out,
-//! webhook delivery, scan coordination, automation execution, retention sweeps,
-//! and rank compaction (`docs/25`, `docs/36`, `docs/46`).
+//! The worker: outbox dispatch, search and state-interval projections,
+//! notification fan-out, attachment
+//! scanning, and export jobs (`docs/25`, `docs/28`, `docs/38`).
 //!
 //! Runs embedded in the API process on the single-node profile
 //! (`TF_WORKER_EMBEDDED=true`) and as a separate binary above it

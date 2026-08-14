@@ -9,8 +9,10 @@
 //! Boundary contract: `docs/19-WORKSPACE-SCAFFOLD-DESIGN.md`. An illegal
 //! dependency here is a build failure, not a review comment.
 //!
-//! The filter AST and its closed field set are implemented (C-012). The search
-//! projection and cursor pagination are not. See `docs/14-EXECUTION-TRACKER.md`.
+//! The filter AST, closed field set, symbolic resolution and cursor contract are
+//! implemented (C-012, C-014). The PostgreSQL compiler and projection live at
+//! the persistence and worker boundaries respectively. See
+//! `docs/14-EXECUTION-TRACKER.md`.
 
 pub mod filter;
 pub mod json;

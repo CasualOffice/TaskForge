@@ -45,8 +45,9 @@ no efficient path to one.
       → FAILED   → retry; after 3 attempts quarantine and notify an admin
 ```
 
-The API process never sees a byte of file content. Memory use is constant
-regardless of file size — a 2 GB upload costs the same RAM as a 2 KB one.
+The API never proxies the upload body. Commit reads one bounded prefix for magic
+bytes; the scan worker reads the complete object. API memory use therefore does
+not grow with the uploaded file size.
 
 ## Why pre-signed direct upload
 
@@ -74,6 +75,21 @@ is set.
 to pin the pre-signed policy; the *stored* type comes from magic bytes at commit.
 A file uploaded as `image/png` that is actually HTML is rejected — that mismatch
 is the stored-XSS vector.
+
+### Commit transaction boundary
+
+Object-store I/O never runs inside a database transaction. Commit first reads
+and authorizes the pending row in a short transaction, closes it, then performs
+HEAD and bounded-prefix reads. A second short transaction re-authorizes the
+caller and claims `verified_at` while recording the sniffed type, activity,
+audit and outbox event.
+
+`verified_at` is a compare-and-set marker, not visibility. Two concurrent
+commit requests may inspect the same bytes, but only one can change
+`verified_at` from `NULL`; only that winner writes the event that wakes the scan
+consumer. Visibility still changes only when a clean verdict sets
+`committed_at`. The cost is a second authority resolution on commit, paid on a
+rare write to keep object latency outside locks and connections.
 
 ## Serving downloads
 

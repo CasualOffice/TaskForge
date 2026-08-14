@@ -3,11 +3,10 @@
 The operator walkthrough. [48](48-DEPLOYMENT-PROFILES.md) is the *architecture*
 of the three profiles; this is *how to run one*.
 
-> **Status: Phase 0.** The image builds, runs, and ships the migrations, but the
-> binaries are scaffolds — there is no API yet. Everything below is the
-> committed procedure; the steps marked **⧗ not yet executable** become live in
-> Phase 1. Nothing here is aspirational about *how* it will work, only about
-> *when*.
+> **Status: Phase 1, not production-ready.** The single-node image, first-start
+> schema initialization and deployment verification are executable. Automated
+> upgrades of an existing database are not implemented, base images remain
+> blocked on D-048, and the multi-node/S3/Redis profiles are design targets.
 
 ## Quick start — self-hosted, single node
 
@@ -39,8 +38,8 @@ misconfigured is worse than one that does not start.
 openssl rand -base64 48
 ```
 
-Signs sessions and cookies. Rotating it invalidates every session — which is
-the correct response to suspected exposure, not a reason to avoid rotating.
+Binds CSRF tokens. Sessions use opaque server-side credentials rather than a
+signed client payload. Rotate this value after suspected exposure.
 
 ### `TF_ATTACHMENT_ORIGIN` must be a different **host**, not a different path
 
@@ -81,7 +80,7 @@ Two roles exist deliberately:
 
 | Role | Used by | Why |
 | --- | --- | --- |
-| `POSTGRES_USER` (owner) | migrations, retention worker | needs DDL |
+| `POSTGRES_USER` (owner) | migrations | needs DDL |
 | `taskforge_dispatcher` | the outbox dispatcher | must see across tenants, so it bypasses RLS; granted on the two outbox tables and nothing else (migration 0014) |
 | `taskforge_app` | **the application** | ordinary, non-superuser |
 
@@ -117,6 +116,10 @@ docker run --rm --entrypoint /usr/local/bin/taskforge-api taskforge:local
 **Distroless, not `scratch`.** TLS roots, timezone data, and the ability to get
 a debugger into a container during an incident are worth the megabytes
 ([19](19-WORKSPACE-SCAFFOLD-DESIGN.md)).
+
+The displayed tag is mutable. D-048 is still open and blocks the first release;
+do not treat this image definition as supply-chain reproducible until that
+decision is Accepted and every base image is pinned by digest.
 
 **Migrations ship inside the image** so the schema version and the code version
 that expects it cannot disagree.
@@ -184,27 +187,15 @@ server {
 
 ## Upgrading
 
-```sh
-docker compose -f deploy/docker-compose.yml pull
-docker compose -f deploy/docker-compose.yml up -d
-```
+**Upgrading an existing data volume is not supported yet.** The compose init
+scripts run only for an empty PostgreSQL data directory. The repository does
+not yet carry a migration ledger, an advisory-locked upgrade runner, or the
+prior-version rehearsal required by [15](15-CI-AND-RELEASE-GATES.md).
 
-Migrations run before the new code serves traffic. They are forward-only and
-follow expand → migrate → contract ([22](22-DATABASE-SCHEMA.md)), which is what
-makes the previous version still able to run against the new schema — and
-therefore what makes rollback possible.
-
-**Rollback** is supported to the immediately previous version:
-
-```sh
-TASKFORGE_IMAGE=ghcr.io/casualoffice/taskforge:<previous> \
-  docker compose -f deploy/docker-compose.yml up -d
-```
-
-Beyond one version, restore from backup. Contracting migrations land in a
-*later* release than the expand that preceded them, which is exactly the
-discipline that bounds rollback to one version — and why skipping it is not a
-shortcut.
+Do not run a newer image against an existing volume based on the first-start
+gate. That would apply no migrations. The expand → migrate → contract design in
+[22](22-DATABASE-SCHEMA.md) remains the required implementation, not an
+executable operator promise.
 
 ## Backups
 
@@ -235,8 +226,8 @@ restored is a hypothesis about a file** ([15](15-CI-AND-RELEASE-GATES.md)).
 | Profile | Method | RPO | RTO |
 | --- | --- | --- | --- |
 | Single node | nightly `pg_dump` + volume tar | 24 h | hours |
-| Small | WAL archiving + PITR | < 5 min | < 1 h |
-| Scaled | continuous + cross-region | < 1 min | < 30 min |
+| Small target | WAL archiving + PITR | < 5 min | < 1 h |
+| Scaled target | continuous + cross-region | < 1 min | < 30 min |
 
 ## Verifying a deployment is actually secure
 
@@ -254,7 +245,9 @@ psql "$OWNER_URL" -c "
   SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='public' AND c.relrowsecurity;"
 ```
-Expect 30.
+Expect every tenant table to have row-level security enabled. The executable
+gate discovers the tenant-table set and reports names, so this guide does not
+carry a stale literal count.
 
 ```sh
 psql "$DATABASE_URL" -c "UPDATE audit_event SET event_type='x';"
@@ -267,16 +260,17 @@ The repository automates all of this:
 ./scripts/verify-schema.sh          # 8 structural + 6 behavioural assertions
 ```
 
-## Scaling past one node
+## Scaling past one node — design target, not implemented
 
-Move to Profile 2 ([48](48-DEPLOYMENT-PROFILES.md)) when a single node stops
-being enough. What changes:
+Profile 2 ([48](48-DEPLOYMENT-PROFILES.md)) describes the intended boundary,
+but this release must not be deployed that way. Redis-backed shared limits and
+SSE, S3 storage, and replica routing are not implemented.
 
 | Change | Why |
 | --- | --- |
-| Redis becomes **required** | rate limits and SSE fan-out need shared state across ≥ 2 API instances |
+| Redis becomes **required** | rate limits and SSE fan-out need shared state across ≥ 2 API instances; backend not implemented |
 | Worker becomes its own container | `TF_WORKER_EMBEDDED=false`, so a bulk import cannot compete with request handling for CPU |
-| Object storage replaces the filesystem | `TF_STORAGE_BACKEND=s3` |
+| Object storage replaces the filesystem | `TF_STORAGE_BACKEND=s3`; startup currently refuses it |
 | PostgreSQL gets a replica | reports read from it; **never** the write path — replica lag would make a just-created task vanish |
 
 The attachment pipeline is **identical** across profiles — same handshake, same
@@ -305,3 +299,7 @@ For live incidents, use the runbooks: [50](50-RUNBOOKS.md).
   ([18](18-SUPPORT-MATRIX.md)).
 - **Running the application as the database owner.** Covered above — it is not a
   configuration choice, it is a broken deployment.
+- **Automated upgrade of an existing database volume.** First start is gated;
+  upgrade migration tracking and rehearsal are pending release gates.
+- **Multiple API instances, Redis, or S3.** Those are profile designs, not
+  runtime capabilities in this release.
