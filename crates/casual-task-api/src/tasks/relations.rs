@@ -111,6 +111,11 @@ pub(crate) async fn apply_transition(
             request_id,
         ));
     }
+    let comment = body
+        .comment
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty());
 
     // 1. Readable.
     let (current, project_key) = visible(scoped, ctx, id, request_id).await?;
@@ -183,6 +188,7 @@ pub(crate) async fn apply_transition(
             .map(|b| casual_task_model::TaskId::from_uuid(*b))
             .collect(),
         may_override_dependencies: may_override,
+        has_dependency_override_reason: comment.is_some(),
         held_permissions: held,
     };
 
@@ -221,12 +227,7 @@ pub(crate) async fn apply_transition(
         return Err(conflict(&now, &key, expected, request_id));
     };
 
-    if let Some(comment) = body
-        .comment
-        .as_deref()
-        .map(str::trim)
-        .filter(|c| !c.is_empty())
-    {
+    if let Some(comment) = comment {
         task::insert_comment(scoped, moved.id, ctx.actor.as_uuid(), comment)
             .await
             .map_err(|error| {
@@ -248,6 +249,21 @@ pub(crate) async fn apply_transition(
 
     let after_view = view(&moved, &project_key);
     let payload = serde_json::json!(after_view);
+    let audit_changes = if valid.overrode_dependencies {
+        serde_json::json!({
+            "before": { "status_id": current.status_id, "state": current.state },
+            "after":  { "status_id": moved.status_id,   "state": moved.state },
+            "dependency_override": {
+                "reason": comment.expect("validation required a non-empty reason"),
+                "blocked_by": blockers,
+            },
+        })
+    } else {
+        serde_json::json!({
+            "before": { "status_id": current.status_id, "state": current.state },
+            "after":  { "status_id": moved.status_id,   "state": moved.state },
+        })
+    };
     UnitOfWork::record(
         scoped,
         &Change {
@@ -260,10 +276,7 @@ pub(crate) async fn apply_transition(
             activity_changes: serde_json::json!({
                 "status": { "from": from_status, "to": to_status },
             }),
-            audit_changes: serde_json::json!({
-                "before": { "status_id": current.status_id, "state": current.state },
-                "after":  { "status_id": moved.status_id,   "state": moved.state },
-            }),
+            audit_changes,
             payload: payload.clone(),
             schema_version: 1,
         },

@@ -80,6 +80,13 @@ POST   /api/v1/tasks/{id}/promotions        it reached an environment
 POST   /api/v1/tasks/{id}/verifications     tested on an environment: PASS or FAIL
 ```
 
+The transition body is `{ "to_status_id": "...", "fields": {}, "comment":
+"..." }`. `comment` is optional for an ordinary move and for an edge whose
+`ignore_dependencies` flag is set. It is required and non-empty when the actor
+uses `task.dependency.override`; the same value becomes the task comment and
+the audit reason ([23](23-WORKFLOW-AND-STATE-MACHINE.md)). Bulk transition's
+`comment` has the same conditional meaning for every task it overrides.
+
 The custody four are one story told three ways ([45](45-DEVELOPMENT-LIFECYCLE-AND-CUSTODY.md)),
 and their shapes follow from the process rather than from the tables:
 

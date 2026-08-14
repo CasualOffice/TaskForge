@@ -866,6 +866,14 @@ have since landed. C-007 remains `Building`: migrations above the synchronous
 Phase 3 transition hooks remain intentionally absent until the plugin runtime
 exists.
 
+The dependency override acceptance path is now specified without adding a
+second reason field: a non-empty transition `comment` is required exactly when
+unresolved blockers are bypassed by `task.dependency.override`, and the same
+text is written as the task comment and as `dependency_override.reason` in the
+immutable audit change. The gate covers refusal without a reason, success with
+one, the visible blocker ids in audit, and the fact that an
+`ignore_dependencies` edge does not manufacture an override.
+
 **C-004 is `Built`.** Five controls live in `casual-task-authz`; last-owner
 protection is checked under a database lock; every grant and role edit records
 audit history through the unit of work. The API escalation suite attempts

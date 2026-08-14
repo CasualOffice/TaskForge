@@ -123,7 +123,11 @@ first:
    every missing field at once (not one per round-trip).
 7. **Blocking dependencies** resolved, unless `ignore_dependencies` or the actor
    holds `task.dependency.override` → else `422 TF-WFL-0005`, naming the blockers
-   the actor can see.
+   the actor can see. Exercising `task.dependency.override` also requires a
+   non-empty transition `comment`; without one the same code refuses the move
+   and names `comment` as required. The comment is both the task-visible note
+   and the immutable audit reason — one explanation, not two text fields that
+   can disagree.
 8. **Plugin `validation.transition`** hooks, 500 ms, fail-open (ADR-017) → else
    `422 TF-PLG-0001` with the plugin's message.
 
@@ -145,6 +149,14 @@ INSERT INTO audit_event (...);                -- + ip, ua, request id
 INSERT INTO outbox_event (...);               -- task.status.changed
 INSERT INTO comment (...);                    -- only if one was supplied
 ```
+
+When step 7 uses `task.dependency.override`, the audit change additionally
+records `dependency_override.reason` and the visible blocker ids. The activity
+stream keeps the ordinary status change and the supplied comment: duplicating
+the reason into activity would render it twice in the task drawer. The cost of
+reusing `comment` is that an override reason is visible to everyone who may read
+the task's comments; that is preferable to a private justification the people
+depending on the blocked work cannot see.
 
 `state` is written in the same statement as `status_id`, so the derived column
 can never drift. This is the invariant that lets every report read `state`

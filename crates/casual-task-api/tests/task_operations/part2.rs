@@ -2,6 +2,73 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
+async fn a_dependency_override_requires_and_audits_one_visible_reason() -> Result<()> {
+    // docs/23's dependency gate acceptance path: the permission alone is not
+    // enough. The exceptional move needs an explanation, and the explanation
+    // must survive in immutable audit history beside the blockers it bypassed.
+    let db = schema_harness::TestDatabase::start().await?;
+    let caller = signed_in(&db.pool, "lead@example.test", "acme", OVERRIDER).await?;
+    let (project, task, etag) = a_task(&caller).await?;
+    let status_ids = statuses(&db.pool, caller.workspace).await?;
+
+    let (_, blocker_body, _) = caller
+        .post(
+            &format!("/api/v1/projects/{project}/tasks"),
+            &serde_json::json!({ "title": "Restore production first" }),
+            Some(&key()),
+        )
+        .await?;
+    let blocker: Uuid = blocker_body["id"].as_str().context("blocker id")?.parse()?;
+    test_support::add_blocker(&db.pool, caller.workspace, blocker, task).await?;
+
+    let transitions = format!("/api/v1/tasks/{task}/transitions");
+    for omitted in [serde_json::Value::Null, serde_json::json!("   ")] {
+        let mut request = serde_json::json!({ "to_status_id": status_ids["Todo"] });
+        if !omitted.is_null() {
+            request["comment"] = omitted;
+        }
+        let (status, body, _) = caller
+            .post_conditional(&transitions, &request, Some(&etag))
+            .await?;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["error"]["code"], "TF-WFL-0005");
+        assert_eq!(body["error"]["details"]["missing_fields"][0], "comment");
+        assert_eq!(
+            body["error"]["details"]["blocked_by"][0],
+            blocker.to_string()
+        );
+    }
+    assert_eq!(
+        test_support::history_counts(&db.pool, task).await?.0,
+        1,
+        "a refused override wrote activity"
+    );
+
+    let reason = "Production recovery is blocked; incident commander approved the bypass";
+    let (status, body, _) = caller
+        .post_conditional(
+            &transitions,
+            &serde_json::json!({
+                "to_status_id": status_ids["Todo"],
+                "comment": reason,
+            }),
+            Some(&etag),
+        )
+        .await?;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(test_support::comment_count(&db.pool, task).await?, 1);
+
+    let audit = test_support::audit_changes(&db.pool, task).await?;
+    assert_eq!(audit[0]["dependency_override"]["reason"], reason);
+    assert_eq!(
+        audit[0]["dependency_override"]["blocked_by"][0],
+        blocker.to_string()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
 async fn assigning_is_idempotent_and_unassigning_removes_it() -> Result<()> {
     let db = schema_harness::TestDatabase::start().await?;
     let caller = signed_in(&db.pool, "dev@example.test", "acme", MEMBER).await?;

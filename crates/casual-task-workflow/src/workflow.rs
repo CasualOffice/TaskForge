@@ -121,6 +121,9 @@ pub struct TransitionRequest {
     pub unresolved_blockers: Vec<casual_task_model::TaskId>,
     /// Whether the actor holds `task.dependency.override`.
     pub may_override_dependencies: bool,
+    /// Whether the caller supplied the non-empty audit reason required when
+    /// that permission actually bypasses blockers.
+    pub has_dependency_override_reason: bool,
     /// Permissions the actor holds on this project, already resolved by
     /// `casual-task-authz`. This crate does not resolve permissions; it is not
     /// allowed to know how.
@@ -141,6 +144,9 @@ pub enum Rejection {
     MissingFields(Vec<String>),
     /// Step 7 — `TF-WFL-0005`.
     BlockedBy(Vec<casual_task_model::TaskId>),
+    /// Step 7 — the actor may bypass the blockers, but has not supplied the
+    /// reason `docs/23` requires the audit record to carry.
+    OverrideReasonRequired(Vec<casual_task_model::TaskId>),
 }
 
 /// A transition that passed every check this crate can make.
@@ -153,6 +159,9 @@ pub struct ValidTransition {
     pub transition: TransitionId,
     pub to_status: StatusId,
     pub to_state: TaskState,
+    /// True only when unresolved blockers existed, the edge did not opt out,
+    /// and `task.dependency.override` was exercised.
+    pub overrode_dependencies: bool,
 }
 
 impl Workflow {
@@ -201,11 +210,16 @@ impl Workflow {
 
         // 7. Blocking dependencies, unless the edge opts out or the actor may
         // override.
-        if !edge.ignore_dependencies
-            && !request.may_override_dependencies
-            && !request.unresolved_blockers.is_empty()
-        {
-            return Err(Rejection::BlockedBy(request.unresolved_blockers.clone()));
+        let blockers_apply = !edge.ignore_dependencies && !request.unresolved_blockers.is_empty();
+        if blockers_apply {
+            if !request.may_override_dependencies {
+                return Err(Rejection::BlockedBy(request.unresolved_blockers.clone()));
+            }
+            if !request.has_dependency_override_reason {
+                return Err(Rejection::OverrideReasonRequired(
+                    request.unresolved_blockers.clone(),
+                ));
+            }
         }
 
         let status = self
@@ -216,6 +230,7 @@ impl Workflow {
             transition: edge.id,
             to_status: to,
             to_state: status.state,
+            overrode_dependencies: blockers_apply,
         })
     }
 }

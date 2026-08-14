@@ -41,6 +41,17 @@ const MEMBER: &[&str] = &[
     "task.assign",
 ];
 
+/// A member who may make the exceptional dependency-bypass decision.
+const OVERRIDER: &[&str] = &[
+    "project.create",
+    "task.create",
+    "task.read",
+    "task.update",
+    "task.transition",
+    "task.assign",
+    "task.dependency.override",
+];
+
 type Answer = (StatusCode, serde_json::Value, Option<String>);
 
 struct Caller {

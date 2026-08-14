@@ -221,5 +221,14 @@ pub(crate) fn rejected(rejection: &casual_task_app::Rejection, request_id: &str)
         .with_details(serde_json::json!({
             "blocked_by": blockers.iter().map(|b| b.as_uuid()).collect::<Vec<_>>(),
         })),
+        Rejection::OverrideReasonRequired(blockers) => ApiError::unprocessable(
+            codes::BLOCKED_BY_DEPENDENCIES,
+            "A non-empty comment is required when overriding unresolved dependencies",
+            request_id,
+        )
+        .with_details(serde_json::json!({
+            "blocked_by": blockers.iter().map(|b| b.as_uuid()).collect::<Vec<_>>(),
+            "missing_fields": ["comment"],
+        })),
     }
 }

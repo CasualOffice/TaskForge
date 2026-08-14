@@ -162,7 +162,8 @@ pub struct TransitionRequestBody {
     #[serde(default)]
     pub fields: HashMap<String, serde_json::Value>,
     /// An optional note, written as a comment in the same transaction
-    /// (`docs/23` §What commits).
+    /// (`docs/23` §What commits). Required when this move exercises
+    /// `task.dependency.override`; that same text is the immutable audit reason.
     #[serde(default)]
     pub comment: Option<String>,
 }

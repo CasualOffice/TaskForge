@@ -234,18 +234,26 @@ fn blockers_gate_the_transition_unless_overridden_or_opted_out() {
         may_override_dependencies: true,
         ..blocked.clone()
     };
-    assert!(
-        f.workflow
-            .validate(f.in_progress, f.done, &overriding)
-            .is_ok()
+    assert_eq!(
+        f.workflow.validate(f.in_progress, f.done, &overriding),
+        Err(Rejection::OverrideReasonRequired(vec![blocker]))
     );
+    let explained = TransitionRequest {
+        has_dependency_override_reason: true,
+        ..overriding
+    };
+    let valid = f
+        .workflow
+        .validate(f.in_progress, f.done, &explained)
+        .expect("a reason makes the authorized override valid");
+    assert!(valid.overrode_dependencies);
 
     // Cancel opts out of dependency gating entirely.
-    assert!(
-        f.workflow
-            .validate(f.in_progress, f.canceled, &blocked)
-            .is_ok()
-    );
+    let ignored = f
+        .workflow
+        .validate(f.in_progress, f.canceled, &blocked)
+        .expect("the edge opts out");
+    assert!(!ignored.overrode_dependencies);
 }
 
 #[test]
