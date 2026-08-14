@@ -3307,3 +3307,13 @@ code and gate commands are unchanged; the acceptance condition is a complete
 green `main` run without the runtime-deprecation annotations. Release and Pages
 workflows remain outside this increment because they have separate triggers and
 need their own end-to-end evidence.
+
+**C-011 now has the scheduled-job leader-lease mechanism, not a scheduled
+retention job.** `docs/24` already selected PostgreSQL advisory leadership; the
+implementation now makes the session that owns the lock a capability object,
+marks it close-on-drop so a pooled connection can never retain an abandoned
+lock, exposes a heartbeat on that same session, and returns immediately to a
+losing instance. A real-PostgreSQL test proves exclusion, explicit release and
+panic/cancellation-style drop release. C-011 remains `Building`: the 7-day
+outbox sweep is not wired until its cadence and shutdown placement are stated,
+and the Phase 3 consumers still do not exist.

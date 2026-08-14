@@ -28,6 +28,7 @@ pub mod health;
 pub mod idempotency;
 pub mod identity;
 pub mod invitation;
+pub mod leader_lease;
 pub mod mfa;
 pub mod milestone;
 pub mod notification;

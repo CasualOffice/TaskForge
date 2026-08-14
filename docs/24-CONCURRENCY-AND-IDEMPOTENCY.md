@@ -177,6 +177,31 @@ it releases automatically.
   deferred out-of-memory crash. `clippy.toml` rejects every unbounded-channel
   constructor by resolved path, so this is a build failure rather than a rule.
 
+### The scheduled-job lease
+
+The lease is a **session-level** PostgreSQL advisory lock held by one dedicated
+connection. A transaction-level lock would disappear as soon as acquisition
+committed, before the scheduled work began. The connection is therefore the
+ownership token: a heartbeat is a query on that same session, and a broken
+session is loss of leadership.
+
+Acquisition uses `pg_try_advisory_lock`, never a blocking lock. A losing
+instance receives `None`, returns its connection to the pool and lets the job's
+own cadence decide when to try again. The lease layer does not contain a timer;
+retention, compaction and reminders do not share a useful schedule.
+
+Lease names are static process strings hashed to PostgreSQL's 64-bit advisory
+key space. A hash collision would serialize two unrelated maintenance jobs — a
+delay, not duplicate execution or data corruption. The cost is one pool
+connection for the leader's full term. On explicit release that session is
+closed; on cancellation or panic it is marked close-on-drop rather than returned
+to the pool, because returning a session-level lock to a pool would strand the
+lock inside an apparently idle connection.
+
+This increment provides acquisition, heartbeat and safe release only. Wiring
+the outbox-retention sweep still needs its cadence and shutdown placement stated
+before the worker invokes it.
+
 ### Every bound names its overflow policy (D-040)
 
 "Bounded" without a policy for the full case moves the failure from an
