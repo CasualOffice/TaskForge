@@ -3297,3 +3297,13 @@ load-bearing.
 
 Nothing is annotated when the title already contains the query. A note on every
 row is a note nobody reads, which would cost the one case this exists for.
+
+**F-003's per-PR actions now declare a supported Node runtime.** GitHub had
+begun forcing `checkout`, `setup-node`, `upload-artifact` and
+`pnpm/action-setup` from their Node-20 majors onto Node 24, producing a warning
+on every job while running publisher bundles against a runtime they did not
+declare. The per-PR workflow now uses the publishers' Node-24 majors. Product
+code and gate commands are unchanged; the acceptance condition is a complete
+green `main` run without the runtime-deprecation annotations. Release and Pages
+workflows remain outside this increment because they have separate triggers and
+need their own end-to-end evidence.

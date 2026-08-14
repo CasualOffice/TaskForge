@@ -5,6 +5,21 @@ The PR contract. The tables name what is required to block merge. The
 those rows are gaps, not green checks. Disabling an implemented gate requires
 an ADR.
 
+## Hosted-action runtime
+
+GitHub-hosted JavaScript actions are executable CI dependencies. A per-PR
+workflow must use action majors whose embedded Node runtime is supported by the
+hosted runner; a deprecation annotation is a maintenance failure even while the
+job still exits successfully. Runtime compatibility is repaired by upgrading
+the producing action and rerunning the complete gate set. The workflow must not
+set GitHub's force-runtime compatibility variable, because that executes an old
+bundle under a runtime its publisher did not declare.
+
+The acceptance evidence is the next `main` run: all required jobs pass and its
+annotations contain no embedded-Node deprecation. The cost is taking action
+major upgrades before a failing deadline, so each refresh is isolated from
+product behavior and reviewed through the same blocking gates it changes.
+
 ## Per-PR gates
 
 ### Build & style
