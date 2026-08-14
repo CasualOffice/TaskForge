@@ -237,7 +237,7 @@ mod tests {
         // as a scope they misunderstood. The two predicates are pinned to each
         // other here because they live in different files.
         let here = include_str!("tag.rs");
-        let there = include_str!("task.rs");
+        let there = include_str!("task_relations.rs");
         assert!(here.contains("project_id IS NULL OR project_id = $2"));
         assert!(there.contains("project_id IS NULL OR project_id = $3"));
     }

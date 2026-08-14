@@ -160,7 +160,7 @@ mod tests {
         // nothing for any stemmed word, and the failure reads as "search is
         // broken for some words" — the hardest kind to attribute. The compiler
         // formats the same constant into its tsquery.
-        let compiler = include_str!("compile.rs");
+        let compiler = include_str!("compile_predicates.rs");
         assert!(
             compiler.contains("search::CONFIGURATION"),
             "the filter compiler no longer shares the projection's text-search \
