@@ -141,6 +141,28 @@ async fn start_embedded_worker(
         });
     }
 
+    // The seven-day sweep is a scheduled database job, not an outbox consumer.
+    // It shares the dispatcher pool because it crosses tenants, and the common
+    // cancellation token makes embedded shutdown release its leader session.
+    {
+        let pool = pool.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            match casual_task_worker::retention::run(
+                &pool,
+                casual_task_worker::retention::Config::default(),
+                cancel,
+            )
+            .await
+            {
+                Ok(stopped) => tracing::info!(?stopped, "outbox retention stopped"),
+                Err(error) => {
+                    tracing::error!(%error, "outbox retention stopped unexpectedly")
+                }
+            }
+        });
+    }
+
     for (name, spawn) in [
         (
             casual_task_worker::consumers::notification::NAME,

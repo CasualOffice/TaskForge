@@ -150,6 +150,51 @@ async fn the_sweep_keeps_an_event_while_any_consumer_still_needs_it() -> Result<
 
 #[tokio::test]
 #[ignore = "needs Docker; run with --ignored"]
+async fn the_event_half_of_the_sweep_is_bounded_too() -> Result<()> {
+    let db = schema_harness::TestDatabase::start().await?;
+    let workspace = a_workspace(&db.pool, "bounded").await?;
+
+    for _ in 0..3 {
+        let mut tx = db.pool.begin().await?;
+        let mut scoped = Scoped::apply(&mut tx, &WorkspaceScope::for_job(workspace)).await?;
+        UnitOfWork::record(&mut scoped, &a_change(Uuid::now_v7()), &nobody()).await?;
+        tx.commit().await?;
+    }
+
+    // Make three orphan candidates directly. This is a persistence integration
+    // test, so the fixture SQL remains inside the crate that owns SQL.
+    sqlx::query("DELETE FROM outbox_delivery WHERE workspace_id = $1")
+        .bind(workspace.as_uuid())
+        .execute(&db.pool)
+        .await?;
+    let old = format!("{} seconds", dispatch::RETENTION.whole_seconds() + 60);
+    sqlx::query(
+        "UPDATE outbox_event SET created_at = now() - $2::interval
+          WHERE workspace_id = $1",
+    )
+    .bind(workspace.as_uuid())
+    .bind(old)
+    .execute(&db.pool)
+    .await?;
+
+    let mut tx = db.pool.begin().await?;
+    let mut dispatcher = dispatch::Dispatcher::assume(&mut tx).await?;
+    let (deliveries, events) = dispatch::sweep(&mut dispatcher, 1).await?;
+    tx.commit().await?;
+
+    assert_eq!(deliveries, 0);
+    assert_eq!(events, 1, "one batch deleted more than its event bound");
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM outbox_event WHERE workspace_id = $1")
+            .bind(workspace.as_uuid())
+            .fetch_one(&db.pool)
+            .await?;
+    assert_eq!(remaining, 2, "the event cleanup ignored its batch limit");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs Docker; run with --ignored"]
 async fn a_delivery_row_is_created_at_the_same_instant_as_its_event() -> Result<()> {
     // `oldest_pending_seconds` reads `outbox_delivery.created_at` and does NOT
     // join `outbox_event` — that join was one random heap fetch per pending row,

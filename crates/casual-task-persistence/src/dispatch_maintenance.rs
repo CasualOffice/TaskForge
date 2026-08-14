@@ -28,12 +28,14 @@ pub const RETENTION: time::Duration = time::Duration::days(7);
 ///
 /// Dead-lettered rows are retained for an operator decision. The bounded batch
 /// prevents maintenance from stalling the dispatch loop.
-pub async fn sweep(dispatcher: &mut Dispatcher<'_>, limit: i64) -> Result<(u64, u64), sqlx::Error> {
+pub async fn sweep(dispatcher: &mut Dispatcher<'_>, limit: u32) -> Result<(u64, u64), sqlx::Error> {
+    let limit = i64::from(limit);
     let deliveries = sqlx::query(
         "DELETE FROM outbox_delivery
           WHERE id IN (SELECT id FROM outbox_delivery
                         WHERE dispatched_at IS NOT NULL
                           AND dispatched_at < now() - $1::interval
+                        ORDER BY dispatched_at, id
                         LIMIT $2)",
     )
     .bind(pg_interval(RETENTION))
@@ -43,11 +45,18 @@ pub async fn sweep(dispatcher: &mut Dispatcher<'_>, limit: i64) -> Result<(u64, 
     .rows_affected();
 
     let events = sqlx::query(
-        "DELETE FROM outbox_event e
-          WHERE e.created_at < now() - $1::interval
-            AND NOT EXISTS (SELECT 1 FROM outbox_delivery d WHERE d.event_id = e.id)",
+        "DELETE FROM outbox_event
+          WHERE id IN (
+                SELECT e.id
+                  FROM outbox_event e
+                 WHERE e.created_at < now() - $1::interval
+                   AND NOT EXISTS (
+                       SELECT 1 FROM outbox_delivery d WHERE d.event_id = e.id)
+                 ORDER BY e.created_at, e.id
+                 LIMIT $2)",
     )
     .bind(pg_interval(RETENTION))
+    .bind(limit)
     .execute(dispatcher.conn())
     .await?
     .rows_affected();

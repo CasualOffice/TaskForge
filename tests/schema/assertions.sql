@@ -117,6 +117,9 @@ DECLARE required text[] := ARRAY[
     -- sequential scan in the full claim plan — the planner falls back to hashing
     -- every pending delivery — so the EXPLAIN gate alone would not miss it here.
     'team_membership_user_ix','outbox_delivery_pending_ix','outbox_event_aggregate_ix',
+    -- C-011: both halves of the seven-day cleanup are oldest-first bounded
+    -- scans. These indexes keep the scheduled job off the tenant-scale heaps.
+    'outbox_delivery_retention_ix','outbox_event_retention_ix',
     'notification_unread_ix','comment_task_ix','attachment_task_ix',
     -- C-006: the project list's keyset order, and the guard that keeps a
     -- workspace from ending up with two default workflows (migration 0019).

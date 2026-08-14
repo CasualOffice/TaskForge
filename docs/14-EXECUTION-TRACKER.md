@@ -3317,3 +3317,30 @@ losing instance. A real-PostgreSQL test proves exclusion, explicit release and
 panic/cancellation-style drop release. C-011 remains `Building`: the 7-day
 outbox sweep is not wired until its cadence and shutdown placement are stated,
 and the Phase 3 consumers still do not exist.
+
+**C-011 retention scheduling is finalized for implementation.** The
+`outbox-retention` lease is attempted at startup and once per minute, the leader
+heartbeats on that minute cadence, and a sweep runs immediately then hourly.
+Each run drains oldest-first batches of 1,000, checks cancellation between
+batches, and closes the lease session on shutdown. The worker owns the schedule
+in both deployment profiles; persistence owns both delete statements and their
+indexes. This does not trigger an ADR: the seven-day policy, PostgreSQL leader
+lease, shutdown semantics and worker boundary were already settled, and this
+increment changes no public API, schema meaning, event contract or concurrency
+guarantee. C-011 remains `Building` until that design is implemented and its
+blocking CI evidence is merged.
+
+**C-011 now schedules the seven-day outbox sweep under the lease.** Both the
+embedded and standalone worker start the same `outbox-retention` runner. A
+leader drains 1,000-row transactions immediately and hourly, a losing instance
+retries once per minute, the held session is heartbeated on that cadence, and
+the shared cancellation token closes it on shutdown. Migration 0034 adds the
+two oldest-first retention indexes; EXPLAIN cases 30 and 31 prove both candidate
+queries are index-served over the 654,000-delivery corpus. Real-PostgreSQL tests
+run two schedulers together, force multiple batches, assert cancellation, and
+separately prove the event delete cannot exceed its bound.
+
+C-011 remains `Building`, not `Gated`: this closes the outbox scheduling gap,
+not the monthly activity/audit partition maintenance, the Phase 3 consumer
+pair, or F-009 metric export. The real-PostgreSQL and EXPLAIN evidence runs in
+the blocking schema and query-plan jobs.

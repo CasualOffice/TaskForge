@@ -198,9 +198,22 @@ closed; on cancellation or panic it is marked close-on-drop rather than returned
 to the pool, because returning a session-level lock to a pool would strand the
 lock inside an apparently idle connection.
 
-This increment provides acquisition, heartbeat and safe release only. Wiring
-the outbox-retention sweep still needs its cadence and shutdown placement stated
-before the worker invokes it.
+The outbox-retention job tries to acquire `outbox-retention` immediately at
+startup and once per minute while another instance leads. The leader keeps the
+session for its whole term, heartbeats it once per minute, runs one sweep
+immediately and then once per hour. An hourly sweep can retain a completed row
+for at most one extra hour beyond the seven-day policy; the losing side is that
+failover may also wait one minute. Both are small beside a retention window
+measured in days, and the fixed cadence avoids an operator setting that can
+quietly turn cleanup off.
+
+One scheduled run drains eligible rows in batches of 1,000. Each batch is a
+bounded pair of database statements and commits before the next begins; the
+runner checks cancellation between batches. On shutdown it starts no new batch,
+waits for the bounded statement already in flight, closes the lease session and
+returns. The same cancellation token drives this job and the dispatch loops in
+both the embedded and standalone worker profiles, so retention cannot outlive
+the process that owns it.
 
 ### Every bound names its overflow policy (D-040)
 

@@ -126,7 +126,7 @@ modify.
   working forever ([docs/23](docs/23-WORKFLOW-AND-STATE-MACHINE.md)).
 - **Nothing scans.** The filterable and sortable field set is **closed**, each
   field has a named index, and CI asserts no sequential scan on any tenant-scale
-  table for all 29 read paths, on every pull request.
+  table for all 31 read paths, on every pull request.
   A filter on an unlisted field is a `400`, not a slow query
   ([docs/26](docs/26-SEARCH-INDEXING-AND-QUERY.md)).
 - **Open for extension, closed for modification.** Adding a plugin never changes

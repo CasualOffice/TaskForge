@@ -319,7 +319,19 @@ creates next month's partition ahead of time and drops expired ones. Dropping a
 partition is instant; deleting 40 million rows is hours of bloat and vacuum.
 
 Outbox rows are deleted 7 days after dispatch — long enough to debug a delivery
-problem, short enough that the table stays small.
+problem, short enough that the table stays small. The `outbox-retention`
+scheduled job from [24](24-CONCURRENCY-AND-IDEMPOTENCY.md) runs immediately on
+leadership and hourly afterward. It deletes at most 1,000 deliveries and 1,000
+now-orphaned events per batch, committing before the next batch, until the
+eligible set is drained. Dead-lettered deliveries are never selected: replay or
+deletion remains an operator decision.
+
+The two cleanup scans are ordered oldest first and separately indexed. The
+delivery index is partial on `dispatched_at IS NOT NULL`, so pending and
+dead-letter rows never occupy the cleanup path. The event index starts with
+`created_at`; the existing `(event_id, consumer)` unique index answers the
+`NOT EXISTS` check that prevents deletion while any consumer still needs the
+event.
 
 ## Acceptance gates
 

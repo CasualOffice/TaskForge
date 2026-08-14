@@ -28,6 +28,7 @@ use casual_task_worker::attachment_scan::AttachmentScan;
 use casual_task_worker::consumers::{NotificationFanout, SseFanout};
 use casual_task_worker::dispatcher::{self, Cancel, CancelOnDrop, Consumer};
 use casual_task_worker::projection::SearchProjection;
+use casual_task_worker::retention;
 use casual_task_worker::state_interval::StateIntervalProjection;
 
 fn main() -> ExitCode {
@@ -226,6 +227,16 @@ async fn run() -> ExitCode {
         cancel.clone(),
         Arc::clone(&metrics),
     );
+    let retention_loop = {
+        let pool = dispatch_pool.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            match retention::run(&pool, retention::Config::default(), cancel).await {
+                Ok(stopped) => tracing::info!(?stopped, "outbox retention stopped"),
+                Err(error) => tracing::error!(%error, "outbox retention stopped unexpectedly"),
+            }
+        })
+    };
 
     let export_loop = object_store.map(|storage| {
         let dispatch_pool = dispatch_pool.clone();
@@ -266,6 +277,7 @@ async fn run() -> ExitCode {
     let _ = sse_loop.await;
     let _ = search_loop.await;
     let _ = state_interval_loop.await;
+    let _ = retention_loop.await;
     // Awaited like the others so an in-flight scan finishes rather than being
     // cut off mid-verdict, which would leave an attachment PENDING with the
     // delivery already claimed.

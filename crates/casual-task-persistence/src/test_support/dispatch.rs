@@ -54,6 +54,45 @@ pub async fn counts(pool: &sqlx::PgPool, consumer: &str) -> Result<Counts, sqlx:
     })
 }
 
+/// Make one workspace's completed outbox rows eligible for the seven-day
+/// retention worker.
+///
+/// Time is moved in the database instead of sleeping for a week. Kept behind
+/// `test-support` because no production caller should be able to rewrite an
+/// immutable event's creation time.
+///
+/// # Errors
+///
+/// Any database error.
+pub async fn age_completed_outbox(
+    pool: &sqlx::PgPool,
+    workspace_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    let old = format!(
+        "{} seconds",
+        crate::dispatch::RETENTION.whole_seconds() + 60
+    );
+    sqlx::query(
+        "UPDATE outbox_delivery
+            SET dispatched_at = now() - $2::interval
+          WHERE workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .bind(&old)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "UPDATE outbox_event
+            SET created_at = now() - $2::interval
+          WHERE workspace_id = $1",
+    )
+    .bind(workspace_id)
+    .bind(&old)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// What the three streams recorded for one workspace (`docs/25`, ADR-006).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct History {
