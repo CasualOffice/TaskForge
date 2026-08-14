@@ -309,7 +309,7 @@
   summary,
   .btn,
   .list__open,
-  .shell__search,
+  button.shell__search,
   .shell__account,
   .shell__brand,
   .skip-link,
@@ -343,4 +343,3 @@
     min-width: var(--tf-control-touch);
   }
 }
-
